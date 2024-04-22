@@ -1,0 +1,3 @@
+[submodule "external/splocs"]
+	path = external/splocs
+	url = http://github.com/tneumann/splocs.git

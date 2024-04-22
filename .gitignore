@@ -6,6 +6,10 @@
 # ignore all chaches
 IPDGS/config/__pycache__/
 IPDGS/classes/__pycache__/
+external/splocs/__pycache__/
+__pycache__/
+ *.pyc
+
 
 # ignore created venv
 IPDGS/IPDGS_env/

@@ -3,9 +3,9 @@ from IPDGS.classes.posSnapshots import posSnapshots
 from IPDGS.config.config import vertPos_bases_type, store_vertPos_PCA_sing_val, vertPos_rest_shape, vertPos_maxFrames,\
                                 vertPos_numFrames, vertPos_numComponents, vertPos_smooth_min_dist, \
                                 vertPos_smooth_max_dist, vertPos_masses_file, q_standarize, q_massWeight, \
-                                q_orthogonal, q_support, q_store_sing_val, vertPos_singVals_dir, \
+                                q_orthogonal, q_support, q_store_sing_val, vertPos_singVals_dir, input_animation_dir, \
                                 vertPos_output_animation_dir, vertPos_output_bases_dir, splocs_max_itrs, \
-                                splocs_admm_num_itrs
+                                splocs_admm_num_itrs, splocs_lambda, splocs_rho
 
 
 class posComponents:  # Components == bases
@@ -38,7 +38,6 @@ class posComponents:  # Components == bases
 
         self.fileNameBases = vertPos_output_bases_dir
         self.file_name_sing = vertPos_singVals_dir
-
 
     @staticmethod
     def project_weight(x):
@@ -115,7 +114,7 @@ class posComponents:  # Components == bases
                                      R_flat_init, snapshots_compute_geodesic_distance)
 
     def splocs_glob_optimization(self, num_iters_max, num_admm_iterations,
-                                 R, compute_geodesic_distance, sparsity_lambda=2., rho=10.0):
+                                 R, compute_geodesic_distance, sparsity_lambda=splocs_lambda, rho=splocs_rho):
         # prepare auxiluary variables
         Lambda = np.empty((self.numComp, self.pos_snapshots.nVerts))
         U = np.zeros((self.numComp, self.pos_snapshots.nVerts, 3))

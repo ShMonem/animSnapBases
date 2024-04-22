@@ -1,0 +1,51 @@
+{
+	"object":
+	{
+		"mesh": "bunny",
+		"experiment": "_gravitationalFall"
+	},
+	"snapshots":
+		{
+			"format": ".off",
+			"snaps_folder": "FOM_snapshots_OFF",
+			"read_all_from_first": "No",
+			"anims_folder": "FOM_animations_h5",
+			"anim_folder_ready": "Yes",
+			"visualize_aligned_animations": "Yes"
+		},
+	"vertexPos_bases":
+	{
+	"max_numFrames": 200,
+	"numFrames": 50,	
+	"dim": 3,
+	"rest_shape": "first",
+	"preAlignement": "_alignedRigid",
+	"massWeighted": "_Volkwein",
+	"standarized": "_Standarized",
+	"orthogonalized": "_Orthogonalized",
+	"support":
+	{
+		"min_dist": 0.1,
+		"max_dist": 0.25
+	},
+	"PCA":
+	{
+		"compute": "Yes",
+		"numComponents": 10,
+		"supported": "_Global",
+		"store_sing_val": "No"
+	},
+	"splocs":
+	{
+		"compute": "No",
+		"max_itrs": 20,
+		"admm_num_itrs": 10,
+		"lambda": 2,
+		"rho": 10.0
+	}
+	},
+	"computeState":
+	{
+		"testingComputations": "_Debugging"
+	}
+}

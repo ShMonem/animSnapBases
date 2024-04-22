@@ -1,0 +1,14 @@
+
+
+# ignore all logs
+*.log
+
+# ignore all chaches
+IPDGS/config/__pycache__/
+IPDGS/classes/__pycache__/
+
+# ignore created venv
+IPDGS/IPDGS_env/
+
+# ignor binaries that can be re-generated from code
+input_data/

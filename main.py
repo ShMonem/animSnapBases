@@ -5,9 +5,11 @@ from IPDGS.classes.posComponents import posComponents
 from external.splocs.inout import convert_sequence_to_hdf5, load_off, load_ply
 from external.splocs.align_rigid import align
 from external.splocs.view_animation import view_anim_file
+from external.splocs.view_splocs import view_components
 from functools import partial
 from IPDGS.config.config import vertPos_numFrames, snapshots_format, frame_increament, input_snapshots_pattern, \
-                                input_animation_dir, input_aligned_animation_dir, visualize_snapshots
+                                input_animation_dir, input_aligned_animation_dir, visualize_snapshots, \
+                                vertPos_output_directory, vertPos_numComponents, vertPos_output_animation_file
 root_folder = os.getcwd()
 profiler = cProfile.Profile()
 
@@ -38,12 +40,23 @@ def main():
         return
     align(output_filename, input_aligned_animation_dir)
 
-    if visualize_snapshots:
+    if visualize_snapshots == "Yes":
         view_anim_file(input_aligned_animation_dir)
-    # read snapshots and bases computation
-    # bases = posComponents()
 
+    # read and pre-process snapshots
+    bases = posComponents()
 
+    # compute bases/components and store PCA singularvalues
+    bases.compute_components_store_singvalues(vertPos_output_directory)
+    bases.post_process_components()
+
+    # store bases
+    bases.store_animations(vertPos_output_directory)
+    bases.store_components_to_files(vertPos_output_directory, vertPos_numComponents, vertPos_numComponents, 10, '.npy')
+    bases.store_components_to_files(vertPos_output_directory, 10, vertPos_numComponents, 10, '.bin')
+
+    view_components(os.path.join(vertPos_output_directory, bases.output_components_file))
+    view_components(os.path.join(vertPos_output_directory, bases.output_animation_file))
 if __name__ == '__main__':
 
     # parser = argparse.ArgumentParser(

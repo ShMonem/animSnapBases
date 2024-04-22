@@ -101,6 +101,7 @@ class posSnapshots:
 
         print("Vertices: ", self.nVerts)
         print("Faces: ", self.tris.shape[0])
+        print("Frames: ", self.frs)
 
     def read_factorize_masses(self):
         # if masses file is available, read it

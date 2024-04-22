@@ -41,7 +41,7 @@ def main():
     if visualize_snapshots:
         view_anim_file(input_aligned_animation_dir)
     # read snapshots and bases computation
-    bases = posComponents()
+    # bases = posComponents()
 
 
 if __name__ == '__main__':

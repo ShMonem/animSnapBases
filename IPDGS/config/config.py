@@ -33,6 +33,8 @@ visualize_snapshots = config["snapshots"]["visualize_aligned_animations"]  # vis
 # notice that data should be put in place so that all .py can have access too!
 input_snapshots_pattern = "input_data/" + name + "/" + experiment + "/" + snapshots_folder + "/pos_*" +  snapshots_format
 input_animation_dir 	= "input_data/" + name + "/" + experiment + "/" + animation_folder + "/" + str(vertPos_maxFrames) + ".h5"
+
+# note that the input .h5 for bases/components computation is the output from the snapshots algnment
 input_aligned_animation_dir 	= "input_data/" + name + "/" + experiment + "/" + animation_folder + "/" + str(vertPos_maxFrames) + preAlignement + ".h5"
 """
 1st: vertex position reduction parameters
@@ -71,7 +73,7 @@ vertPos_masses_file = "input_data/" + name + "/" + name + "_vertPos_massMatrix.b
 
 
 # set bases parameters
-standarize, massWeight, orthogonal, support = False, False, False, False
+q_standarize, q_massWeight, q_orthogonal, supported = False, False, False, False
 if config['vertexPos_bases']['standarized'] == '_Standarized':  # '_Standarized'/ '_nonStandarized'
     q_standarize = True
 if config['vertexPos_bases']['massWeighted'] == '_Volkwein':     # 'Volkwein' / '_nonWeighted'
@@ -80,8 +82,10 @@ if config['vertexPos_bases']['orthogonalized'] == '_Orthogonalized':  # '_Orthog
     q_orthogonal = True
 if config['vertexPos_bases']["PCA"]['supported'] == '_Localized':    # '_Localized'/'_Global'
     q_support = 'local'
+    q_supported = True
 else:
     q_support = 'global'
+    q_supported = False
 
 if config["vertexPos_bases"]["PCA"]["store_sing_val"] == "Yes":
     q_store_sing_val = True
@@ -92,25 +96,42 @@ else:
 # find the workspace
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
+
+# this line contains all parameters used for computations
 vertPos_bases_name_extention = vertPos_bases_type + preAlignement + config['vertexPos_bases']['massWeighted'] +\
 							 config['vertexPos_bases']['standarized'] + config['vertexPos_bases']["PCA"]['supported'] +  \
 							 config['vertexPos_bases']['orthogonalized'] + vertPos_testing
 
-vertPos_singVals_file =  "results/" + name + "/q_bases/" + vertPos_bases_type + preAlignement + config['vertexPos_bases']['massWeighted'] + \
-                         config['vertexPos_bases']['standarized'] + config['vertexPos_bases']["PCA"]['supported']  + \
-                         "/using_" + str(vertPos_numFrames)+ "outOf" + str(vertPos_maxFrames)+"_Frames_/"
+# singularvalues/animations/bases depend on 
+# - experiment
+# - pre-processing of the snapshots 
+# - number of frames used out of the max frames available
+# - jumps between the selectedframes
+# - number of bases computed
 
-vertPos_output_animation = "results/" + name + "/q_animationFiles/" + vertPos_bases_name_extention + "/" + experiment +\
-                           "/using_" + str(vertPos_numFrames) + "outOf" + str(vertPos_maxFrames)+ "_Frames_" + \
+vertPos_output_directory = "results/" + name + "/q_bases/" + vertPos_bases_name_extention + \
+                         "/" + str(vertPos_numFrames)+ "outOf" + str(vertPos_maxFrames)+"_Frames_/" + str(frame_increament) + "_increament_" +  str(vertPos_numComponents)  + "_bases/"
+ 
+if not os.path.exists(vertPos_output_directory):
+    # Create a new directory because it does not exist
+    os.makedirs(vertPos_output_directory)
+    print("A directory is created to store bases!")
+else:
+    print("Warning! an old the store directory already exists: \n", vertPos_output_directory,\
+          "\n make sure you are not over-writing! ")
+          
+          
+          
+vertPos_output_animation_file = "animations" + str(vertPos_numFrames) + "outOf" + str(vertPos_maxFrames)+ "_Frames_" + \
                            'computed_' + str(vertPos_numComponents) + "_bases.h5"
 
 vertPos_output_bases_ext = "results/" + name +"/q_bases/" + vertPos_bases_name_extention + "/" + experiment + \
                            "/using_" + str(vertPos_numFrames)+ "outOf"+ str(vertPos_maxFrames)+ "_Frames_/"
                             #+ str(vertPos_numComponents) + "_bases.h5"
         
-vertPos_singVals_dir = os.path.join(script_dir, vertPos_singVals_file)
-vertPos_output_animation_dir = os.path.join(script_dir, vertPos_output_animation)
-vertPos_output_bases_dir = os.path.join(script_dir,vertPos_output_bases_ext)
+#vertPos_singVals_dir = os.path.join(script_dir, vertPos_singVals_file)
+#vertPos_output_animation_dir = os.path.join(script_dir, vertPos_output_animation)
+#vertPos_output_bases_dir = os.path.join(script_dir,vertPos_output_bases_ext)
 
 # SPLOCS paramers
 

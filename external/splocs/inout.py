@@ -133,10 +133,10 @@ def save_off(filename, vertices=None, faces=None):
 
 def load_splocs(component_hdf5_file):
     with h5py.File(component_hdf5_file, 'r') as f:
-        tris = f['tris'].value
-        Xmean = f['default'].value
+        tris = f['tris'][()] # .value
+        Xmean = f['default'][()] # .value
         names = sorted(list(set(f.keys()) - set(['tris', 'default'])))
         components = np.array([
-            f[name].value - Xmean 
+            f[name][()] - Xmean 
             for name in names])
     return Xmean, tris, components, names

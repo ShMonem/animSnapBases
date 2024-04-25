@@ -10,9 +10,10 @@ from IPDGS.classes.posSnapshots import posSnapshots
 from IPDGS.config.config import vertPos_bases_type, store_vertPos_PCA_sing_val, vertPos_rest_shape, vertPos_maxFrames,\
                                 vertPos_numFrames, vertPos_numComponents, vertPos_smooth_min_dist, \
                                 vertPos_smooth_max_dist, vertPos_masses_file, q_standarize, q_massWeight, \
-                                q_orthogonal, q_support, q_store_sing_val, input_animation_dir, \
+                                q_orthogonal, q_support, q_store_sing_val, \
                                 vertPos_output_directory, splocs_max_itrs, \
-                                splocs_admm_num_itrs, splocs_lambda, splocs_rho
+                                splocs_admm_num_itrs, splocs_lambda, splocs_rho, \
+                                aligned_snapshots_directory, aligned_snapshots_animation_file
 
 
 class posComponents:  # Components == bases
@@ -23,7 +24,8 @@ class posComponents:  # Components == bases
         assert self.basesType == 'PCA' or self.basesType == 'SPLOCS'
 
         # position snapshots from which the components are computed are loaded and pre-processed if required
-        self.pos_snapshots = posSnapshots(input_animation_dir, vertPos_rest_shape, vertPos_masses_file,
+        aligned_snapshots_h5_file = os.path.join(aligned_snapshots_directory, aligned_snapshots_animation_file)
+        self.pos_snapshots = posSnapshots(aligned_snapshots_h5_file, vertPos_rest_shape, vertPos_masses_file,
                                           q_standarize, q_massWeight)
 
         self.numComp = vertPos_numComponents  # max number of components
@@ -253,8 +255,8 @@ class posComponents:  # Components == bases
         if q_orthogonal:
             self.is_utmu_orthogonal()  # test U^T M U = I (K x K)
 
-        print("... Volkwein ("+str(q_massWeight)+")... standerized ("+str(q_standarize)+
-              "), orthogonalized ("+str(q_orthogonal)+").")
+        print("... Volkwein ("+str(q_massWeight)+")... standerized ("+str(q_standarize) +
+              ")... support (" +str(self.support) + "), orthogonalized ("+str(q_orthogonal)+").")
 
     def is_utmu_orthogonal(self):
         print('... testing M orthogonality, U^T M U = I (K x K) ...', end='', flush=True)

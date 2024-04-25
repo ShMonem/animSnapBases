@@ -19,8 +19,15 @@ name = config["object"]["mesh"]
 experiment = config["object"]["experiment"]     # name of you simulations  
 # "first"/"avarage": used for standerization step
 vertPos_rest_shape = config["vertexPos_bases"]["rest_shape"]
+
 # pre alignment done to frames, can be '_centered' or '_alignedRigid'
-preAlignement = config["vertexPos_bases"]["preAlignement"]
+preAlignement = config["snapshots"]["preAlignement"]
+if preAlignement == "_alignedRigid":
+	rigid = True
+elif preAlignement == "_centered":
+	rigid = False
+else:
+	print("Error! unknown alignment method.")
 
 
 vertPos_maxFrames = config["vertexPos_bases"]["max_numFrames"]       # number of snapshots used in computations (NO. files you have)
@@ -30,12 +37,28 @@ animation_folder = config["snapshots"]["anims_folder"]     # where animations wi
 
 snapshots_anim_ready = config["snapshots"]["anim_folder_ready"]     # read .off or .ply and convert it to .h5
 visualize_snapshots = config["snapshots"]["visualize_aligned_animations"]  # visualize aligned snapshots
+
+
+
+vertPos_numFrames = config["vertexPos_bases"]["numFrames"]            # number of snapshots used in computations
+vertPos_numComponents = config["vertexPos_bases"]["PCA"]["numComponents"]    # number of bases to be computed
+
+if config["snapshots"]["read_all_from_first"] == "Yes":
+	frame_increament = 1
+else:
+	frame_increament = vertPos_maxFrames//vertPos_numFrames 
+	assert frame_increament <= 10    # max number of frame increament
+
+
 # notice that data should be put in place so that all .py can have access too!
 input_snapshots_pattern = "input_data/" + name + "/" + experiment + "/" + snapshots_folder + "/pos_*" +  snapshots_format
-input_animation_dir 	= "input_data/" + name + "/" + experiment + "/" + animation_folder + "/" + str(vertPos_maxFrames) + ".h5"
+
+input_animation_dir 	= "input_data/" + name + "/" + experiment + "/" + animation_folder + "/" 
+
+snapshots_animation_file = "snapshots_" + str(vertPos_numFrames)+ "outOf" + str(vertPos_maxFrames)+"_Frames_" + str(frame_increament) + "_increament_" + preAlignement + ".h5"
 
 # note that the input .h5 for bases/components computation is the output from the snapshots algnment
-input_aligned_animation_dir 	= "input_data/" + name + "/" + experiment + "/" + animation_folder + "/" + str(vertPos_maxFrames) + preAlignement + ".h5"
+
 """
 1st: vertex position reduction parameters
 """
@@ -48,16 +71,6 @@ else:
 # store singVals to file during computations: True/False
 store_vertPos_PCA_sing_val = config["vertexPos_bases"]["PCA"]["store_sing_val"]
 
-
-
-vertPos_numFrames = config["vertexPos_bases"]["numFrames"]            # number of snapshots used in computations
-vertPos_numComponents = config["vertexPos_bases"]["PCA"]["numComponents"]    # number of bases to be computed
-
-if config["snapshots"]["read_all_from_first"] == "Yes":
-	frame_increament = 1
-else:
-	frame_increament = vertPos_maxFrames//vertPos_numFrames 
-	assert frame_increament <= 10    # max number of frame increament
 
 # local support and splocs parameters (better not change them!)
 # minimum geodesic distance for support map, d_min_in splocs paper
@@ -73,14 +86,14 @@ vertPos_masses_file = "input_data/" + name + "/" + name + "_vertPos_massMatrix.b
 
 
 # set bases parameters
-q_standarize, q_massWeight, q_orthogonal, supported = False, False, False, False
+q_standarize, q_massWeight, q_orthogonal, q_supported = False, False, False, False
 if config['vertexPos_bases']['standarized'] == '_Standarized':  # '_Standarized'/ '_nonStandarized'
     q_standarize = True
 if config['vertexPos_bases']['massWeighted'] == '_Volkwein':     # 'Volkwein' / '_nonWeighted'
     q_massWeight = True
 if config['vertexPos_bases']['orthogonalized'] == '_Orthogonalized':  # '_Orthogonalized'/'_nonOrthogonalized'
     q_orthogonal = True
-if config['vertexPos_bases']["PCA"]['supported'] == '_Localized':    # '_Localized'/'_Global'
+if config['vertexPos_bases']["PCA"]['supported'] == '_Local':    # '_Local'/'_Global'
     q_support = 'local'
     q_supported = True
 else:
@@ -110,7 +123,8 @@ vertPos_bases_name_extention = vertPos_bases_type + preAlignement + config['vert
 # - number of bases computed
 
 vertPos_output_directory = "results/" + name + "/q_bases/" + vertPos_bases_name_extention + \
-                         "/" + str(vertPos_numFrames)+ "outOf" + str(vertPos_maxFrames)+"_Frames_/" + str(frame_increament) + "_increament_" +  str(vertPos_numComponents)  + "_bases/"
+                         "/" + str(vertPos_numFrames)+ "outOf" + str(vertPos_maxFrames)+"_Frames_/" + \
+                         str(frame_increament) + "_increament_" +  str(vertPos_numComponents)  + preAlignement+ "_bases/"
  
 if not os.path.exists(vertPos_output_directory):
     # Create a new directory because it does not exist
@@ -120,10 +134,13 @@ else:
     print("Warning! an old the store directory already exists: \n", vertPos_output_directory,\
           "\n make sure you are not over-writing! ")
           
-          
-          
-vertPos_output_animation_file = "animations" + str(vertPos_numFrames) + "outOf" + str(vertPos_maxFrames)+ "_Frames_" + \
+
+aligned_snapshots_directory = "results/" + name +"/q_snapshots_h5/"          
+aligned_snapshots_animation_file = "aligned_snapshots" + str(vertPos_numFrames)+ "outOf" + str(vertPos_maxFrames)+"_Frames_" + str(frame_increament) + "_increament_" + preAlignement + ".h5"
+
+vertPos_output_animation_file = "bases_animations" + str(vertPos_numFrames) + "outOf" + str(vertPos_maxFrames)+ "_Frames_" + \
                            'computed_' + str(vertPos_numComponents) + "_bases.h5"
+
 
 vertPos_output_bases_ext = "results/" + name +"/q_bases/" + vertPos_bases_name_extention + "/" + experiment + \
                            "/using_" + str(vertPos_numFrames)+ "outOf"+ str(vertPos_maxFrames)+ "_Frames_/"

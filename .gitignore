@@ -16,3 +16,6 @@ IPDGS/IPDGS_env/
 
 # ignor binaries that can be re-generated from code
 input_data/
+
+# ignor results directory
+/results/

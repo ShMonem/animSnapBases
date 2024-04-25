@@ -10,19 +10,19 @@
 		"snaps_folder": "FOM_snapshots_OFF",
 		"read_all_from_first": "No",
 		"anims_folder": "FOM_animations_h5",
+		"preAlignement": "_centered" ,
 		"anim_folder_ready": "Yes",
 		"visualize_aligned_animations": "No"
 		},
 	"vertexPos_bases":
 		{
 		"max_numFrames": 200,
-		"numFrames": 50,	
+		"numFrames": 200,	
 		"dim": 3,
 		"rest_shape": "first",
-		"preAlignement": "_alignedRigid",
 		"massWeighted": "_Volkwein",
 		"standarized": "_Standarized",
-		"orthogonalized": "_Orthogonalized",
+		"orthogonalized": "_nonOrthogonalized",
 		"support":
 		{
 			"min_dist": 0.1,
@@ -31,8 +31,8 @@
 		"PCA":
 		{
 			"compute": "Yes",
-			"numComponents": 10,
-			"supported": "_Global",
+			"numComponents": 200,
+			"supported": "_Local",
 			"store_sing_val": "No"
 		},
 		"splocs":

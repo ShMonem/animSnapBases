@@ -5,7 +5,7 @@ import h5py
 from external.splocs.util import transform
 
 
-def find_rbm_procrustes(frompts, topts):
+def find_rbm_procrustes(frompts, topts, rigid):
     """
     Finds a rigid body transformation M that moves points in frompts to the points in topts
     that is, it finds a rigid body motion [ R | t ] with R \in SO(3)
@@ -25,7 +25,8 @@ def find_rbm_procrustes(frompts, topts):
     if np.linalg.det(R) < 0:
         R *= -1
     T0 = np.eye(4)
-    #T0[:3,:3] = R  # commented --> no rotatation to rigid body
+    if rigid:
+    	T0[:3,:3] = R  # commented --> no rotatation to rigid body
     T0[:3, 3] = t1 - np.dot(R, t0)
     return T0
 
@@ -46,7 +47,7 @@ def test_find_rbm_procrustes():
         np.testing.assert_almost_equal(M_pro, M)
 
 
-def align(input_hdf5_file, output_hdf5_file):
+def align(input_hdf5_file, output_hdf5_file, rigid):
     data = h5py.File(input_hdf5_file, 'r')
     verts = data['verts'][()]#.value
     tris = data['tris'][()] #.value
@@ -55,7 +56,7 @@ def align(input_hdf5_file, output_hdf5_file):
     verts_new = []
     for i, v in enumerate(verts):
         print ("frame %d/%d" % (i+1, len(verts)) )
-        M = find_rbm_procrustes(v, v0)
+        M = find_rbm_procrustes(v, v0, rigid)
         verts_new.append(transform(v, M))
     verts = np.array(verts_new, np.float32)
 

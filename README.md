@@ -5,7 +5,7 @@ Implementation for position subspace computation for the SIGGRAPH23 [1st place s
 As an external dependency and for comparision reasons, SPLOCS algorithm with this code (not as a submodule), you can fine the [original SPLOCS here](https://github.com/tneumann/splocs)
 In addition, to re-produce the results in our paper you can use implementations from the [hyper-reduced-projective-dynamics paper here](https://replicability.graphics/papers/10.1145-3197517.3201387/index.html). All you need it to replace the LBS subspaces, and read a `.bin` bases file that this code produces
 
-Note that, this codes provides more options than it has been published in the paper yet.
+Note that, this codes provides more options than it has been published in the paper yet. And venv can be re-generated from `venv_requirements.txt`
 You can play with all options of othogonality, support, locality and mass weighting in the associated `bases_config.json`
 
 ## For internal code review purpose (MPI, CSC group)

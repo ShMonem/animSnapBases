@@ -19,3 +19,4 @@ input_data/
 
 # ignor results directory
 /results/
+/comparision_test/

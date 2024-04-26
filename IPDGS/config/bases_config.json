@@ -8,11 +8,11 @@
 		{
 		"format": ".off",
 		"snaps_folder": "FOM_snapshots_OFF",
-		"read_all_from_first": "No",
+		"read_all_from_first": "Yes",
 		"anims_folder": "FOM_animations_h5",
-		"preAlignement": "_centered" ,
+		"preAlignement": "_alignedRigid" ,
 		"anim_folder_ready": "Yes",
-		"visualize_aligned_animations": "False"
+		"visualize_aligned_animations": "True"
 		},
 	"vertexPos_bases":
 		{
@@ -37,14 +37,14 @@
 		},
 		"splocs":
 		{
-			"compute": "No",
+			"compute": "Yes",
 			"max_itrs": 20,
 			"admm_num_itrs": 10,
 			"lambda": 2,
 			"rho": 10.0
 		},
-		"store":"False",
-		"visualize":"False"
+		"store":"True",
+		"visualize":"True"
 	},
 	"computeState":
 	{

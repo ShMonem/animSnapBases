@@ -39,14 +39,10 @@ class posComponents:  # Components == bases
         self.smooth_min_dist = vertPos_smooth_min_dist  # minimum geodesic distance for support map, d_min_in paper
         self.smooth_max_dist = vertPos_smooth_max_dist
         self.output_components_file = "components.h5"
-        self.output_animation_file = "animations.h5"
-
-        self.fileNameBases = None
-        # self.fileNamenoMeanBases = None
-        # self.file_name_sing = None
+        # self.output_animation_file = "animations.h5"
 
         self.fileNameBases = "using_F_"
-        # self.file_name_sing = vertPos_singVals_dir
+
 
     @staticmethod
     def project_weight(x):
@@ -241,17 +237,6 @@ class posComponents:  # Components == bases
         testSparsity(self.basesType + " bases", self.comps, 2)
         test_linear_indpendency(self.comps, 3, self.numComp)
 
-        # # only were non zero weights # (K, N, 3)
-        # if self.pos_snapshots.rest_shape == 'first':
-        #     self.comps_nomean = self.comps - self.pos_snapshots.verts[0]
-        #
-        # elif self.pos_snapshots.rest_shape == 'average':
-        #     self.comps_nomean = self.comps - mean(self.pos_snapshots.verts, axis=0)
-        #
-        # testSparsity("Mean-not-added " + self.basesType + " bases", self.comps_nomean
-        #              , 2)
-        # test_linear_indpendency(self.comps_nomean, 3, self.numComp)
-
         if q_orthogonal:
             self.is_utmu_orthogonal()  # test U^T M U = I (K x K)
 
@@ -268,20 +253,6 @@ class posComponents:  # Components == bases
             Mu_l, utMu_l = None, None
         print('(True).')
 
-    # def get_storage_files_names(self, standarized, massWeighted, orthogonalized, supported, testingComputations):
-    #     """
-    #     Form the name of the storing files automatically depending on the given bases type and its characteristics
-    #     """
-    #     fileNameBases = 'q' + str(self.basesType)
-    #     fileNamenoMeanBases = 'qnoMean' + str(self.basesType)
-    #     file_name_sing = 'singVals_q' + str(self.basesType)
-    #
-    #     fileNameBases += massWeighted + standarized + supported + orthogonalized + testingComputations
-    #     fileNamenoMeanBases += massWeighted + standarized + supported + orthogonalized + testingComputations
-    #     file_name_sing += massWeighted + standarized + supported + orthogonalized + testingComputations
-    #     self.fileNameBases = fileNameBases
-    #     self.fileNamenoMeanBases = fileNamenoMeanBases
-    #     self.file_name_sing = file_name_sing
 
     def store_components_to_files(self, output_bases_dir, start, end, step, fileType):
         """
@@ -295,13 +266,12 @@ class posComponents:  # Components == bases
         # store separate .bin for different numbers of components
         for k in range(start, end + 1, step):
             store_components(basesFile, numframes, k, numverts, 3, self.comps[:k, :, :], fileType)
-            # store_components(basesnoMeanFile, numframes, k, numverts, 3, self.comps_nomean[:k, :, :], fileType)
         print('done.')
 
     def store_animations(self, output_bases_dir):
 
         output_components = os.path.join(output_bases_dir, self.output_components_file)
-        output_animation = os.path.join(output_bases_dir, self.output_animation_file)
+        # output_animation = os.path.join(output_bases_dir, self.output_animation_file)
 
         # save components as animation
         with h5py.File(output_components, 'w') as f:
@@ -310,12 +280,4 @@ class posComponents:  # Components == bases
             for i, c in enumerate(self.comps):
                 f['comp%03d' % i] = c
         f.close()
-        # save encoded animation including the weights
-        if self.output_animation_file:
-            with h5py.File(output_animation, 'w') as wh5:
-                # wh5['verts'] = tensordot(self.weigs, self.comps, (1, 0))
-                wh5['verts'] = self.comps
-                wh5['tris'] = self.pos_snapshots.tris
-                wh5['weights'] = self.weigs
-            wh5.close()
 

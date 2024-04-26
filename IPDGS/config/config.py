@@ -13,7 +13,10 @@ fp.close()
 
 # testing state
 vertPos_testing = config['computeState']['testingComputations']   # _Released / _Debugging
-
+if vertPos_testing == "_Debugging":
+	show_profile = True
+else:
+	show_profile = False
 # set data sources and parameters
 name = config["object"]["mesh"]
 experiment = config["object"]["experiment"]     # name of you simulations  
@@ -144,8 +147,10 @@ vertPos_output_animation_file = "bases_animations" + str(vertPos_numFrames) + "o
 
 vertPos_output_bases_ext = "results/" + name +"/q_bases/" + vertPos_bases_name_extention + "/" + experiment + \
                            "/using_" + str(vertPos_numFrames)+ "outOf"+ str(vertPos_maxFrames)+ "_Frames_/"
-                            #+ str(vertPos_numComponents) + "_bases.h5"
-        
+ 
+visualize_bases = config["vertexPos_bases"]["visualize"]   # boolean
+store_bases = config["vertexPos_bases"]["store"]   # boolean
+
 #vertPos_singVals_dir = os.path.join(script_dir, vertPos_singVals_file)
 #vertPos_output_animation_dir = os.path.join(script_dir, vertPos_output_animation)
 #vertPos_output_bases_dir = os.path.join(script_dir,vertPos_output_bases_ext)

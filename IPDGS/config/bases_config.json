@@ -12,7 +12,7 @@
 		"anims_folder": "FOM_animations_h5",
 		"preAlignement": "_centered" ,
 		"anim_folder_ready": "Yes",
-		"visualize_aligned_animations": "True"
+		"visualize_aligned_animations": "False"
 		},
 	"vertexPos_bases":
 		{
@@ -43,8 +43,8 @@
 			"lambda": 2,
 			"rho": 10.0
 		},
-		"store":"True",
-		"visualize":"True"
+		"store":"False",
+		"visualize":"False"
 	},
 	"computeState":
 	{

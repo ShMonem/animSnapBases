@@ -32,7 +32,7 @@ def view_anim_file(hdf5_animation_file):
 	# mlab.view(90, 45, 7.5, [1.5, 0, 0])
 	# mlab.savefig(filename='photofile.png')
 	
-	@mlab.animate(delay=40, ui=False)
+	@mlab.animate(delay=40, ui=True)
 	def animation():
 		for i in count():
 			if weights is not None:

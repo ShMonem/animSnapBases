@@ -1,6 +1,6 @@
-# Improved-Projective-Dynamics-Global-Using-Snapshots-based-Reduced-Bases
+# Snapshots Reduction Subspaces for Projective Dynamics
 
-Implementation for position subspace computation for the SIGGRAPH23 [1st place student comptition award winning paper](https://dl.acm.org/doi/10.1145/3588028.3603665).
+Implementation for position subspace computation for "Improved-Projective-Dynamics-Global-Using-Snapshots-based-Reduced-Bases" the SIGGRAPH23 [1st place student comptition award winning paper](https://dl.acm.org/doi/10.1145/3588028.3603665).
 
 As an external dependency and for comparision reasons, SPLOCS algorithm with this code (not as a submodule), you can fine the [original SPLOCS here](https://github.com/tneumann/splocs)
 In addition, to re-produce the results in our paper you can use implementations from the [hyper-reduced-projective-dynamics paper here](https://replicability.graphics/papers/10.1145-3197517.3201387/index.html). All you need it to replace the LBS subspaces, and read a `.bin` bases file that this code produces

@@ -23,53 +23,98 @@ License:
 - see LICENSE.md.
 
 ## Getting Started
-1- Dependencies as `numpy`, `scipy` and `libigl` can be installed directly to a virtual env from `venv_requirements.txt`.
-2- All parameters can be changed in `IPDGS\config\bases_config.json`. You can play with all options of othogonality, support, locality and mass weighting in the associated ``
+- Dependencies as `numpy`, `scipy` and `libigl` can be installed directly to a virtual env from `venv_requirements.txt`.
+- All parameters can be changed in `IPDGS\config\bases_config.json`. 
+  - The code expects that a directory `input_data/<name>/<experiment>` exsits in the root folder, which can be changed in `bases_config.json`. In the following example the used mesh character is`<name>= bunny`, and `<experiment> = _gravitationalFall`:
 
-```json
-Here goes your json object definition
-```
-
-
-
-## For internal code review purpose (MPI, CSC group)
-A `comparision_test` and `input_data` folders are provided in order to test the outcome. There folders can be fount under `/afs/mpi-magdeburg.mpg.de/data/csc/ShaimaaMonem/publications/Snapshots_reduction_subspaces_4projective_dynamics/`
-1- make sure that .json is set to the same parameters used in the paper
-```
-"vertexPos_bases":
+	```json
+	"object":
 		{
-		"max_numFrames": 200,
-		"numFrames": 200,	
-		"dim": 3,
-		"rest_shape": "first",
-		"massWeighted": "_Volkwein",
-		"standarized": "_Standarized",
-		"orthogonalized": "_nonOrthogonalized",
-		"support":
-		{
-			"min_dist": 0.1,
-			"max_dist": 0.25
+		"mesh": "bunny",
+		"experiment": "_gravitationalFall"
 		},
-		"PCA":
+	```
+
+  - The folder containg the *snapshots*, in this case is `input_data/bunny/_gravitationalFall/FOM_snapshots_OFF`, you can change the pathes in `.json`
+  - Currently, the algorithim accepts snapshots in `.off` or `.ply` format only
+  - The mass matrix, when available, should be inside `/input_data/<mesh_name>/`
+  - Moreover, You can play with all options of othogonality, range of support, locality and mass weighting in the associated `.json`
+      - Snapshots preAlignement: `_alignedRigid`/`_centered`
+      - Bases Orthogonality: `_Orthogonalized`/`_nonOrthogonalized`
+      - Ararge shape to standerize snapshots, rest_shape: `first`/àvarage`
+      - Computed bases standarized: `_Standarized`/`_nonStandarized`
+      - Computed bases "massWeighted": `_Volkwein`/`_nonVolkwein`
+      - `max_numFrames` is the number od snapshots used in the computations
+      - `read_all_from_first` gives you the flexibility to, for instance, pick the first 200 provided `snapshot_*.off`, otherwise if your `FOM_snapshots_OFF` contains 200 files and you want to use 50 only, then in `config.py` a suitable increament to jump between files will be computed.
+
+	```json
+	"snapshots":
+			{
+			"format": ".off",
+			"snaps_folder": "FOM_snapshots_OFF",
+			"read_all_from_first": "Yes",
+			"anims_folder": "FOM_animations_h5",
+			"preAlignement": "_alignedRigid" ,
+			"anim_folder_ready": "Yes",
+			"visualize_aligned_animations": "True"
+			},
+	  "vertexPos_bases":
+			{
+			"max_numFrames": 200,
+			"numFrames": 200,	
+			"dim": 3,
+			"rest_shape": "first",
+			"massWeighted": "_Volkwein",
+			"standarized": "_Standarized",
+			"orthogonalized": "_nonOrthogonalized",
+			"support":
+			{
+				"min_dist": 0.1,
+				"max_dist": 0.25
+			},
+	```
+    - The option of computing `PCA`is always a `Yes`. If `supported = "_Global"` support range in `min_dist` and `max_dist` will not be used.
+    - If you choose to `store_sing_val`, a `.cvs` file containing the singular values againest the number of bases will be stored.
+	```json
+  	"PCA":
 		{
+		"compute": "Yes",
+		"numComponents": 200,
+		"supported": "_Local",
+		"store_sing_val": "No"
+		},
+	```
+ 
+  - In case you would like to compute splocs bases too, which is further optimized for sparsity and localization, you need to provide `max_itrs` for global optimization, and `admm_num_itrs` for the *ADMM* solver. Of course you can also store bases in form of `.bin` or `.npy` also visualize snapshots and bases, which can be changed in `main.py`
+  
+	   ```json
+		  "splocs":
+			{
 			"compute": "Yes",
-			"numComponents": 200,
-			"supported": "_Local",
-			"store_sing_val": "No"
-		},
-		"splocs":
-		{
-			"compute": "No",
 			"max_itrs": 20,
 			"admm_num_itrs": 10,
 			"lambda": 2,
 			"rho": 10.0
-		},
-```
-2- Your ".ply" or ".off" frames should be inside `/input_data/<mesh_name>/_gravitationalFall/FOM_snapshots_OFF` in the same directory as `main.py`
-3- The mass matrix, when available, should be inside `/input_data/<mesh_name>/`
+			},
+			"store":"True",
+			"visualize":"True"
+			},
+	   ```
+  - The `testingComputations` is only a string that is used in the naming of the directories to that you can track your own progress. 
 
-2- From `comparision_test` run
+  ```json
+	"computeState":
+	{
+		"testingComputations": "_Released"
+	}
+  ```
+  
+
+## Testing the code
+A `comparision_test` and `input_data` folders are provided in order to test the outcome for very few number of snapshots only for the user convenience. 
+1- clone the repo
+2- Install the virtual env
+3 - From `comparision_test` run
 ```
 python3 compare_npy_files.py PCA_centered_Volkwein_Standarized_Local_nonOrthogonalized_200outOf200_Frames_using_F_200K200.npy ../results/bunny/q_bases/PCA_centered_Volkwein_Standarized_Local_nonOrthogonalized_Debugging/200outOf200_Frames_/1_increament_200_centered_bases/using_F_200K200.npy
 ```

@@ -1,16 +1,36 @@
 # Snapshots Reduction Subspaces for Projective Dynamics
 
-The provided code can be used to generate reduced subspaces in physics based simulations for (and not limited to) character animation in real-time applications. 
+The provided code can be used to generate reduced subspaces in physics based simulations for (and not limited to) deformable character animation in real-time applications. 
 
+Algorithm Features:
+- Is a snapshots method, and containes information on the possible range of deformation allowed for the character.
+   - Snapshots: Possible deformations required for a character mesh. Can be collected during the necessary *range-of-motion* test done for a character before applications.
+- Hence, provides the closest most accurate approximate solution with the desired *user-defined* size.
+- Tested on *projective dynamics* simulations, which requires an iterative solver for positions state computation.
+- Faser, numerically stable and much improved visual accuracy compared to *Linear-blend skinning subspaces*.
 
-We tested our methon on *projective dynamics* simulations, which requires an iterative solver for positions state computation, and the algorithm provided computes position-reduced subsapces with the desired *user-defined* size. For more details on theory, applications and results for this work we refere to the following publications:
+For more details on theory, applications and results for this work we refere to the following publication(s):
 - Implementation for position subspace computation for *Improved-Projective-Dynamics-Global-Using-Snapshots-based-Reduced-Bases* the SIGGRAPH23 [1st place student comptition award winning paper](https://dl.acm.org/doi/10.1145/3588028.3603665).
 
-As an external dependency and for comparision reasons, SPLOCS algorithm with this code (not as a submodule), you can fine the [original SPLOCS here](https://github.com/tneumann/splocs)
-In addition, to re-produce the results in our paper you can use implementations from the [hyper-reduced-projective-dynamics paper here](https://replicability.graphics/papers/10.1145-3197517.3201387/index.html). All you need it to replace the LBS subspaces, and read a `.bin` bases file that this code produces
+Developed by:
+- [Shaimaa Monem](https://orcid.org/0009-0008-4038-3452)
+- [Max Planck Institute for Dynamics of Complex Technical Systems](https://www.mpi-magdeburg.mpg.de/2316/en), Magdeburg, Germany.
 
-Note that, this codes provides more options than it has been published in the paper yet. And venv can be re-generated from `venv_requirements.txt`
-You can play with all options of othogonality, support, locality and mass weighting in the associated `bases_config.json`
+Repository:
+- https://github.com/ShMonem/Snapshots-Reduction-Subspaces-for-Projective-Dynamics
+
+License:
+- see LICENSE.md.
+
+## Getting Started
+1- Dependencies as `numpy`, `scipy` and `libigl` can be installed directly to a virtual env from `venv_requirements.txt`.
+2- All parameters can be changed in `IPDGS\config\bases_config.json`. You can play with all options of othogonality, support, locality and mass weighting in the associated ``
+
+```json
+Here goes your json object definition
+```
+
+
 
 ## For internal code review purpose (MPI, CSC group)
 A `comparision_test` and `input_data` folders are provided in order to test the outcome. There folders can be fount under `/afs/mpi-magdeburg.mpg.de/data/csc/ShaimaaMonem/publications/Snapshots_reduction_subspaces_4projective_dynamics/`

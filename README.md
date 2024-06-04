@@ -20,7 +20,7 @@ Repository:
 - https://github.com/ShMonem/Snapshots-Reduction-Subspaces-for-Projective-Dynamics
 
 License:
-- see LICENSE.md.
+- Apache-2.0 see LICENSE.md.
 
 ## Getting Started
 - Dependencies as `numpy`, `scipy` and `libigl` can be installed directly to a virtual env from `venv_requirements.txt`.

@@ -16,8 +16,8 @@
 		},
 	"vertexPos_bases":
 		{
-		"max_numFrames": 200,
-		"numFrames": 200,	
+		"max_numFrames": 50,
+		"numFrames": 50,	
 		"dim": 3,
 		"rest_shape": "first",
 		"massWeighted": "_Volkwein",
@@ -37,7 +37,7 @@
 		},
 		"splocs":
 		{
-			"compute": "Yes",
+			"compute": "No",
 			"max_itrs": 20,
 			"admm_num_itrs": 10,
 			"lambda": 2,
@@ -48,6 +48,6 @@
 	},
 	"computeState":
 	{
-		"testingComputations": "_Debugging"
+		"testingComputations": "_Release"
 	}
 }

@@ -10,14 +10,14 @@ importlib-resources==6.4.0
 kiwisolver==1.4.5
 libigl==2.5.1
 matplotlib==3.7.5
-mayavi==4.8.2.dev0
+mayavi==4.8.2
 numpy==1.24.4
 packaging==24.0
 pillow==10.3.0
 pyface==8.0.0
 pygments==2.17.2
 pyparsing==3.1.2
-PyQt5==5.14.2
+PyQt5==5.15.10
 PyQt5-sip==12.13.0
 python-dateutil==2.9.0.post0
 scipy==1.10.1

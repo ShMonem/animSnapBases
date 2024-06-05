@@ -16,8 +16,10 @@ __pycache__/
 IPDGS/IPDGS_env/
 
 # ignor binaries that can be re-generated from code
-input_data/
+input_data\bunny\_gravitationalFall\FOM_animations_h5
 
 # ignor results directory
 /results/
-/comparision_test/
+
+.idea
+

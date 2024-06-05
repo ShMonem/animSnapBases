@@ -114,9 +114,19 @@ License:
 A `comparision_test` and `input_data` folders are provided in order to test the outcome for very few number of snapshots only for the user convenience. 
 1- clone the repo
 2- Install the virtual env
-3 - From `comparision_test` run
+3- Run the code from the root directory using `python main.py`, one time with `splocs->"compute": "No"`, and one more time with `splocs->"compute": "Yes"`
+```json
+  "splocs":
+	{
+	"compute": "No",
 ```
-python3 compare_npy_files.py PCA_centered_Volkwein_Standarized_Local_nonOrthogonalized_200outOf200_Frames_using_F_200K200.npy ../results/bunny/q_bases/PCA_centered_Volkwein_Standarized_Local_nonOrthogonalized_Debugging/200outOf200_Frames_/1_increament_200_centered_bases/using_F_200K200.npy
+4 - From the root directory run a test for the computed PCA bases
+```
+python3 test\compare_npy_files.py test\PCA_using_F_50K200.npy results\bunny\q_bases\PCA_alignedRigid_Volkwein_Standarized_Local_nonOrthogonalized_Release\50outOf50_Frames_\1_increament_200_alignedRigid_bases\using_F_50K200.npy
+```
+and/or run a test for the SPLOCS bases
+```
+python3 test\compare_npy_files.py test\SPLOCS_using_F_50K200.npy results\bunny\q_bases\SPLOCS_alignedRigid_Volkwein_Standarized_Local_nonOrthogonalized_Release\50outOf50_Frames_\1_increament_200_alignedRigid_bases\using_F_50K200.npy 
 ```
 you should see somthing like
 ```
@@ -128,4 +138,4 @@ checking if close ... True
  testing the sparsity of b
  ... not sparse.
 ```
-3- Similarly you can test for the SPLOCS bases, remember to change "splocs"-->"compute": "Yes" ("PCA"--> "compurte" is always a yes!)
+5- Note: `"PCA"--> "compurte"` is always a yes!

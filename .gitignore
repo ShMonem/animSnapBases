@@ -2,6 +2,7 @@
 
 # ignore all logs
 *.log
+.idea/
 
 # ignore all chaches
 IPDGS/config/__pycache__/

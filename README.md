@@ -22,6 +22,44 @@ Repository:
 License:
 - Apache-2.0 see LICENSE.md.
 
+
+## Code Structure for Use and Further Development
+Thank you for your intrest in our code, whish you all the fun trying it out :-). !The code id structured into main directories
+
+| Item              | Contains                                   | python files         |
+| :---------------- | :---------------------------------------- | :------------------- |
+| input_data        | bunny\_gravitationalFall\FOM_snapshots_OFF | *.off                |
+| IPDGS             | 1- Classes:                                | posSnapshots.py      |
+|                   |                                            | posComponents.py     |
+|                   | 2- Config:                                 | config.py            |
+|                   |                                            | bases_config.json    |
+| utils             |                                            | utils.py             |
+|                   |                                            | process.py           |
+|                   |                                            | support.py           |
+| test              |                                            | compare_npy_files.py |
+
+1- `input_data` is where you store your snapshots or frames, in either `.off` or `.ply` format. When you run the code for a different example `<mesh>/<experiment>` than the provided `bunny\_gravitationalFall` or you change the file format, make sure you change the according inputs in `IPDGS/config/bases_config.json` where all parameters can be handeled. See *Getting started*. Your changes then are reflected directly in `IPDGS/config/config.py` where configrations is fed to different parameters called directly in the code, and the full names of the directories where results will be stored are created.
+
+2- To run the provided example, all you need to run is the `main.py` in the root directory though
+	```
+ 	python3 main.py
+	```
+3- As you can see in `main.py`:
+  - First, your shapshots/frames are imported and one `.h5` file format containing the aligned frames is created
+  - Then, `bases` container is initialized by calling the class `posComponents`
+  - `posComponents` has an `posSnapshots` , which accesses all the choices you fed to the `.json` regarding snapshots `pre-alignment`, `weighting`, ... (now you snapshots are ready)
+    ```
+	bases = posComponents()
+    ```
+  - Then, the bases are computed through the follwing line, which again gets information the number of bases/components required and their desired properties as `locality`, `orthogonality` and so on from `.json`
+    ```
+	bases.compute_components_store_singvalues(vertPos_output_directory)
+    ```
+  - Finally you can choose wether you like to store the bases/components as matrices in the `.bin` or `.npy` format. 
+    ```
+	bases.store_components_to_files(vertPos_output_directory, start, vertPos_numComponents, step, '.bin')
+    ```
+    
 ## Getting Started
 - Dependencies as `numpy`, `scipy` and `libigl` can be installed directly to a virtual env from `venv_requirements.txt`.
 - All parameters can be changed in `IPDGS\config\bases_config.json`. 
@@ -109,7 +147,6 @@ License:
 	}
   ```
   
-
 ## Testing the code
 A `comparision_test` and `input_data` folders are provided in order to test the outcome for very few number of snapshots only for the user convenience. 
 1- clone the repo
@@ -139,3 +176,4 @@ checking if close ... True
  ... not sparse.
 ```
 5- Note: `"PCA"--> "compurte"` is always a yes!
+

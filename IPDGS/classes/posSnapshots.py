@@ -9,7 +9,7 @@ import numpy as np
 from numpy.linalg import matrix_rank
 import scipy.linalg as spla
 from scipy.linalg import svd, norm, cho_factor, cho_solve, cholesky, orth
-from external.splocs.geodesic import GeodesicDistanceComputation
+from utils.support import GeodesicDistanceComputation
 import cProfile
 import pstats
 import igl

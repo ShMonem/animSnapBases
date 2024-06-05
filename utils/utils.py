@@ -2,6 +2,7 @@ import struct
 from numpy.linalg import matrix_rank
 from numpy import save, count_nonzero
 
+
 def store_components(fileName, F, K, N, dim, basisPlain, extension='.bin'):
     if extension == '.bin':
         with open(fileName + str(F) + 'K' + str(K) + extension, 'wb') as doc0:

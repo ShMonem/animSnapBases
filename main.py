@@ -2,10 +2,7 @@ import os
 import cProfile
 import pstats
 from IPDGS.classes.posComponents import posComponents
-from external.splocs.inout import convert_sequence_to_hdf5, load_off, load_ply
-from external.splocs.align_rigid import align
-from external.splocs.view_animation import view_anim_file
-from external.splocs.view_splocs import view_components
+from utils.process import convert_sequence_to_hdf5, load_off, load_ply, align, view_anim_file, view_components
 from functools import partial
 from IPDGS.config.config import vertPos_numFrames, snapshots_format, frame_increament, input_snapshots_pattern, \
                                 input_animation_dir, snapshots_animation_file, show_profile, \

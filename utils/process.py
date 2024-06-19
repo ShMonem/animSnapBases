@@ -75,6 +75,7 @@ def convert_sequence_to_hdf5(filename_pattern, loader_function, hdf_output_file,
                 raise ValueError("inconsistent topology between meshes of different frames")
             tris = new_tris
             verts_all.append(verts)
+            count +=1
 
     verts_all = np.array(verts_all, np.float32)
     verts_all, tris, _, verts_mean, verts_scale = preprocess_mesh_animation(verts_all, tris)

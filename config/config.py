@@ -7,7 +7,7 @@ Options for bases type and different properties can be changed in the "config.js
 import json
 import os
 
-with open("IPDGS/config/bases_config.json") as fp:
+with open("config/bases_config.json") as fp:
     config = json.load(fp)
 fp.close()
 
@@ -17,6 +17,7 @@ if vertPos_testing == "_Debugging":
 	show_profile = True
 else:
 	show_profile = False
+
 # set data sources and parameters
 name = config["object"]["mesh"]
 experiment = config["object"]["experiment"]     # name of you simulations  
@@ -25,12 +26,10 @@ vertPos_rest_shape = config["vertexPos_bases"]["rest_shape"]
 
 # pre alignment done to frames, can be '_centered' or '_alignedRigid'
 preAlignement = config["snapshots"]["preAlignement"]
-if preAlignement == "_alignedRigid":
-	rigid = True
-elif preAlignement == "_centered":
-	rigid = False
-else:
-	print("Error! unknown alignment method.")
+
+if preAlignement == "_alignedRigid": rigid = True
+elif preAlignement == "_centered": rigid = False
+else: print("Error! unknown alignment method.")
 
 
 vertPos_maxFrames = config["vertexPos_bases"]["max_numFrames"]       # number of snapshots used in computations (NO. files you have)
@@ -41,16 +40,13 @@ animation_folder = config["snapshots"]["anims_folder"]     # where animations wi
 snapshots_anim_ready = config["snapshots"]["anim_folder_ready"]     # read .off or .ply and convert it to .h5
 visualize_snapshots = config["snapshots"]["visualize_aligned_animations"]  # visualize aligned snapshots
 
-
-
 vertPos_numFrames = config["vertexPos_bases"]["numFrames"]            # number of snapshots used in computations
 vertPos_numComponents = config["vertexPos_bases"]["PCA"]["numComponents"]    # number of bases to be computed
 
-if config["snapshots"]["read_all_from_first"] == "Yes":
-	frame_increament = 1
+if config["snapshots"]["read_all_from_first"]: frame_increament = 1
 else:
-	frame_increament = vertPos_maxFrames//vertPos_numFrames 
-	assert frame_increament <= 10    # max number of frame increament
+    frame_increament = vertPos_maxFrames//vertPos_numFrames
+    assert frame_increament <= 10    # max number of frame increament
 
 
 # notice that data should be put in place so that all .py can have access too!
@@ -65,12 +61,13 @@ snapshots_animation_file = "snapshots_" + str(vertPos_numFrames)+ "outOf" + str(
 """
 1st: vertex position reduction parameters
 """
-assert  config["vertexPos_bases"]["PCA"]["compute"] == "Yes"
+assert config["vertexPos_bases"]["PCA"]["compute"] == True
 
-if config["vertexPos_bases"]["splocs"]["compute"] == "Yes":
+if config["vertexPos_bases"]["splocs"]["compute"]:
 	vertPos_bases_type = "SPLOCS" 
 else:
 	vertPos_bases_type = "PCA"
+
 # store singVals to file during computations: True/False
 store_vertPos_PCA_sing_val = config["vertexPos_bases"]["PCA"]["store_sing_val"]
 
@@ -87,7 +84,6 @@ vertPos_smooth_max_dist = config["vertexPos_bases"]["support"]["max_dist"]
 vertPos_masses_file = "input_data/" + name + "/" + name + "_vertPos_massMatrix.bin"
     
 
-
 # set bases parameters
 q_standarize, q_massWeight, q_orthogonal, q_supported = False, False, False, False
 if config['vertexPos_bases']['standarized'] == '_Standarized':  # '_Standarized'/ '_nonStandarized'
@@ -103,7 +99,7 @@ else:
     q_support = 'global'
     q_supported = False
 
-if config["vertexPos_bases"]["PCA"]["store_sing_val"] == "Yes":
+if config["vertexPos_bases"]["PCA"]["store_sing_val"]:
     q_store_sing_val = True
 else:
     q_store_sing_val = False
@@ -115,8 +111,8 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 
 # this line contains all parameters used for computations
 vertPos_bases_name_extention = vertPos_bases_type + preAlignement + config['vertexPos_bases']['massWeighted'] +\
-							 config['vertexPos_bases']['standarized'] + config['vertexPos_bases']["PCA"]['supported'] +  \
-							 config['vertexPos_bases']['orthogonalized'] + vertPos_testing
+                            config['vertexPos_bases']['standarized'] + config['vertexPos_bases']["PCA"]['supported']+ \
+                            config['vertexPos_bases']['orthogonalized'] + vertPos_testing
 
 # singularvalues/animations/bases depend on 
 # - experiment
@@ -127,7 +123,7 @@ vertPos_bases_name_extention = vertPos_bases_type + preAlignement + config['vert
 
 vertPos_output_directory = "results/" + name + "/q_bases/" + vertPos_bases_name_extention + \
                          "/" + str(vertPos_numFrames)+ "outOf" + str(vertPos_maxFrames)+"_Frames_/" + \
-                         str(frame_increament) + "_increament_" +  str(vertPos_numComponents)  + preAlignement+ "_bases/"
+                         str(frame_increament) + "_increament_" + str(vertPos_numComponents)  + preAlignement+ "_bases/"
  
 if not os.path.exists(vertPos_output_directory):
     # Create a new directory because it does not exist
@@ -138,22 +134,42 @@ else:
           "\n make sure you are not over-writing! ")
           
 
-aligned_snapshots_directory = "results/" + name +"/q_snapshots_h5/"          
-aligned_snapshots_animation_file = "aligned_snapshots" + str(vertPos_numFrames)+ "outOf" + str(vertPos_maxFrames)+"_Frames_" + str(frame_increament) + "_increament_" + preAlignement + ".h5"
+aligned_snapshots_directory = "results/" \
+                              + name \
+                              + "/q_snapshots_h5/"
 
-vertPos_output_animation_file = "bases_animations" + str(vertPos_numFrames) + "outOf" + str(vertPos_maxFrames)+ "_Frames_" + \
-                           'computed_' + str(vertPos_numComponents) + "_bases.h5"
+aligned_snapshots_animation_file = "aligned_snapshots" \
+                                   + str(vertPos_numFrames) \
+                                   + "outOf" + str(vertPos_maxFrames)\
+                                   + "_Frames_" \
+                                   + str(frame_increament) \
+                                   + "_increament_" \
+                                   + preAlignement \
+                                   + ".h5"
+
+vertPos_output_animation_file = "bases_animations" \
+                                + str(vertPos_numFrames) \
+                                + "outOf" \
+                                + str(vertPos_maxFrames)\
+                                + "_Frames_" \
+                                + 'computed_' \
+                                + str(vertPos_numComponents) \
+                                + "_bases.h5"
 
 
-vertPos_output_bases_ext = "results/" + name +"/q_bases/" + vertPos_bases_name_extention + "/" + experiment + \
-                           "/using_" + str(vertPos_numFrames)+ "outOf"+ str(vertPos_maxFrames)+ "_Frames_/"
+vertPos_output_bases_ext = "results/" \
+                           + name \
+                           +"/q_bases/" \
+                           + vertPos_bases_name_extention \
+                           + "/" + experiment \
+                           + "/using_" \
+                           + str(vertPos_numFrames)\
+                           + "outOf"\
+                           + str(vertPos_maxFrames)\
+                           + "_Frames_/"
  
 visualize_bases = config["vertexPos_bases"]["visualize"]   # boolean
 store_bases = config["vertexPos_bases"]["store"]   # boolean
-
-#vertPos_singVals_dir = os.path.join(script_dir, vertPos_singVals_file)
-#vertPos_output_animation_dir = os.path.join(script_dir, vertPos_output_animation)
-#vertPos_output_bases_dir = os.path.join(script_dir,vertPos_output_bases_ext)
 
 # SPLOCS paramers
 

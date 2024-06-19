@@ -1,10 +1,10 @@
 import os
 import cProfile
 import pstats
-from IPDGS.classes.posComponents import posComponents
+from snapbases.posComponents import posComponents
 from utils.process import convert_sequence_to_hdf5, load_off, load_ply, align, view_anim_file, view_components
 from functools import partial
-from IPDGS.config.config import vertPos_numFrames, snapshots_format, frame_increament, input_snapshots_pattern, \
+from config.config import vertPos_numFrames, snapshots_format, frame_increament, input_snapshots_pattern, \
                                 input_animation_dir, snapshots_animation_file, show_profile, \
                                 visualize_snapshots, vertPos_output_directory, vertPos_numComponents,\
                                 aligned_snapshots_directory, aligned_snapshots_animation_file, \
@@ -50,10 +50,6 @@ def main():
         print("A snapshots file already exists: \n", aligned_snapshots_h5_file,
               "\n .. we skip import! ")
 
-    # see aligned snapshots
-    if visualize_snapshots:
-        view_anim_file(aligned_snapshots_h5_file)
-
     # read and pre-process snapshots
     bases = posComponents()
 
@@ -68,6 +64,11 @@ def main():
     if store_bases:
         bases.store_components_to_files(vertPos_output_directory, vertPos_numComponents, vertPos_numComponents, 10, '.npy')
         bases.store_components_to_files(vertPos_output_directory, 10, vertPos_numComponents, 10, '.bin')
+
+    # see aligned snapshots
+    if visualize_snapshots:
+        view_anim_file(aligned_snapshots_h5_file)
+
 
     if visualize_bases:
         view_components(os.path.join(vertPos_output_directory, bases.output_components_file))

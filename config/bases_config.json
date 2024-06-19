@@ -8,16 +8,16 @@
 		{
 		"format": ".off",
 		"snaps_folder": "FOM_snapshots_OFF",
-		"read_all_from_first": "Yes",
+		"read_all_from_first": true,
 		"anims_folder": "FOM_animations_h5",
 		"preAlignement": "_alignedRigid" ,
-		"anim_folder_ready": "Yes",
-		"visualize_aligned_animations": "True"
+		"anim_folder_ready": true,
+		"visualize_aligned_animations": true
 		},
 	"vertexPos_bases":
 		{
-		"max_numFrames": 50,
-		"numFrames": 50,	
+		"max_numFrames": 10,
+		"numFrames": 10,
 		"dim": 3,
 		"rest_shape": "first",
 		"massWeighted": "_Volkwein",
@@ -30,21 +30,21 @@
 		},
 		"PCA":
 		{
-			"compute": "Yes",
-			"numComponents": 200,
+			"compute": true,
+			"numComponents": 2,
 			"supported": "_Local",
-			"store_sing_val": "No"
+			"store_sing_val": false
 		},
 		"splocs":
 		{
-			"compute": "No",
+			"compute": false,
 			"max_itrs": 20,
 			"admm_num_itrs": 10,
 			"lambda": 2,
 			"rho": 10.0
 		},
-		"store":"True",
-		"visualize":"True"
+		"store":true,
+		"visualize": true
 	},
 	"computeState":
 	{

@@ -6,8 +6,8 @@ from numpy import maximum, argmax, clip, save, tensordot, inner, outer, array, n
                   sqrt, errstate, maximum, allclose, mean
 from scipy.linalg import svd, norm, cho_factor, cho_solve, cholesky, orth
 from utils.utils import store_components, testSparsity, test_linear_indpendency
-from IPDGS.classes.posSnapshots import posSnapshots
-from IPDGS.config.config import vertPos_bases_type, store_vertPos_PCA_sing_val, vertPos_rest_shape, vertPos_maxFrames,\
+from snapbases.posSnapshots import posSnapshots
+from config.config import vertPos_bases_type, store_vertPos_PCA_sing_val, vertPos_rest_shape, vertPos_maxFrames,\
                                 vertPos_numFrames, vertPos_numComponents, vertPos_smooth_min_dist, \
                                 vertPos_smooth_max_dist, vertPos_masses_file, q_standarize, q_massWeight, \
                                 q_orthogonal, q_support, q_store_sing_val, \

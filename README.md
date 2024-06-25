@@ -93,5 +93,5 @@ A `comparision_test` and `input_data` folders are provided for testing with a fe
 6. After bases storage, both snapshots and bases can be visualized, this option can be modified in the ``bases_config.json``. Associated animation files can be found in both `results/<mesh>/<experiment>/q_snapshts_h5/` and `results/<mesh>/<experiment>/q_bases/`.
     Note: In order to stop the snapshots animations from the animations cycle, press ``stop animation --> OK`` then close the tap, otherwise it might produce an error.
 
-Testing the generated results is described in ``test/README.test.md``
-For code navigation and further development, refer to ``config/README.dev.md``
+Testing the generated results is described in ``test/README.test.md``.
+For code navigation and further development, refer to ``config/README.dev.md``.

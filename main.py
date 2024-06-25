@@ -4,7 +4,7 @@ import pstats
 from snapbases.posComponents import posComponents
 from utils.process import convert_sequence_to_hdf5, load_off, load_ply, align, view_anim_file, view_components
 from functools import partial
-from config.config import vertPos_numFrames, snapshots_format, frame_increament, input_snapshots_pattern, \
+from config.config import vertPos_numFrames, snapshots_format, frame_increment, input_snapshots_pattern, \
                                 input_animation_dir, snapshots_animation_file, show_profile, \
                                 visualize_snapshots, vertPos_output_directory, vertPos_numComponents,\
                                 aligned_snapshots_directory, aligned_snapshots_animation_file, \
@@ -32,14 +32,14 @@ def main():
             os.makedirs(aligned_snapshots_directory)
             print("Directory is created to store aligned snapshots animations!")
 
-            print("Frame increament: ", frame_increament)
+            print("Frame increament: ", frame_increment)
         snapsots_h5_file = os.path.join(input_animation_dir, snapshots_animation_file)
         if snapshots_format == ".off":
             convert_sequence_to_hdf5(input_snapshots_pattern, partial(load_off, no_colors=True),
-                                     snapsots_h5_file, vertPos_numFrames, frame_increament)
+                                     snapsots_h5_file, vertPos_numFrames, frame_increment)
         elif snapshots_format == ".ply":  # TODO: test
             convert_sequence_to_hdf5(input_snapshots_pattern, load_ply,
-                                     snapsots_h5_file, frame_increament)
+                                     snapsots_h5_file, frame_increment)
         else:
             print("Yet, only .off/.ply mesh files are supported for snapshots!")
             return

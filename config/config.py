@@ -43,10 +43,10 @@ visualize_snapshots = config["snapshots"]["visualize_aligned_animations"]  # vis
 vertPos_numFrames = config["vertexPos_bases"]["numFrames"]            # number of snapshots used in computations
 vertPos_numComponents = config["vertexPos_bases"]["PCA"]["numComponents"]    # number of bases to be computed
 
-if config["snapshots"]["read_all_from_first"]: frame_increament = 1
+if config["snapshots"]["read_all_from_first"]: frame_increment = 1
 else:
-    frame_increament = vertPos_maxFrames//vertPos_numFrames
-    assert frame_increament <= 10    # max number of frame increament
+    frame_increment = vertPos_maxFrames//vertPos_numFrames
+    assert frame_increment <= 10    # max number of frame increment
 
 
 # notice that data should be put in place so that all .py can have access too!
@@ -54,7 +54,7 @@ input_snapshots_pattern = "input_data/" + name + "/" + experiment + "/" + snapsh
 
 input_animation_dir 	= "input_data/" + name + "/" + experiment + "/" + animation_folder + "/" 
 
-snapshots_animation_file = "snapshots_" + str(vertPos_numFrames)+ "outOf" + str(vertPos_maxFrames)+"_Frames_" + str(frame_increament) + "_increament_" + preAlignement + ".h5"
+snapshots_animation_file = "snapshots_" + str(vertPos_numFrames)+ "outOf" + str(vertPos_maxFrames)+"_Frames_" + str(frame_increment) + "_increment_" + preAlignement + ".h5"
 
 # note that the input .h5 for bases/components computation is the output from the snapshots algnment
 
@@ -123,7 +123,7 @@ vertPos_bases_name_extention = vertPos_bases_type + preAlignement + config['vert
 
 vertPos_output_directory = "results/" + name + "/q_bases/" + vertPos_bases_name_extention + \
                          "/" + str(vertPos_numFrames)+ "outOf" + str(vertPos_maxFrames)+"_Frames_/" + \
-                         str(frame_increament) + "_increament_" + str(vertPos_numComponents)  + preAlignement+ "_bases/"
+                         str(frame_increment) + "_increment_" + str(vertPos_numComponents)  + preAlignement+ "_bases/"
  
 if not os.path.exists(vertPos_output_directory):
     # Create a new directory because it does not exist
@@ -142,8 +142,8 @@ aligned_snapshots_animation_file = "aligned_snapshots" \
                                    + str(vertPos_numFrames) \
                                    + "outOf" + str(vertPos_maxFrames)\
                                    + "_Frames_" \
-                                   + str(frame_increament) \
-                                   + "_increament_" \
+                                   + str(frame_increment) \
+                                   + "_increment_" \
                                    + preAlignement \
                                    + ".h5"
 

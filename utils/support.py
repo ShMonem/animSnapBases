@@ -1,3 +1,7 @@
+# This file is part of the animSnapBases project (https://github.com/ShMonem/animSnapBases).
+# Copyright animSnapBases developers and contributors. All rights reserved.
+# License: Apache-2.0
+
 import numpy as np
 from scipy import sparse
 from scipy.sparse.linalg import splu
@@ -6,6 +10,7 @@ from utils.process import veclen, normalized
 
 '''
 The following functions are borrowed from: https://github.com/tneumann/splocs
+Copyright (c) 2013 Thomas Neumann
 '''
 def compute_mesh_laplacian(verts, tris):
     """

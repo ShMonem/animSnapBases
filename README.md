@@ -1,4 +1,4 @@
-# Snapshots Reduction Subspaces for Projective Dynamics
+# Animations Snapshots Reduction Subspaces
 
 This code generates reduced subspaces for physics-based simulations, including real-time deformable character animation.
 
@@ -17,7 +17,8 @@ Developed by:
 - [Max Planck Institute for Dynamics of Complex Technical Systems](https://www.mpi-magdeburg.mpg.de/2316/en), Magdeburg, Germany.
 
 Repository:
-- https://github.com/ShMonem/Snapshots-Reduction-Subspaces-for-Projective-Dynamics
+- https://github.com/ShMonem/animSnapBases
+- Moved from: https://github.com/ShMonem/Snapshots-Reduction-Subspaces-for-Projective-Dynamics
 
 License:
 - Apache-2.0 see LICENSE.md.

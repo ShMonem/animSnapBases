@@ -1,3 +1,7 @@
+# This file is part of the animSnapBases project (https://github.com/ShMonem/animSnapBases).
+# Copyright animSnapBases developers and contributors. All rights reserved.
+# License: Apache-2.0
+
 """
 Configuration for bases computation.
 Options for bases type and different properties can be changed in the "config.json"

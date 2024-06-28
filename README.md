@@ -21,6 +21,11 @@ Repository:
 
 License:
 - Apache-2.0 see LICENSE.md.
+- This code borrwes some functions from the beautiful implementations of [SPLOCS](https://github.com/tneumann/splocs), which was publiched under MIT license.
+
+Copyright holders
+- [Shaimaa Monem](https://orcid.org/0009-0008-4038-3452), [Peter Benner](https://orcid.org/0000-0003-3362-4103) and [Christian Lessig](https://orcid.org/0000-0002-2740-6815)
+
 
 ## Dependencies
 - Install dependencies from `venv_requirements.txt`:

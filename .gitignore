@@ -20,6 +20,6 @@ input_data/bunny/_gravitationalFall/FOM_animations_h5/
 
 # ignor results directory
 /results/
-
+/input_data/
 .idea
 

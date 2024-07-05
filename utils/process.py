@@ -228,7 +228,9 @@ def find_rbm_procrustes(frompts, topts, rigid):
         R *= -1
     T0 = np.eye(4)
     if rigid:
-        T0[:3, 3] = t1 - np.dot(R, t0)
+        T0[:3, :3] = R
+
+    T0[:3, 3] = t1 - np.dot(R, t0)
     return T0
 def align(input_hdf5_file, output_hdf5_file, rigid):
     data = h5py.File(input_hdf5_file, 'r')

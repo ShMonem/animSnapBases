@@ -16,8 +16,8 @@
 		},
 	"vertexPos_bases":
 		{
-		"max_numFrames": 10,
-		"numFrames": 10,
+		"max_numFrames": 200,
+		"numFrames": 200,
 		"dim": 3,
 		"rest_shape": "first",
 		"massWeighted": "_Volkwein",
@@ -31,7 +31,7 @@
 		"PCA":
 		{
 			"compute": true,
-			"numComponents": 2,
+			"numComponents": 200,
 			"supported": "_Local",
 			"store_sing_val": false
 		},

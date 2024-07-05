@@ -125,7 +125,7 @@ vertPos_bases_name_extention = vertPos_bases_type + preAlignement + config['vert
 # - jumps between the selectedframes
 # - number of bases computed
 
-vertPos_output_directory = "results/" + name + "/q_bases/" + vertPos_bases_name_extention + \
+vertPos_output_directory = "results/" + name + "/" + experiment + "/" + "/q_bases/" + vertPos_bases_name_extention + \
                          "/" + str(vertPos_numFrames)+ "outOf" + str(vertPos_maxFrames)+"_Frames_/" + \
                          str(frame_increment) + "_increment_" + str(vertPos_numComponents)  + preAlignement+ "_bases/"
  
@@ -140,6 +140,7 @@ else:
 
 aligned_snapshots_directory = "results/" \
                               + name \
+                              + "/" + experiment \
                               + "/q_snapshots_h5/"
 
 aligned_snapshots_animation_file = "aligned_snapshots" \
@@ -163,6 +164,7 @@ vertPos_output_animation_file = "bases_animations" \
 
 vertPos_output_bases_ext = "results/" \
                            + name \
+                           + "/" + experiment \
                            +"/q_bases/" \
                            + vertPos_bases_name_extention \
                            + "/" + experiment \

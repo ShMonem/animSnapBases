@@ -7,7 +7,7 @@
 	"snapshots":
 		{
 		"format": ".off",
-		"snaps_folder": "FOM_snapshots_OFF",
+		"snaps_folder": "FOM",
 		"read_all_from_first": true,
 		"anims_folder": "FOM_animations_h5",
 		"preAlignement": "_alignedRigid" ,

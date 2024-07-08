@@ -54,7 +54,7 @@ else:
 
 
 # notice that data should be put in place so that all .py can have access too!
-input_snapshots_pattern = "input_data/" + name + "/" + experiment + "/" + snapshots_folder + "/pos_*" +  snapshots_format
+input_snapshots_pattern = "input_data/" + name + "/" + experiment + "/position_snapshots/" + snapshots_folder + "/pos_*" +  snapshots_format
 
 input_animation_dir 	= "input_data/" + name + "/" + experiment + "/" + animation_folder + "/" 
 

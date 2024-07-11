@@ -1,5 +1,5 @@
 # This file is part of the animSnapBases project (https://github.com/ShMonem/animSnapBases).
-# Copyright animSnapBases Shaimaa Monem, Peter Bener and Christian Lessig. All rights reserved.
+# Copyright animSnapBases Shaimaa Monem. All rights reserved.
 # License: Apache-2.0
 
 import struct

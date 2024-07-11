@@ -22,6 +22,10 @@ Repository:
 
 License:
 - Apache-2.0 see LICENSE.md.
+- This code borrwes some functions from the beautiful implementations of [SPLOCS](https://github.com/tneumann/splocs), which was published under MIT license.
+
+Copyright holders:
+- [Shaimaa Monem](https://orcid.org/0009-0008-4038-3452).
 
 ## Dependencies
 - Install dependencies from `venv_requirements.txt`:
@@ -79,7 +83,9 @@ Thank you for your interest in our code, which you all the fun trying it out :-)
 
 ## Reproducibility
 
-A `comparision_test` and `input_data` folders are provided for testing with a few snapshots:
+A repository [redPD](https://github.com/ShMonem/redPD) is provided in order to test and reproduce results from the mentioned paper.  
+  - Kindly refer to the dedicated [README.test.md](https://github.com/ShMonem/redPD/blob/main/README.test.md). It explains all steps starting from snapshots collections to bases testing.
+
 1. Clone the repo.
 2. Install the virtual environment.
 3. Run the code from the root directory using `python main.py` with `splocs->"compute": "No"` and then with `splocs->"compute": "Yes"`:
@@ -94,5 +100,4 @@ A `comparision_test` and `input_data` folders are provided for testing with a fe
 6. After bases storage, both snapshots and bases can be visualized, this option can be modified in the ``bases_config.json``. Associated animation files can be found in both `results/<mesh>/<experiment>/q_snapshts_h5/` and `results/<mesh>/<experiment>/q_bases/`.
     Note: In order to stop the snapshots animations from the animations cycle, press ``stop animation --> OK`` then close the tap, otherwise it might produce an error.
 
-Testing the generated results is described in ``test/README.test.md``.
 For code navigation and further development, refer to ``config/README.dev.md``.

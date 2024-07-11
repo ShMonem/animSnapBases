@@ -19,7 +19,9 @@ IPDGS/IPDGS_env/
 input_data/bunny/_gravitationalFall/FOM_animations_h5/
 
 # ignore snapshots
-input_data/bunny/_gravitationalFall/FOM_snapshots_OFF/*.off
+input_data/bunny/_gravitationalFall/position_snapshots/
+
+
 # ignor results directory
 /results/
 

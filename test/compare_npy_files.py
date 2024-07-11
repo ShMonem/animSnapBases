@@ -1,3 +1,7 @@
+# This file is part of the animSnapBases project (https://github.com/ShMonem/animSnapBases).
+# Copyright animSnapBases Shaimaa Monem, Peter Bener and Christian Lessig. All rights reserved.
+# License: Apache-2.0
+
 import argparse
 import numpy as np
 import struct

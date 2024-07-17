@@ -21,3 +21,5 @@ input_data/bunny/_gravitationalFall/
 /results/
 .idea
 
+/test/
+venv_requirements.txt

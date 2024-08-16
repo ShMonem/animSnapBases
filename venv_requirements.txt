@@ -25,4 +25,4 @@ six==1.16.0
 traits==6.4.3
 traitsui==8.0.0
 vtk==9.3.0
-zipp==3.18.1
+zipp==3.19.1

@@ -8,7 +8,7 @@ import h5py
 from numpy import maximum, argmax, clip, save, tensordot, inner, outer, array, newaxis, empty, zeros, dot, eye, sum,\
                   sqrt, errstate, maximum, allclose, mean
 from scipy.linalg import svd, norm, cho_factor, cho_solve, cholesky, orth
-from utils.utils import store_components, testSparsity, test_linear_indpendency
+from utils.utils import store_components, testSparsity, test_linear_dependency
 from snapbases.posSnapshots import posSnapshots
 from config.config import vertPos_bases_type, store_vertPos_PCA_sing_val, vertPos_rest_shape, vertPos_maxFrames,\
                                 vertPos_numFrames, vertPos_numComponents, vertPos_smooth_min_dist, \
@@ -238,7 +238,7 @@ class posComponents:  # Components == bases
 
         # components shifted by mean shape
         testSparsity(self.basesType + " bases", self.comps, 2)
-        test_linear_indpendency(self.comps, 3, self.numComp)
+        test_linear_dependency(self.comps, 3, self.numComp)
 
         if q_orthogonal:
             self.is_utmu_orthogonal()  # test U^T M U = I (K x K)

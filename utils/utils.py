@@ -35,7 +35,7 @@ def testSparsity(name, mat, test_dim):
         print(" ... not sparse.")
 
 
-def test_linear_indpendency(mat, test_dim_range, expected_rank):
+def test_linear_dependency(mat, test_dim_range, expected_rank):
     for j in range(test_dim_range):
         try:
             matrix_rank(mat[:, :, j]) == expected_rank

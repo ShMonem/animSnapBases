@@ -21,7 +21,8 @@ if compute_pos_bases:
 
 # constraints projection parameters
 if compute_constProj_bases:
-    from config.config import compute_constProj_bases
+    from snapbases.constraintsComponents import constraintsComponents
+    from config.config import constProj_output_directory
 root_folder = os.getcwd()
 profiler = cProfile.Profile()
 
@@ -30,7 +31,7 @@ def main():
 
     if compute_pos_bases: # if position bases will be computed
         print("Computing bases for positions vertices")
-        # in case input_animation_dir hasn ot been created yet:
+        # in case input_animation_dir has ot been created yet:
         # read snapshots: list of meshes in .off or .ply format
         aligned_snapshots_h5_file = os.path.join(aligned_snapshots_directory, aligned_snapshots_animation_file)
 
@@ -87,8 +88,19 @@ def main():
             view_components(os.path.join(vertPos_output_directory, bases.output_components_file))
 
     if compute_constProj_bases:
-
         print("Computining nonlinear bases for")
+
+        ''' Compute PCA bases/components as they are required any way!'''
+        nonlinearBases = constraintsComponents()
+        nonlinearBases.compute_components_store_singvalues(constProj_output_directory)
+        nonlinearBases.post_process_components()
+
+        '''run tests and store bases to files '''
+        # run_pca_bases_constriants_tests(nonlinearBases)
+        nonlinearBases.store_components_to_files(constProj_output_directory, 1, nonlinearBases.numComp, 1, nonlinearBases.comps,
+                                                 nonlinearBases.largeDeforPoints, "PCA_largestDeformation_e_", '.bin')
+
+
 if __name__ == '__main__':
 
     if show_profile:

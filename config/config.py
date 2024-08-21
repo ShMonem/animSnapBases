@@ -204,7 +204,7 @@ if compute_pos_bases:
     Options for bases type and different properties can be modified in 
     constraintsProjection_bases_config.json 
 """
-
+constProj_dim = config['constraintProj_bases']['dim']
 compute_constProj_bases =config["constraintProj_bases"]['computeState']["compute"]
 # testing state
 constProj_testing = config["constraintProj_bases"]['computeState']['testingComputations']   # _Released / _Debugging
@@ -212,7 +212,7 @@ constProj_testing = config["constraintProj_bases"]['computeState']['testingCompu
 if constProj_testing == "_Debugging":
 	show_profile = True
 
-# "first"/"avarage": used for standerization step
+# "first"/"average": used for standerization step
 constProj_rest_shape = config["constraintProj_bases"]["rest_shape"]
 
 # pre alignment done to frames, can be '_centered' or '_alignedRigid'
@@ -222,15 +222,15 @@ if constProj_preAlignement == "_noAlignement": centered = True
 elif constProj_preAlignement == "_centered": centered = False
 else: print("Error! unknown alignment method for .")
 
-constProj_maxFrames = config["constraintProj_bases"]["snapshots"]["max_numFrames"]      # number of snapshots used in computations (NO. files you have)
 #constProj_snapshots_format = config["constraintProj_bases"]["snapshots"]["format"]
-constProj_snapshots_folder = config["constraintProj_bases"]["snapshots"]["snaps_folder"]     # where snapshots are stored
+constProj_snapshots_folder = config["constraintProj_bases"]["constraintType"]["snaps_folder"]     # where snapshots are stored
 constProj_preprocessed_snapshots_folder = config["constraintProj_bases"]["snapshots"]["processed_snapshots_folder"]     # where snapshots can be stored after pre-processing
 constProj_snapshots_ready = config["constraintProj_bases"]["snapshots"]["processed_snapshots_ready"]
 
+constProj_maxFrames = config["constraintProj_bases"]["snapshots"]["max_numFrames"]      # number of snapshots used in computations (NO. files you have)
 constProj_numFrames = config["constraintProj_bases"]["snapshots"]["numFrames"]           # number of snapshots used in computations
 constProj_numComponents = config["constraintProj_bases"]["numComponents"]    # number of bases to be computed
-
+constProj_p_size = config["constraintProj_bases"]["constraintType"]["rowSize"]
 if config["constraintProj_bases"]["snapshots"]["read_all_from_first"]:
     constProj_frame_increment = 1
 else:
@@ -238,7 +238,7 @@ else:
     assert constProj_frame_increment <= 10    # max number of frame increment
 
 # notice that data should be put in place so that all .py can have access too!
-constProj_input_snapshots_pattern = "input_data/" + name + "/" + experiment + "/constraintsProjecton_snapshots/" + constProj_snapshots_folder + "/aux_"
+constProj_input_snapshots_pattern = "input_data/" + name + "/" + experiment + "/constraintsProjection_snapshots/" + constProj_snapshots_folder + "/aux_"
 
 constProj_input_preprocessed_snapshots_dir = "input_data/" + name + "/" + experiment + "/" + constProj_preprocessed_snapshots_folder + "/"
 
@@ -247,7 +247,7 @@ constProj_store_sing_val = config["constraintProj_bases"]["store_sing_val"]
 constProj_preprocessed_snapshots_file = "snapshots_" + str(constProj_numFrames)+ "outOf" + str(constProj_maxFrames)+"_Frames_" + str(constProj_frame_increment) + "_increment_" + constProj_preAlignement + ".bin"
 
 constProj_element = config["constraintProj_bases"]["constraintType"]["name"]
-constProj_masses_file = "input_data/" + name + "/" + name + constProj_element +"_massMatrix.bin"
+constProj_masses_file = "input_data/" + name + "/" + name + "_" + constProj_element +"_massMatrix.bin"
 
 constProj_bases_type = constProj_element = config["constraintProj_bases"]["type"]
 """
@@ -274,7 +274,7 @@ constProj_bases_name_extention = constProj_bases_type + constProj_preAlignement 
                             config['constraintProj_bases']['orthogonalized'] + constProj_testing
 
 constProj_output_directory = "results/" + name + "/" + experiment + "/p_bases/" + constProj_bases_name_extention + \
-                           "/" + str(constProj_numFrames) + "outOf" + str(constProj_maxFrames) + "_Frames_/" + \
+                           "/" + str(constProj_numFrames) + "outOf" + str(constProj_numFrames) + "_Frames_/" + \
                            str(constProj_frame_increment) + "_increment_" + str(constProj_numComponents) + constProj_preAlignement + "_bases/"
 
 if not os.path.exists(constProj_output_directory):
@@ -282,6 +282,6 @@ if not os.path.exists(constProj_output_directory):
     os.makedirs(constProj_output_directory)
     print("A directory is created to store nonlinear bases!")
 else:
-    print("Warning! an old the store directory already exists: \n", constProj_output_directory, \
+    print("Warning! an old the store directory already exists: \n", constProj_output_directory,\
           "\n make sure you are not over-writing! ")
 

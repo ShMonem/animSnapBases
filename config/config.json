@@ -30,7 +30,7 @@
 				},
 			"pca":
 				{
-					"compute": true,
+					"compute": false,
 					"numComponents": 200,
 					"supported": "_Local",
 					"store_sing_val": true
@@ -47,7 +47,7 @@
 			"visualize": true,
 			"computeState":
 			{
-				"compute": false,
+				"compute": true,
 				"testingComputations": "_Release"
 			}
 		},
@@ -57,13 +57,13 @@
 		{
 			"name": "tetStrain",
 			"elements": "_tets",
+			"snaps_folder": "tetStrain/FOM",
 			"rowSize": 3
 		},
 		"snapshots":
 		{
 			"max_numFrames": 200,
-			"numFrames": 200,
-			"snaps_folder": "tetStrain/FOM",
+			"numFrames": 10,
 			"read_all_from_first": true,
 			"processed_snapshots_folder": "NL_processed_snapshots_bin",
 			"preAlignement": "_noAlignement" ,
@@ -81,8 +81,8 @@
 		"store_sing_val": "Yes",
 		"computeState":
 		{
-			"compute": false,
-			"testingComputations": "_Debugging"
+			"compute": true,
+			"testingComputations": "_Testing"
 		}
 	}
 }

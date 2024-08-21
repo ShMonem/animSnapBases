@@ -62,10 +62,10 @@ class posComponents:  # Components == bases
         return (clip(phi, min_dist, max_dist) - min_dist) \
                / (max_dist - min_dist)
 
-    def extract_k_components(self, residual_init, snapshots_compute_geodesic_distance, writer,
+    def extract_k_components(self, writer,
                              num_iters_max=splocs_max_itrs, num_admm_iterations=splocs_admm_num_itrs):
-
-        R = residual_init
+        R = self.pos_snapshots.snapTensor.copy()
+        snapshots_compute_geodesic_distance = self.pos_snapshots.compute_geodesic_distance
         # save("residual_init_componentClasses", R)
         C = []
         W = []
@@ -201,8 +201,6 @@ class posComponents:  # Components == bases
         return x * shrinkage[..., newaxis]
 
     def compute_components_store_singvalues(self, store_bases_dir):
-        residual_init = self.pos_snapshots.snapTensor.copy()
-        compute_geodesic_distance = self.pos_snapshots.compute_geodesic_distance
 
         headerSing = ['component', 'singVal']
 
@@ -212,10 +210,10 @@ class posComponents:  # Components == bases
                 writer = csv.writer(singFile)
                 writer.writerow(headerSing)
 
-                self.extract_k_components(residual_init, compute_geodesic_distance, writer)
+                self.extract_k_components(writer, )
             singFile.close()
         else:
-            self.extract_k_components(residual_init, compute_geodesic_distance, None)
+            self.extract_k_components(None)
 
     def post_process_components(self):
 
@@ -237,7 +235,7 @@ class posComponents:  # Components == bases
             self.comps *= self.pos_snapshots.invMassL[:, None]
 
         # components shifted by mean shape
-        testSparsity(self.basesType + " bases", self.comps, 2)
+        testSparsity( self.comps)
         test_linear_dependency(self.comps, 3, self.numComp)
 
         if q_orthogonal:

@@ -68,7 +68,7 @@ class posSnapshots:
             # read mass file
             self.read_factorize_masses()
 
-            # compute weighted snapshots M^{-1/2} X
+            # compute weighted snapshots M^{1/2} X
             assert self.snapTensor.shape[1] == self.massL.shape[0]
             self.snapTensor *= self.massL[:, None]
 
@@ -83,7 +83,7 @@ class posSnapshots:
             print('Error! unknown rest shape: ', self.rest_shape)
             sys.exit(1)
 
-        # geodesic distances are computed on non weighted shape
+        # geodesic distances are computed on non-weighted shape
         if self.rest_shape == "first":
             self.compute_geodesic_distance = GeodesicDistanceComputation(self.verts[0], self.tris)
         elif self.rest_shape == "average":
@@ -91,7 +91,7 @@ class posSnapshots:
 
         # sandarize data
         if standarize:
-            self.standarize(massWeight)
+            self.standarize()
         
         print('Snapshots ready... Volkwein ('+str(massWeight)+'), standarized ('+str(standarize)+').')
 
@@ -137,7 +137,7 @@ class posSnapshots:
         self.massL = np.diagonal(massL)  # (N,)
         self.invMassL = np.diagonal(invMassL)  # (N,)
 
-    def standarize(self, massWeight):
+    def standarize(self):
         # we subtract Xmean and normalize w. r. to. std(X) to bring data center as close as possible to zero
         # and the standard deviation as close as possible to one!
 

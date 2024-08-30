@@ -23,6 +23,9 @@ if compute_pos_bases:
 if compute_constProj_bases:
     from snapbases.constraintsComponents import constraintsComponents
     from config.config import constProj_output_directory
+    from generate_figures.nl_reduction_tests import run_pca_bases_constriants_tests
+
+
 root_folder = os.getcwd()
 profiler = cProfile.Profile()
 
@@ -95,10 +98,18 @@ def main():
         nonlinearBases.compute_components_store_singvalues(constProj_output_directory)
         nonlinearBases.post_process_components()
 
+        nonlinearBases.deim_blocksForm()
         '''run tests and store bases to files '''
-        # run_pca_bases_constriants_tests(nonlinearBases)
-        nonlinearBases.store_components_to_files(constProj_output_directory, 1, nonlinearBases.numComp, 1, nonlinearBases.comps,
-                                                 nonlinearBases.largeDeforPoints, "PCA_largestDeformation_e_", '.bin')
+        test_pca_bases = False
+        test_deim = False
+        store_bases_files = False
+
+        run_pca_bases_constriants_tests(nonlinearBases, test_pca_bases, test_deim)
+
+        if store_bases_files:
+            nonlinearBases.store_components_to_files(constProj_output_directory, 1, nonlinearBases.numComp,
+                                                     5, nonlinearBases.comps, nonlinearBases.deim_alpha,
+                                                     "DEIM_e_alphas_", '.bin')
 
 
 if __name__ == '__main__':

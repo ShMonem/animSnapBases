@@ -35,7 +35,7 @@ class constraintsComponents:  # Components == bases
         self.ortho_comps = None  # orthogonal bases tensor
         self.largeDeforPoints = None  # points/ constraints vertices at which basis are computed
         self.largeDeforBlocks = None  # blocks containing interpolation points
-        self.singVals_at_largeDeforVerts = None  # singVals & resNorm computed at 'K' largest deformation verts
+        self.measures_at_largeDeforVerts = None  # singVals & resNorm computed at 'K' largest deformation verts
         self.res_at_largeDeforVerts = None  # the residual norm during PCA bases computation, all 'Kp' steps
 
         #self.output_components_file = output_components_file  # ??
@@ -44,6 +44,12 @@ class constraintsComponents:  # Components == bases
         self.fileNameBases = "p_nl_"
         self.fileNamenoMeanBases = None
         self.file_name_sing = "singular_values"
+
+        # DEIM atributes
+        self.deim_S = None  # All interpolation rows (complete 0< rows < e.p) used to construct P^T
+        self.deim_M = None  # (P^T V)
+        self.deim_res_norm = None  # norm(vk - Vc)
+        self.deim_alpha = None   # Indices of interpolation blocks (0 < block < e)
 
     @staticmethod
     def project_weight(x):
@@ -55,10 +61,15 @@ class constraintsComponents:  # Components == bases
             return x / max_x
     @staticmethod
     def indxLargestDeformation(R, p, e):
-        #  R (ep, F, d)
+        # expected size of R (e.p, F, d)
+
         magnitude = (R ** 2).sum(axis=2).reshape(e, p, -1)  # (e, p, -1)
         idx = np.argmax(magnitude.sum(axis=(1, 2)))
 
+        # temp = np.zeros(e)
+        # for ind in range(e):
+        #     temp[ind] = norm(R[ind*p: (ind + 1)*p, :, :])
+        # idx = np.argmax(temp)
         return idx
 
     @staticmethod
@@ -94,22 +105,19 @@ class constraintsComponents:  # Components == bases
         W = []
         S_idx = []  # stores the indices of constrained vol. verts with the largest deformation (0, e)
         S_rows = []    # stores the indices of the complete blocks in the range (0, ep)
-        add_to_indx = False   # Decide to add index to list or not
+        # add_to_indx = False   # Decide to add index to list or not
 
         p = self.nonlinear_snapshots.constraintsSize   # p: row size of each constraint
         e = self.nonlinear_snapshots.constraintVerts   # e: numConstraints
-        self.singVals_at_largeDeforVerts = np.empty((self.numComp, 6))
+        self.measures_at_largeDeforVerts = np.empty((self.numComp, 6))
 
         res_norm = []
-        res_un_added_indxs = []
         for k in range(self.numComp):
             #  find the constraint index explaining the most variance across the residual animation
             idx = self.indxLargestDeformation(np.swapaxes(R, 0, 1), p, e)   # 0 <= idx < e
 
-            #  keep list of the constraints indices verts with the largest deformation  0 <= idx < ep
-            if idx not in S_idx:
-                S_idx.append(idx)
-                add_to_indx = True
+            # keep list of the constraints indices verts with the largest deformation  0 <= idx < ep
+            S_idx.append(idx)
 
             sigma = []
             ck = None
@@ -139,7 +147,7 @@ class constraintsComponents:  # Components == bases
                 # wk is (F,), R is (F, ep, 3), np.tensordot(wk, R, (0, 0)) is (ep, 3),
                 if self.support == 'local':
                     dummyindx = 0
-                    # TODO
+                    # TODO: depends on the support map
                     # ck = (np.tensordot(wk, R, (0, 0)) * s[:, np.newaxis]) \
                     #      / np.inner(wk, wk)
                 else:
@@ -147,23 +155,19 @@ class constraintsComponents:  # Components == bases
 
                 #  update residual
                 R -= np.outer(wk, ck).reshape(R.shape)   # project out computed bases block
-                res_norm.append(norm(R))
-
                 #  keep list of the constraints indices of blocks with the largest deformation  0 <= idx < ep
-                if add_to_indx:
-                    S_rows.append(idx*p+i)
-                    C.append(ck)
-                    W.append(wk)
-                    if i == (p-1):
-                        add_to_indx = False
-                else:
-                    res_un_added_indxs.append(norm(R))
+                S_rows.append(idx * p + i)
+                C.append(ck)
+                W.append(wk)
 
-            singList = [k, idx, sigma[0], sigma[1], sigma[2], norm(R)+sum(res_un_added_indxs)]
-            self.singVals_at_largeDeforVerts[k, :] = singList
+            res_norm.append(norm(R))
+            singList = [k, idx, sigma[0], sigma[1], sigma[2], norm(R)]
+            self.measures_at_largeDeforVerts[k, :] = singList
             if self.storeSingVal:
                 writer.writerow(singList)
 
+        # print(S_idx)
+        # print(res_norm)
         self.largeDeforPoints = np.array(S_idx)  # (K,)
         self.largeDeforBlocks = np.array(S_rows)  # (Kp,)
         self.res_at_largeDeforVerts = np.array(res_norm)
@@ -220,7 +224,7 @@ class constraintsComponents:  # Components == bases
             assert np.allclose(utMu_l, np.eye(self.comps.shape[0]))
         print('(True).')
 
-    def test_PCA_reconstruction_error_at_different_kp_bases(self, error_full, error_kp):
+    def test_DEIM_reconstruction_error_at_different_kp_bases(self, error_full, error_kp):
         """
         Computes re-construction error at full range of snapshots
         :param :
@@ -239,14 +243,14 @@ class constraintsComponents:  # Components == bases
         for numBases_blocks in range(1, self.numComp+1):
 
             p = self.nonlinear_snapshots.constraintsSize
-            S = self.largeDeforBlocks[:numBases_blocks * p]  # (Kp,)
+            S = self.deim_S[:numBases_blocks * p]  # (Kp,)
             # sqrt(3 kp F) ||S^T snapshots||
             denom_c = np.sqrt(3 * S.shape[0] * snapshots.shape[0]) * norm(snapshots[:, S, :])
             # V (ep, Kp, 3) = comp^T
             b = snapshots[:, S, :]   # S^T p(t)   (F, kp, 3)
             A = bases[S, :numBases_blocks * p, :]  # S^T V  (Kp, Kp, 3)
             c = np.empty((self.nonlinear_snapshots.frs, S.size, 3))
-            z = np.empty(snapshots.shape)  # (F, Kp, 3)
+            z = np.empty(snapshots.shape)  # (F, ep, 3)
 
             # TODO: can the following part be performed with tensors operations directly?
             for f in range(self.nonlinear_snapshots.frs):
@@ -264,8 +268,8 @@ class constraintsComponents:  # Components == bases
         :param error_full: error at all 'e' points
         :param error_kp: error at only 'k' points
         :return: passes filled lists
-        error_full = ||Vc(t) - p(t)||/(sqrt(3 ep F) ||snapshots||),
-        error_kp= ||S^T Vc(t) - S^T p(t)||/(sqrt(3 kp F) ||S^T snapshots||),
+        error_full = ||WC(t) - p(t)||/(sqrt(3 ep F) ||snapshots||),
+        error_kp= ||S^T WC(t) - S^T p(t)||/(sqrt(3 kp F) ||S^T snapshots||),
                 with S the 'kp' indecies of the k blocks in the 'ep' dim of V
         """
         p = self.nonlinear_snapshots.constraintsSize
@@ -361,11 +365,12 @@ class constraintsComponents:  # Components == bases
         bases = self.comps.copy().swapaxes(0, 1)  # (ep, Kp, d)
 
         # initialization
-        vk = bases[:, :p, :]  # v0  (ep, p, 3)
+        vk = bases[:, :p, :]  # v0  (ep, :p, 3)
         V = np.empty(vk.shape)
         # initialize selection.T mat
         Pt = []
-
+        res = []
+        e_points = []
         for k in range(K):
             if k == 0:
                 r = vk
@@ -378,21 +383,19 @@ class constraintsComponents:  # Components == bases
                     c[:, :, i] = V[:, :, i] @ npla.solve(V[Pt, :, i], vk[Pt, :, i])  # (ep, kp,)@ (kp,kp)(kp,) --(ep,)xd
 
                 r = c - vk  # error  (ep, p, d)
+                res.append(norm(r))
                 if np.allclose(r, np.zeros(r.shape)):
-                    print("deim res is zero!!")
+                    print("ERROR!: deim res is zero!!")
                     return
 
-            magnitute = (r**2).sum(axis=2)  # (ep, p)
-            alpha = np.argmax(magnitute.sum(axis=1).reshape(e, p).sum(axis=1))
+            alpha = self.indxLargestDeformation(r, p, e)
+            assert alpha not in Pt
+            e_points.append(alpha)
 
-            # update selection mat with largest deformation block in the error
-            if alpha in Pt:
-                print('skip', k)
-                continue
-            else:
-                print(k)
-                for m in range(p):
-                    Pt.append(alpha + m)
+            # update selection mat with the largest deformation block in the error
+            print(k, alpha)
+            for m in range(p):
+                Pt.append(alpha * p + m)
 
             if k == 0:
                 V = vk
@@ -401,6 +404,9 @@ class constraintsComponents:  # Components == bases
 
         M = np.empty((V.shape[1], V.shape[1], d))
         Pt = np.array(Pt)
+        self.deim_alpha = np.array(e_points)
+        self.deim_S = Pt
+        self.deim_res_norm = np.array(res)
         for i in range(d):
             M[:, :, i] = npla.inv(V[Pt, :, i])
 
@@ -456,10 +462,10 @@ class constraintsComponents:  # Components == bases
         # basesnoMeanFile = os.path.join(output_dir, self.fileNamenoMeanBases)
         p = self.nonlinear_snapshots.constraintsSize
 
-        store_vector(basesFile + Type , self.nonlinear_snapshots.frs,
+        store_vector(basesFile + Type, self.nonlinear_snapshots.frs,
                     self.numComp, points, fileType)
         # store separate .bin for different numbers of components
         for k in range(start, end + 1, step):
-            store_components(basesFile, numframes, k*p, numverts, 3, bases[:k*p, :, :], fileType)
+            store_components(basesFile, numframes, k*p, numverts, 3, bases[:k*p, :, :], fileType, 'Kp')
         print('done.')
 

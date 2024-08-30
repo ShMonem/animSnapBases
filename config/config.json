@@ -30,7 +30,7 @@
 				},
 			"pca":
 				{
-					"compute": false,
+					"compute": true,
 					"numComponents": 200,
 					"supported": "_Local",
 					"store_sing_val": true
@@ -47,7 +47,7 @@
 			"visualize": true,
 			"computeState":
 			{
-				"compute": true,
+				"compute": false,
 				"testingComputations": "_Release"
 			}
 		},
@@ -63,14 +63,14 @@
 		"snapshots":
 		{
 			"max_numFrames": 200,
-			"numFrames": 10,
+			"numFrames": 100,
 			"read_all_from_first": true,
 			"processed_snapshots_folder": "NL_processed_snapshots_bin",
 			"preAlignement": "_noAlignement" ,
 			"processed_snapshots_ready": false
 		},
 		"type": "deim",
-		"numComponents": 10,
+		"numComponents": 100,
 		"dim": 3,
 		"constraintsDim": 3,
 		"rest_shape": "first",

@@ -266,7 +266,7 @@ class posComponents:  # Components == bases
         # basesnoMeanFile = os.path.join(output_bases_dir, self.fileNamenoMeanBases)
         # store separate .bin for different numbers of components
         for k in range(start, end + 1, step):
-            store_components(basesFile, numframes, k, numverts, 3, self.comps[:k, :, :], fileType)
+            store_components(basesFile, numframes, k, numverts, 3, self.comps[:k, :, :], fileType, 'K')
         print('done.')
 
     def store_animations(self, output_bases_dir):

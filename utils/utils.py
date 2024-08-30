@@ -8,7 +8,7 @@ from numpy.linalg import matrix_rank
 from numpy import save, count_nonzero
 
 
-def store_components(fileName, F, K, N, dim, basesTensor, extension='.bin'):
+def store_components(fileName, F, K, N, dim, basesTensor, extension='.bin',  colName='K'):
     """
     :param fileName: file to store data
     :param F: num of frames/snapshots used to compute the bases
@@ -21,7 +21,7 @@ def store_components(fileName, F, K, N, dim, basesTensor, extension='.bin'):
     """
     assert basesTensor.shape == (K, N, dim)
     if extension == '.bin':
-        with open(fileName + '_F' + str(F) + 'K' + str(K) + extension, 'wb') as doc0:
+        with open(fileName + '_F' + str(F) + colName + str(K) + extension, 'wb') as doc0:
             doc0.write(struct.pack("<i", N))  # write a 4 byte integer in little endian
             doc0.write(struct.pack("<i", dim * K))  # write a 4 byte integer in little endian
             for d in range(dim):
@@ -70,7 +70,7 @@ def test_linear_dependency(mat, test_dim_range, expected_rank):
                   + " != " + str(expected_rank) + ".")
 
 
-def store_vector(fileName, F, K, points, extension='.bin'):
+def store_vector(fileName, F, K, points, extension='.bin', colName='K'):
     """
     :param fileName: file to store data
     :param F: num of frames/snapshots used to compute the bases
@@ -81,7 +81,7 @@ def store_vector(fileName, F, K, points, extension='.bin'):
     """
     assert points.shape[0] == K
     if extension == '.bin':
-        with open(fileName + '_F' + str(F) + 'K' + str(K) + extension, 'wb') as doc0:
+        with open(fileName + '_F' + str(F) + colName + str(K) + extension, 'wb') as doc0:
             doc0.write(struct.pack("<i", K))  # write a 4 byte integer in little endian
             doc0.write(struct.pack("<i", 1))  # write a 4 byte integer in little endian
             for k in range(K):

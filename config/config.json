@@ -6,6 +6,11 @@
 	},
 	"vertexPos_bases":
 		{
+			"computeState":
+			{
+				"compute": false,
+				"testingComputations": "_Release"
+			},
 			"snapshots":
 			{
 				"max_numFrames": 200,
@@ -14,15 +19,15 @@
 				"snaps_folder": "FOM",
 				"read_all_from_first": true,
 				"anims_folder": "FOM_animations_h5",
-				"preAlignement": "_alignedRigid" ,
+				"preAlignement": "_centered" ,
 				"anim_folder_ready": false,
-				"visualize_aligned_animations": true
+				"visualize_aligned_animations": false
 			},
 			"dim": 3,
 			"rest_shape": "first",
 			"massWeighted": "_Volkwein",
 			"standarized": "_Standarized",
-			"orthogonalized": "_nonOrthogonalized",
+			"orthogonalized": "_Orthogonalized",
 			"support":
 				{
 					"min_dist": 0.1,
@@ -43,46 +48,41 @@
 					"lambda": 2,
 					"rho": 10.0
 				},
-			"store":true,
-			"visualize": true,
-			"computeState":
-			{
-				"compute": false,
-				"testingComputations": "_Release"
-			}
+			"store":false,
+			"visualize": false
 		},
 	"constraintProj_bases":
 	{
+		"computeState":
+		{
+			"compute": true,
+			"testingComputations": "_Testing"
+		},
 		"constraintType":
 		{
-			"name": "tetStrain",
+			"name": "tetstrain",
 			"elements": "_tets",
-			"snaps_folder": "tetStrain/FOM",
+			"snaps_folder": "tetstrain/FOM",
 			"rowSize": 3
 		},
 		"snapshots":
 		{
 			"max_numFrames": 200,
-			"numFrames": 100,
+			"numFrames": 200,
 			"read_all_from_first": true,
 			"processed_snapshots_folder": "NL_processed_snapshots_bin",
 			"preAlignement": "_noAlignement" ,
 			"processed_snapshots_ready": false
 		},
 		"type": "deim",
-		"numComponents": 100,
+		"numComponents": 200,
 		"dim": 3,
 		"constraintsDim": 3,
 		"rest_shape": "first",
 		"massWeighted": "_Volkwein",
 		"standarized": "_Standarized",
 		"supported": "_Global",
-		"orthogonalized": "_nonOrthogonalized",
-		"store_sing_val": "Yes",
-		"computeState":
-		{
-			"compute": true,
-			"testingComputations": "_Testing"
-		}
+		"orthogonalized": "_Orthogonalized",
+		"store_sing_val": "Yes"
 	}
 }

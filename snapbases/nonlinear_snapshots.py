@@ -3,17 +3,17 @@ import numpy as np
 import struct
 import sys
 import cProfile
-
+from utils.utils import log_time
 from config.config import constProj_input_snapshots_pattern, constProj_rest_shape, constProj_dim, \
                             constProj_masses_file, constProj_numFrames, constProj_p_size, constProj_massWeight,\
-                            constProj_standarize
+                            constProj_standarize, constProj_output_directory
 
 
 root_folder = os.getcwd()
 profiler = cProfile.Profile()
 
 
-class nonlinear_snapshots:
+class nonlinearSnapshots:
     """
     Constraints snapshots class
     read and pre-process a .bin input pre-recorded 'F' snapshots, each of size (ep, 3),
@@ -22,21 +22,18 @@ class nonlinear_snapshots:
 
     def __init__(self):
 
-        self.snapshots_file = constProj_input_snapshots_pattern  # contains pre-aligned (only centered) snapshots
-        self.rest_shape = constProj_rest_shape  # which frame to use as rest-shape ("first" or "average")
-        self.dim = constProj_dim
-        self.mass_file = constProj_masses_file  # file contains mass weights as one vector
-        #self.verts = None  # vertices
-        #self.tris = None  # faces
-        self.frs = constProj_numFrames  # no. frames: F
-        # self.nVerts = 0  # no. vertices: N
-        self.constraintsSize = constProj_p_size  # 'p' in the paper. no. rows in each projection mat (=3, for TetStrain constraint)
+        self.snapshots_file = ""  # contains pre-aligned (only centered) snapshots
+        self.rest_shape = ""  # which frame to use as rest-shape ("first" or "average")
+        self.dim = 0
+        self.mass_file = ""  # file contains mass weights as one vector
+        self.frs = 0  # no. frames: F
+        self.constraintsSize = 0  # 'p' in the paper. no. rows in each projection mat (=3, for TetStrain constraint)
         self.constraintVerts = 0  # numConstraints/'e' in the paper. no. verts (tetVerts) influenced by the constraints
 
         self.mean = None  # (nVerts, 3)
         self.pre_scale_factor = 1  # normalization factor
 
-        #self.mass = None   # vertices masses vector
+        self.mass = None   # masses vector
         self.massL = None  # Cholesky factorization L of mass matrix Mass = L^T L
         self.invMassL = None  # Choesky factorisation inverse L^{-1}
 
@@ -44,10 +41,19 @@ class nonlinear_snapshots:
                                 # expected size of (F, ep, 3)
 
 
-        # One time call: compute snapTensor
-        self.snapshots_precomputations()
+    def config(self):
+        """
+            All parameters of this function are defined and can be manipulated using config.json and config.py
+        """
+        self.snapshots_file = constProj_input_snapshots_pattern  # contains pre-aligned (only centered) snapshots
+        self.rest_shape = constProj_rest_shape  # which frame to use as rest-shape ("first" or "average")
+        self.dim = constProj_dim
+        self.mass_file = constProj_masses_file  # file contains mass weights as one vector
+        self.frs = constProj_numFrames  # no. frames: F
+        self.constraintsSize = constProj_p_size  # 'p' in the paper. no. rows in each projection mat (=3, for TetStrain constraint)
 
-    def snapshots_precomputations(self):
+    @log_time(constProj_output_directory)
+    def snapshots_prepare(self):
         """
         One time snapshots loading and possibly pre-processing. Options are:
         standarize (note: this step includes also geodesics distances computation),
@@ -71,6 +77,7 @@ class nonlinear_snapshots:
               "mean: ", np.mean(self.snapTensor), "std:", np.std(self.snapTensor))
         print('nonlinearSnapshots ready ... Volkwein ('+str(constProj_massWeight)+'), standarized ('+str(constProj_standarize)+').')
 
+    @log_time(constProj_output_directory)
     def read(self):
         """ read separate stored constraints´ projections,
            and build frames tensor """
@@ -90,11 +97,10 @@ class nonlinear_snapshots:
                     Mat_i[rowi, coli] = value
             if i == 0:
                 Xtemp = Mat_i[np.newaxis, :, :]    # create snapshots tensor
-            #  print(Xtemp.shape)
 
             else:
                 Xtemp = np.concatenate((Xtemp, Mat_i[np.newaxis, :, :]), axis=0)    # update snapshots tensor
-            #  print(Xtemp.shape) # (F, ep, 3)
+            # (F, ep, 3)
 
         self.constraintVerts = Xtemp.shape[1]//self.constraintsSize   # e == e.p//p
         self.snapTensor = Xtemp  # initialized with the un-pre-processed snapshots
@@ -116,6 +122,7 @@ class nonlinear_snapshots:
         fileMass.close()
 
         #  compute Cholesky factorization for the diagonal auxliary mass matrix
+        self.mass = hrpdAuxiliariesMass.copy()
         massL = np.sqrt(hrpdAuxiliariesMass)  # ep
 
         #  check the Cholesky factorization is done properly:

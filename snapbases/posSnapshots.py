@@ -121,6 +121,9 @@ class posSnapshots:
         else:
             try:
                 with open(fileName, "rb") as fileMass:  # mass matrix (im: boxed in -0.5-0.5)
+                    ni = struct.unpack('<i', fileMass.read(4))[0]  # read a 4 byte integer in little endian
+                    mi = struct.unpack('<i', fileMass.read(4))[0]
+                    assert ni == N
                     for j in range(N):
                         value = struct.unpack('<d', fileMass.read(8))[0]
                             # read 8 byte and interpret them as little endian double

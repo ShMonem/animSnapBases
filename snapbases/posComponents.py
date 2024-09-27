@@ -46,7 +46,6 @@ class posComponents:  # Components == bases
 
         self.fileNameBases = "using_F_"
 
-
     @staticmethod
     def project_weight(x):
         x = maximum(0., x)
@@ -77,7 +76,7 @@ class posComponents:  # Components == bases
                 magnitude.sum(axis=0))  # collapse the (F, N) to only (N) then find the argmax over all vertices
 
             # find linear component explaining the motion of this vertex
-            U, sing, Vt = svd(R[:, idx, :].reshape(R.shape[0], -1).T, full_matrices=False)
+            _, sing, Vt = svd(R[:, idx, :].reshape(R.shape[0], -1).T, full_matrices=False)
             # R[:,idx,:].reshape(R.shape[0], -1).T is the (3,F) tensor associated to the vertex==id
             wk = sing[0] * Vt[0, :]  # weights (F,1): only the one associated to first mode of the svd
 
@@ -121,6 +120,8 @@ class posComponents:  # Components == bases
             self.splocs_glob_optimization(num_iters_max, num_admm_iterations,
                                      R_flat_init, snapshots_compute_geodesic_distance)
 
+        print("Computed '", self.basesType, "' bases size ", self.comps.shape)
+
     def splocs_glob_optimization(self, num_iters_max, num_admm_iterations,
                                  R, compute_geodesic_distance, sparsity_lambda=splocs_lambda, rho=splocs_rho):
         # prepare auxiluary variables
@@ -137,7 +138,7 @@ class posComponents:  # Components == bases
                 Ck = C[k].ravel()
                 Ck_norm = inner(Ck, Ck)
                 if Ck_norm <= 1.e-8:   # prevent divide by zero
-                    # the component seems to be zero everywhere, so set it's activation to 0 also
+                    # the component seems to be zero everywhere, so set its activation to 0 also
                     W[:, k] = 0
                     continue
 
@@ -180,10 +181,7 @@ class posComponents:  # Components == bases
             # TODO convergence check
             print("itr %03d, Energy =%f, Error =%f" % (it, energy, E_rms))
 
-        print("Computed '", self.basesType, "' bases size ", self.comps.shape)
-
     def test_convergence(self, start, end, step):
-
         snapshots = self.pos_snapshots.snapTensor.copy()
         # snapshots_inf_norm = argmax(linalg.norm(snapshots.reshape(e, p, -1), ord='fro', axis=(1, 2)))
         denom = sqrt(3*self.pos_snapshots.nVerts *self.pos_snapshots.frs)
@@ -216,7 +214,7 @@ class posComponents:  # Components == bases
             self.extract_k_components(None)
 
     def post_process_components(self):
-
+        print("Post-processing pos components ...")
         if q_standarize:
             # undo scaling
             self.comps /= self.pos_snapshots.pre_scale_factor  # (K, N, 3)
@@ -234,8 +232,8 @@ class posComponents:  # Components == bases
             assert self.comps.shape[1] == self.pos_snapshots.invMassL.shape[0]
             self.comps *= self.pos_snapshots.invMassL[:, None]
 
-        # components shifted by mean shape
-        testSparsity( self.comps)
+        # few tests
+        testSparsity(self.comps)
         test_linear_dependency(self.comps, 3, self.numComp)
 
         if q_orthogonal:
@@ -246,14 +244,13 @@ class posComponents:  # Components == bases
 
     def is_utmu_orthogonal(self):
         print('... testing M orthogonality, U^T M U = I (K x K) ...', end='', flush=True)
-        # comps = U^T
+        # comps size (K , N, 3)
         for l in range(self.comps.shape[2]):
             Mu_l = self.comps[:, :, l].T * self.pos_snapshots.mass[:, None]   # M U
             utMu_l = dot(self.comps[:, :, l], Mu_l)  # U^T M U
             assert allclose(utMu_l, eye(self.comps.shape[0]))
             Mu_l, utMu_l = None, None
         print('(True).')
-
 
     def store_components_to_files(self, output_bases_dir, start, end, step, fileType):
         """

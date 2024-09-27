@@ -29,12 +29,12 @@ compute_pos_bases =config["vertexPos_bases"]['computeState']["compute"]
 show_profile = False
 
 if compute_pos_bases:
-    # testing state
-    vertPos_testing = config["vertexPos_bases"]['computeState']['testingComputations']   # _Released / _Debugging
+    # testing state (only decoration for file name)
+    # _Released / _Debugging / _Testing
+    vertPos_testing = config["vertexPos_bases"]['computeState']['testingComputations']
 
     if vertPos_testing == "_Debugging":
         show_profile = True
-
 
     # "first"/"avarage": used for standerization step
     vertPos_rest_shape = config["vertexPos_bases"]["rest_shape"]
@@ -46,30 +46,51 @@ if compute_pos_bases:
     elif preAlignement == "_centered": rigid = False
     else: print("Error! unknown alignment method.")
 
+    # number of snapshots used in computations (NO. files you have)
+    vertPos_maxFrames = config["vertexPos_bases"]["snapshots"]["max_numFrames"]
+    snapshots_format = config["vertexPos_bases"]["snapshots"]["format"]   # either ".off" or ".ply"
+    # where snapshots are stored
+    snapshots_folder = config["vertexPos_bases"]["snapshots"]["snaps_folder"]
+    # where animations will be stored and found
+    animation_folder = config["vertexPos_bases"]["snapshots"]["anims_folder"]
 
-    vertPos_maxFrames = config["vertexPos_bases"]["snapshots"]["max_numFrames"]      # number of snapshots used in computations (NO. files you have)
-    snapshots_format = config["vertexPos_bases"]["snapshots"]["format"]
-    snapshots_folder = config["vertexPos_bases"]["snapshots"]["snaps_folder"]     # where snapshots are stored
-    animation_folder = config["vertexPos_bases"]["snapshots"]["anims_folder"]     # where animations will be stored and found
+    # read .off or .ply and convert it to .h5
+    snapshots_anim_ready = config["vertexPos_bases"]["snapshots"]["anim_folder_ready"]
+    # visualize aligned snapshots
+    visualize_snapshots = config["vertexPos_bases"]["snapshots"]["visualize_aligned_animations"]
 
-    snapshots_anim_ready = config["vertexPos_bases"]["snapshots"]["anim_folder_ready"]     # read .off or .ply and convert it to .h5
-    visualize_snapshots = config["vertexPos_bases"]["snapshots"]["visualize_aligned_animations"]  # visualize aligned snapshots
+    # number of snapshots used in computations
+    vertPos_numFrames = config["vertexPos_bases"]["snapshots"]["numFrames"]
+    # number of bases to be computed
+    vertPos_numComponents = config["vertexPos_bases"]["pca"]["numComponents"]
 
-    vertPos_numFrames = config["vertexPos_bases"]["snapshots"]["numFrames"]           # number of snapshots used in computations
-    vertPos_numComponents = config["vertexPos_bases"]["pca"]["numComponents"]    # number of bases to be computed
-
-    if config["vertexPos_bases"]["snapshots"]["read_all_from_first"]: frame_increment = 1
+    if config["vertexPos_bases"]["snapshots"]["read_all_from_first"]:
+        frame_increment = 1
     else:
         frame_increment = vertPos_maxFrames//vertPos_numFrames
         assert frame_increment <= 10    # max number of frame increment
 
-
     # notice that data should be put in place so that all .py can have access too!
-    input_snapshots_pattern = "input_data/" + name + "/" + experiment + "/position_snapshots/" + snapshots_folder + "/pos_*" +  snapshots_format
+    input_snapshots_pattern = "input_data/" \
+                              + name + "/" \
+                              + experiment \
+                              + "/position_snapshots/" \
+                              + snapshots_folder \
+                              + "/pos_*" + snapshots_format
 
-    input_animation_dir 	= "input_data/" + name + "/" + experiment + "/" + animation_folder + "/"
+    input_animation_dir = "input_data/" \
+                          + name + "/" \
+                          + experiment \
+                          + "/" + animation_folder + "/"
 
-    snapshots_animation_file = "snapshots_" + str(vertPos_numFrames)+ "outOf" + str(vertPos_maxFrames)+"_Frames_" + str(frame_increment) + "_increment_" + preAlignement + ".h5"
+    snapshots_animation_file = "snapshots_" \
+                               + str(vertPos_numFrames) \
+                               + "outOf" \
+                               + str(vertPos_maxFrames)\
+                               +"_Frames_" \
+                               + str(frame_increment) \
+                               + "_increment_" \
+                               + preAlignement + ".h5"
 
     # note that the input .h5 for bases/components computation is the output from the snapshots algnment
 
@@ -86,18 +107,15 @@ if compute_pos_bases:
     # store singVals to file during computations: True/False
     store_vertPos_PCA_sing_val = config["vertexPos_bases"]["pca"]["store_sing_val"]
 
-
     # local support and splocs parameters (better not change them!)
     # minimum geodesic distance for support map, d_min_in splocs paper
     vertPos_smooth_min_dist = config["vertexPos_bases"]["support"]["min_dist"]
     # maximum geodesic distance for support map, d_max in splocs paper: higher --> less sparsity & faster convergence
     vertPos_smooth_max_dist = config["vertexPos_bases"]["support"]["max_dist"]
 
-
     # masses file if required to pre-process snapshots
     # if not found, then libigl is necessary to compute masses
     vertPos_masses_file = "input_data/" + name + "/" + name + "_vertPos_massMatrix.bin"
-
 
     # set bases parameters
     q_standarize, q_massWeight, q_orthogonal, q_supported = False, False, False, False
@@ -119,16 +137,16 @@ if compute_pos_bases:
     else:
         q_store_sing_val = False
 
-    # set storage directories
-    # find the workspace
-    #script_dir = os.path.dirname(os.path.abspath(__file__))
-
     """
         Form the name of the storing files automatically depending on the given bases type and its characteristics
     """
-    vertPos_bases_name_extention = vertPos_bases_type + preAlignement + config['vertexPos_bases']['massWeighted'] +\
-                                config['vertexPos_bases']['standarized'] + config['vertexPos_bases']["pca"]['supported']+ \
-                                config['vertexPos_bases']['orthogonalized'] + vertPos_testing
+    vertPos_bases_name_extention = vertPos_bases_type \
+                                   + preAlignement \
+                                   + config['vertexPos_bases']['massWeighted'] \
+                                   + config['vertexPos_bases']['standarized'] \
+                                   + config['vertexPos_bases']["pca"]['supported'] \
+                                   + config['vertexPos_bases']['orthogonalized'] \
+                                   + vertPos_testing
 
     """
     # singularvalues/animations/bases depend on 
@@ -141,7 +159,7 @@ if compute_pos_bases:
 
     vertPos_output_directory = "results/" + name + "/" + experiment + "/q_bases/" + vertPos_bases_name_extention + \
                              "/" + str(vertPos_numFrames)+ "outOf" + str(vertPos_maxFrames)+"_Frames_/" + \
-                             str(frame_increment) + "_increment_" + str(vertPos_numComponents)  + preAlignement+ "_bases/"
+                             str(frame_increment) + "_increment_" + str(vertPos_numComponents) + preAlignement+"_bases/"
 
     if not os.path.exists(vertPos_output_directory):
         # Create a new directory because it does not exist
@@ -150,7 +168,6 @@ if compute_pos_bases:
     else:
         print("Warning! an old the store directory already exists: \n", vertPos_output_directory,\
               "\n make sure you are not over-writing! ")
-
 
     aligned_snapshots_directory = "results/" \
                                   + name \
@@ -179,7 +196,7 @@ if compute_pos_bases:
     vertPos_output_bases_ext = "results/" \
                                + name \
                                + "/" + experiment \
-                               +"/q_bases/" \
+                               + "/q_bases/" \
                                + vertPos_bases_name_extention \
                                + "/" + experiment \
                                + "/using_" \
@@ -192,7 +209,6 @@ if compute_pos_bases:
     store_bases = config["vertexPos_bases"]["store"]   # boolean
 
     # SPLOCS paramers
-
     splocs_max_itrs = config["vertexPos_bases"]["splocs"]["max_itrs"]
     splocs_admm_num_itrs = config["vertexPos_bases"]["splocs"]["admm_num_itrs"]
     splocs_lambda = config["vertexPos_bases"]["splocs"]["lambda"]
@@ -204,84 +220,123 @@ if compute_pos_bases:
     Options for bases type and different properties can be modified in 
     constraintsProjection_bases_config.json 
 """
-constProj_dim = config['constraintProj_bases']['dim']
+
 compute_constProj_bases =config["constraintProj_bases"]['computeState']["compute"]
-# testing state
-constProj_testing = config["constraintProj_bases"]['computeState']['testingComputations']   # _Released / _Debugging
+if compute_constProj_bases:
+    constProj_name = config["constraintProj_bases"]["constraintType"]["name"]
+    constProj_dim = config['constraintProj_bases']['dim']
+    # testing state
+    constProj_testing = config["constraintProj_bases"]['computeState']['testingComputations']   # _Released / _Debugging
 
-if constProj_testing == "_Debugging":
-	show_profile = True
+    if constProj_testing == "_Debugging":
+        show_profile = True
 
-# "first"/"average": used for standerization step
-constProj_rest_shape = config["constraintProj_bases"]["rest_shape"]
+    # "first"/"average": used for standerization step
+    constProj_rest_shape = config["constraintProj_bases"]["rest_shape"]
 
-# pre alignment done to frames, can be '_centered' or '_alignedRigid'
-constProj_preAlignement = config["constraintProj_bases"]["snapshots"]["preAlignement"]
+    # pre alignment done to frames, can be '_centered' or '_alignedRigid'
+    constProj_preAlignement = config["constraintProj_bases"]["snapshots"]["preAlignement"]
 
-if constProj_preAlignement == "_noAlignement": centered = True
-elif constProj_preAlignement == "_centered": centered = False
-else: print("Error! unknown alignment method for .")
+    if constProj_preAlignement == "_noAlignement": centered = True
+    elif constProj_preAlignement == "_centered": centered = False
+    else: print("Error! unknown alignment method for .")
 
-#constProj_snapshots_format = config["constraintProj_bases"]["snapshots"]["format"]
-constProj_snapshots_folder = config["constraintProj_bases"]["constraintType"]["snaps_folder"]     # where snapshots are stored
-constProj_preprocessed_snapshots_folder = config["constraintProj_bases"]["snapshots"]["processed_snapshots_folder"]     # where snapshots can be stored after pre-processing
-constProj_snapshots_ready = config["constraintProj_bases"]["snapshots"]["processed_snapshots_ready"]
+    # where snapshots are stored
+    constProj_snapshots_folder = config["constraintProj_bases"]["constraintType"]["snaps_folder"]
+    # where snapshots can be stored after pre-processing # TODO
+    constProj_preprocessed_snapshots_folder = config["constraintProj_bases"]["snapshots"]["processed_snapshots_folder"]
+    constProj_snapshots_ready = config["constraintProj_bases"]["snapshots"]["processed_snapshots_ready"]
+    # number of snapshots used in computations (NO. files you have)
+    constProj_maxFrames = config["constraintProj_bases"]["snapshots"]["max_numFrames"]
+    # number of snapshots used in computations
+    constProj_numFrames = config["constraintProj_bases"]["snapshots"]["numFrames"]
+    # number of bases to be computed
+    constProj_numComponents = config["constraintProj_bases"]["numComponents"]
+    # p: the row size of the nonlinear constraint projection is p x 3
+    constProj_p_size = config["constraintProj_bases"]["constraintType"]["rowSize"]
 
-constProj_maxFrames = config["constraintProj_bases"]["snapshots"]["max_numFrames"]      # number of snapshots used in computations (NO. files you have)
-constProj_numFrames = config["constraintProj_bases"]["snapshots"]["numFrames"]           # number of snapshots used in computations
-constProj_numComponents = config["constraintProj_bases"]["numComponents"]    # number of bases to be computed
-constProj_p_size = config["constraintProj_bases"]["constraintType"]["rowSize"]
-if config["constraintProj_bases"]["snapshots"]["read_all_from_first"]:
-    constProj_frame_increment = 1
-else:
-    constProj_frame_increment = constProj_numFrames//constProj_maxFrames
-    assert constProj_frame_increment <= 10    # max number of frame increment
+    if config["constraintProj_bases"]["snapshots"]["read_all_from_first"]:
+        constProj_frame_increment = 1
+    else:
+        constProj_frame_increment = constProj_numFrames//constProj_maxFrames
+        assert constProj_frame_increment <= 10    # max number of frame increment
 
-# notice that data should be put in place so that all .py can have access too!
-constProj_input_snapshots_pattern = "input_data/" + name + "/" + experiment + "/constraintsProjection_snapshots/" + constProj_snapshots_folder + "/aux_"
+    # notice that data should be put in place so that all .py can have access too!
+    constProj_input_snapshots_pattern = "input_data/" \
+                                        + name + "/" \
+                                        + experiment \
+                                        + "/constraintsProjection_snapshots/" \
+                                        + constProj_snapshots_folder \
+                                        + "/aux_"
 
-constProj_input_preprocessed_snapshots_dir = "input_data/" + name + "/" + experiment + "/" + constProj_preprocessed_snapshots_folder + "/"
+    constProj_input_preprocessed_snapshots_dir = "input_data/" \
+                                                 + name + "/" \
+                                                 + experiment + "/" \
+                                                 + constProj_preprocessed_snapshots_folder + "/"
 
-constProj_store_sing_val = config["constraintProj_bases"]["store_sing_val"]
+    constProj_store_sing_val = config["constraintProj_bases"]["store_sing_val"]
+    constProj_element = config["constraintProj_bases"]["constraintType"]["name"]
+    constProj_bases_type = config["constraintProj_bases"]["type"]
 
-constProj_preprocessed_snapshots_file = "snapshots_" + str(constProj_numFrames)+ "outOf" + str(constProj_maxFrames)+"_Frames_" + str(constProj_frame_increment) + "_increment_" + constProj_preAlignement + ".bin"
+    constProj_preprocessed_snapshots_file = "snapshots_" \
+                                            + str(constProj_numFrames)\
+                                            + "outOf" + str(constProj_maxFrames)\
+                                            + "_Frames_" \
+                                            + str(constProj_frame_increment)\
+                                            + "_increment_" + constProj_preAlignement \
+                                            + ".bin"
 
-constProj_element = config["constraintProj_bases"]["constraintType"]["name"]
-constProj_masses_file = "input_data/" + name + "/" + name + "_" + constProj_element +"_massMatrix.bin"
+    constProj_masses_file = "input_data/" \
+                            + name + "/" \
+                            + name + "_" \
+                            + constProj_element \
+                            + "_massMatrix.bin"
+    """
+    Set necessary boolean parameters
+    """
+    constProj_standarize, constProj_massWeight, constProj_orthogonal, constProj_support = False, False, False, False
+    if config['constraintProj_bases']['standarized'] == '_Standarized':  # '_Standarized'/ '_nonStandarized'
+        constProj_standarize = True
+    if config['constraintProj_bases']['massWeighted'] == '_Volkwein':     # 'Volkwein' / '_nonWeighted'
+        constProj_massWeight = True
+    if config['constraintProj_bases']['orthogonalized'] == '_Orthogonalized':  # '_Orthogonalized'/'_nonOrthogonalized'
+        constProj_orthogonal = True
+    if config['constraintProj_bases']['supported'] == '_Localized':    # '_Localized'/'_Global'
+        constProj_support = 'local'
+    else:
+        constProj_support = 'global'
 
-constProj_bases_type = constProj_element = config["constraintProj_bases"]["type"]
-"""
-Set necessary boolean parameters
-"""
-constProj_standarize, constProj_massWeight, constProj_orthogonal, constProj_support = False, False, False, False
-if config['constraintProj_bases']['standarized'] == '_Standarized':  # '_Standarized'/ '_nonStandarized'
-    constProj_standarize = True
-if config['constraintProj_bases']['massWeighted'] == '_Volkwein':     # 'Volkwein' / '_nonWeighted'
-    constProj_massWeight = True
-if config['constraintProj_bases']['orthogonalized'] == '_Orthogonalized':  # '_Orthogonalized'/'_nonOrthogonalized'
-    constProj_orthogonal = True
-if config['constraintProj_bases']['supported'] == '_Localized':    # '_Localized'/'_Global'
-    constProj_support = 'local'
-else:
-    constProj_support = 'global'
+    """
+        Form the name of the storing files automatically depending on the given bases type and its characteristics
+    """
 
-"""
-    Form the name of the storing files automatically depending on the given bases type and its characteristics
-"""
+    constProj_bases_name_extention = constProj_bases_type \
+                                     + constProj_preAlignement \
+                                     + config['constraintProj_bases']['massWeighted'] \
+                                     + config['constraintProj_bases']['standarized'] \
+                                     + config['constraintProj_bases']['supported']\
+                                     + config['constraintProj_bases']['orthogonalized'] \
+                                     + constProj_testing
 
-constProj_bases_name_extention = constProj_bases_type + constProj_preAlignement + config['constraintProj_bases']['massWeighted'] +\
-                            config['constraintProj_bases']['standarized'] + config['constraintProj_bases']['supported']+ \
-                            config['constraintProj_bases']['orthogonalized'] + constProj_testing
+    constProj_output_directory = "results/" \
+                                 + name + "/" \
+                                 + experiment\
+                                 + "/p_bases/"\
+                                 + constProj_name + "/" \
+                                 + constProj_bases_name_extention +  "/" \
+                                 + str(constProj_numFrames) \
+                                 + "outOf" \
+                                 + str(constProj_numFrames) \
+                                 + "_Frames/" \
+                                 + str(constProj_frame_increment) \
+                                 + "_increment_" \
+                                 + str(constProj_numComponents) + "_K_/"
 
-constProj_output_directory = "results/" + name + "/" + experiment + "/p_bases/" + constProj_bases_name_extention + \
-                           "/" + str(constProj_numFrames) + "outOf" + str(constProj_numFrames) + "_Frames_/" + \
-                           str(constProj_frame_increment) + "_increment_" + str(constProj_numComponents) + constProj_preAlignement + "_bases/"
-
-if not os.path.exists(constProj_output_directory):
-    # Create a new directory because it does not exist
-    os.makedirs(constProj_output_directory)
-    print("A directory is created to store nonlinear bases!")
-else:
-    print("Warning! an old the store directory already exists: \n", constProj_output_directory,\
-          "\n make sure you are not over-writing! ")
+    if not os.path.exists(constProj_output_directory):
+        # Create a new directory because it does not exist
+        os.makedirs(constProj_output_directory)
+        print("A directory is created to store nonlinear bases!")
+    else:
+        print("Warning! an old the store directory already exists: \n", constProj_output_directory,\
+              "\n make sure you are not over-writing! ")
 

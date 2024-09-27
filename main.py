@@ -1,38 +1,41 @@
 # This file is part of the animSnapBases project (https://github.com/ShMonem/animSnapBases).
-# Copyright animSnapBases Shaimaa Monem, Peter Bener and Christian Lessig. All rights reserved.
+# Copyright animSnapBases Shaimaa Monem. All rights reserved.
 # License: Apache-2.0
 
 import os
 import cProfile
 import pstats
-
+import csv
 from utils.process import convert_sequence_to_hdf5, load_off, load_ply, align, view_anim_file, view_components
 from functools import partial
 # vertex position parameters
 from config.config import compute_pos_bases, compute_constProj_bases, show_profile
+
 if compute_pos_bases:
     from snapbases.posComponents import posComponents
     from config.config import vertPos_numFrames, snapshots_format, frame_increment, input_snapshots_pattern, \
-                                    input_animation_dir, snapshots_animation_file, \
-                                    visualize_snapshots, vertPos_output_directory, vertPos_numComponents,\
-                                    aligned_snapshots_directory, aligned_snapshots_animation_file, \
-                                    vertPos_output_animation_file, snapshots_anim_ready, rigid, visualize_bases, store_bases
+        input_animation_dir, snapshots_animation_file, \
+        visualize_snapshots, vertPos_output_directory, \
+        aligned_snapshots_directory, aligned_snapshots_animation_file, \
+        rigid, visualize_bases
 
 
 # constraints projection parameters
 if compute_constProj_bases:
     from snapbases.constraintsComponents import constraintsComponents
     from config.config import constProj_output_directory
-    from generate_figures.nl_reduction_tests import run_pca_bases_constriants_tests
 
+    from generate_figures.nl_reduction_tests import plot_deim_reconstruction_errors
 
 root_folder = os.getcwd()
 profiler = cProfile.Profile()
 
 
 def main():
+    store_nonlinear_bases = False
+    run_deim_tests = True
+    if compute_pos_bases:  # if position bases will be computed
 
-    if compute_pos_bases: # if position bases will be computed
         print("Computing bases for positions vertices")
         # in case input_animation_dir has ot been created yet:
         # read snapshots: list of meshes in .off or .ply format
@@ -54,9 +57,10 @@ def main():
             if snapshots_format == ".off":
                 convert_sequence_to_hdf5(input_snapshots_pattern, partial(load_off, no_colors=True),
                                          snapsots_h5_file, vertPos_numFrames, frame_increment)
-            elif snapshots_format == ".ply":  # TODO: test
+            elif snapshots_format == ".ply":
+                # TODO: test
                 convert_sequence_to_hdf5(input_snapshots_pattern, load_ply,
-                                         snapsots_h5_file, frame_increment)
+                                         snapsots_h5_file, vertPos_numFrames, frame_increment)
             else:
                 print("Yet, only .off/.ply mesh files are supported for snapshots!")
                 return
@@ -77,39 +81,54 @@ def main():
         # store bases
         bases.store_animations(vertPos_output_directory)
 
-        # store .bin and .npy format for bases for use and comparision
-        if store_bases:
-            bases.store_components_to_files(vertPos_output_directory, vertPos_numComponents, vertPos_numComponents, 10, '.npy')
-            bases.store_components_to_files(vertPos_output_directory, 10, vertPos_numComponents, 10, '.bin')
-
         # see aligned snapshots
         if visualize_snapshots:
             view_anim_file(aligned_snapshots_h5_file)
-
 
         if visualize_bases:
             view_components(os.path.join(vertPos_output_directory, bases.output_components_file))
 
     if compute_constProj_bases:
-        print("Computining nonlinear bases for")
+        print("Computing nonlinear bases for")
 
         ''' Compute PCA bases/components as they are required any way!'''
         nonlinearBases = constraintsComponents()
+
+        # Configuring snapsots parameters and nonliner parameters can be modified in config.json and config.py
+        nonlinearBases.nonlinearSnapshots.config()
+        nonlinearBases.config()
+
+        # Read and preprocess nonlinear snapshots
+        nonlinearBases.nonlinearSnapshots.snapshots_prepare()
+
+        # Compute PCA bases for nonlinear function and store singular value if desired
         nonlinearBases.compute_components_store_singvalues(constProj_output_directory)
+
+        # Post-process bases w.r.to standardization and mass weighting
         nonlinearBases.post_process_components()
 
+        # Compute DEIM Interpolation points
         nonlinearBases.deim_blocksForm()
-        '''run tests and store bases to files '''
-        test_pca_bases = False
-        test_deim = False
-        store_bases_files = False
 
-        run_pca_bases_constriants_tests(nonlinearBases, test_pca_bases, test_deim)
+        if run_deim_tests:
+            header = ['numPoints', 'fro_error', 'max_err', 'relative_errors_x', 'relative_errors_y',
+                      'relative_errors_z']
 
-        if store_bases_files:
-            nonlinearBases.store_components_to_files(constProj_output_directory, 1, nonlinearBases.numComp,
-                                                     5, nonlinearBases.comps, nonlinearBases.deim_alpha,
-                                                     "DEIM_e_alphas_", '.bin')
+            file_name = os.path.join(constProj_output_directory, "deim_convergence_tests")
+            with open(file_name + '.csv', 'w', encoding='UTF8') as dataFile:
+                writer = csv.writer(dataFile)
+                writer.writerow(header)
+
+                plot_deim_reconstruction_errors(nonlinearBases, writer)
+
+            dataFile.close()
+
+        if store_nonlinear_bases:
+            start = 1
+            end = nonlinearBases.numComp
+            step = 1
+            nonlinearBases.store_components_to_files(constProj_output_directory, start, end,
+                                                     step, nonlinearBases.comps, nonlinearBases.deim_alpha, '.bin')
 
 
 if __name__ == '__main__':
@@ -121,4 +140,4 @@ if __name__ == '__main__':
         stats = pstats.Stats(profiler).sort_stats('tottime')
         stats.print_stats()
     else:
-       main()
+        main()

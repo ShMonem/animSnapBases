@@ -27,7 +27,10 @@ experiment = config["object"]["experiment"]  # name of you simulations
 
 compute_pos_bases =config["vertexPos_bases"]['computeState']["compute"]
 show_profile = False
-
+# weighted selection matrix that maps constraints projections to position space
+tri_mesh_file = "input_data/" \
+            + name + "/" \
+            + name + ".obj"
 if compute_pos_bases:
     # testing state (only decoration for file name)
     # _Released / _Debugging / _Testing
@@ -222,6 +225,7 @@ if compute_pos_bases:
 """
 
 compute_constProj_bases =config["constraintProj_bases"]['computeState']["compute"]
+
 if compute_constProj_bases:
     constProj_name = config["constraintProj_bases"]["constraintType"]["name"]
     constProj_dim = config['constraintProj_bases']['dim']
@@ -242,9 +246,11 @@ if compute_constProj_bases:
     else: print("Error! unknown alignment method for .")
 
     # where snapshots are stored
+    constProj_snapshots_type = config["constraintProj_bases"]["constraintType"]["name"]
     constProj_snapshots_folder = config["constraintProj_bases"]["constraintType"]["snaps_folder"]
+    snaps_pattern_full_p = config["constraintProj_bases"]["constraintType"]["snaps_pattern_full_p"]
     # where snapshots can be stored after pre-processing # TODO
-    constProj_preprocessed_snapshots_folder = config["constraintProj_bases"]["snapshots"]["processed_snapshots_folder"]
+    constProj_preprocessed_snapshots_folder = config["constraintProj_bases"]["snapshots"]["processed_snapshots_file"]
     constProj_snapshots_ready = config["constraintProj_bases"]["snapshots"]["processed_snapshots_ready"]
     # number of snapshots used in computations (NO. files you have)
     constProj_maxFrames = config["constraintProj_bases"]["snapshots"]["max_numFrames"]
@@ -265,9 +271,9 @@ if compute_constProj_bases:
     constProj_input_snapshots_pattern = "input_data/" \
                                         + name + "/" \
                                         + experiment \
-                                        + "/constraintsProjection_snapshots/" \
                                         + constProj_snapshots_folder \
-                                        + "/aux_"
+                                        + constProj_snapshots_type \
+                                        + snaps_pattern_full_p
 
     constProj_input_preprocessed_snapshots_dir = "input_data/" \
                                                  + name + "/" \
@@ -291,6 +297,22 @@ if compute_constProj_bases:
                             + name + "_" \
                             + constProj_element \
                             + "_massMatrix.bin"
+
+    # weighted selection matrix that maps constraints projections to position space
+    constProj_weightedSt = "input_data/" \
+                                        + name + "/" \
+                                        + experiment \
+                                        + constProj_snapshots_folder \
+                                        + constProj_snapshots_type +"/" \
+                                        + name + "_lambdaSt_"+constProj_snapshots_type+"_weighted.bin"
+
+    constProj_constrained_Stp0 = "input_data/" \
+                           + name + "/" \
+                           + experiment \
+                           + constProj_snapshots_folder \
+                           + constProj_snapshots_type + "/" \
+                           +"St_aux_0.off"
+
     """
     Set necessary boolean parameters
     """

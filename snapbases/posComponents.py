@@ -178,7 +178,7 @@ class posComponents:  # Components == bases
             E_rms = norm(R)/sqrt(3*self.pos_snapshots.nVerts*self.pos_snapshots.frs)   # Kavan et.al. 2010
             energy = (R**2).sum() + sparsity
 
-            # TODO convergence check
+            # TODO convergence check plot
             print("itr %03d, Energy =%f, Error =%f" % (it, energy, E_rms))
 
     def test_convergence(self, start, end, step):
@@ -260,7 +260,6 @@ class posComponents:  # Components == bases
         numframes, numverts = self.pos_snapshots.frs, self.pos_snapshots.nVerts
 
         basesFile = os.path.join(output_bases_dir, self.fileNameBases)
-        # basesnoMeanFile = os.path.join(output_bases_dir, self.fileNamenoMeanBases)
         # store separate .bin for different numbers of components
         for k in range(start, end + 1, step):
             store_components(basesFile, numframes, k, numverts, 3, self.comps[:k, :, :], fileType, 'K')

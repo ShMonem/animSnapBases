@@ -2,15 +2,16 @@ import os
 import numpy as np
 import numpy.linalg as npla
 from scipy.linalg import svd, norm, qr, lu_factor, lu_solve
-
+import copy
 import csv
 import cProfile
 from config.config import constProj_bases_type, constProj_support, constProj_numComponents, constProj_store_sing_val, \
-    constProj_massWeight, constProj_standarize, constProj_orthogonal, constProj_output_directory
+    constProj_massWeight, constProj_standarize, constProj_orthogonal, constProj_output_directory, constProj_weightedSt
 
 from snapbases.nonlinear_snapshots import nonlinearSnapshots
 from utils.utils import store_components, store_interpol_points_vector
-from utils.utils import log_time
+from utils.utils import log_time, read_sparse_matrix_from_bin
+from utils.support import find_tetrahedrons_with_vertices
 root_folder = os.getcwd()
 profiler = cProfile.Profile()
 
@@ -42,7 +43,8 @@ class constraintsComponents:  # Components == bases
         self.deim_S = None  # All interpolation rows (complete 0< rows < e.p) used to construct P^T
         self.deim_M = None  # (P^T V)
         self.deim_res_norm = None  # norm(vk - Vc)
-        self.deim_alpha = None  # Indices of interpolation blocks (0 < block < e)
+        self.deim_alpha = None  # Indices of interpolation blocks (0 < block < e), error measure in constained elements space
+        self.deim_error_in_pos_space_alpha = None   # Indices of interpolation blocks (0 < block < e) , error measure in vert space
 
     def config(self, fileNameBases="p_nl_", fileName_deim_points="p_nl_interpol_points_",
                file_name_sing="pca_singValues"):
@@ -107,7 +109,7 @@ class constraintsComponents:  # Components == bases
     def compute_nonlinearSnap_k_bases(self, writer):
 
         # inialized by a copy of the original snapshots tensor (F, ep, d)
-        R = self.nonlinearSnapshots.snapTensor.copy()
+        R = copy.deepcopy(self.nonlinearSnapshots.snapTensor)
         #  initialization
         C = []
         W = []
@@ -330,71 +332,6 @@ class constraintsComponents:  # Components == bases
         error = np.abs(f - f_reconstructed)
         return np.max(error)/np.max(f)
 
-    def test_DEIM_reconstruction_error_at_different_kp_bases(self, error_full, error_kp):
-        """
-        Computes re-construction error at full range of snapshots
-        :param :
-        error_full, error_kp : empty lists to be filled, error at all 'e' points and error at only 'k' points resp.
-        :return:
-        error_full = ||Vc(t) - p(t)||/(sqrt(3 ep F) ||snapshots||),
-        error_kp= ||S^T Vc(t) - S^T p(t)||/(sqrt(3 kp F) ||S^T snapshots||),
-                with S the 'kp' indecies of the k blocks in the 'ep' dim of V
-        """
-
-        snapshots = self.nonlinearSnapshots.snapTensor.copy()  # (F, ep, 3)
-        denom = np.sqrt(3 * snapshots.shape[1] * snapshots.shape[0]) * norm(snapshots)  # sqrt(3 ep F) * ||snapshots||
-
-        bases = np.swapaxes(self.comps, 0, 1)  # (ep, Kp, 3)
-
-        for numBases_blocks in range(1, self.numComp + 1):
-
-            p = self.nonlinearSnapshots.constraintsSize
-            S = self.deim_S[:numBases_blocks * p]  # (Kp,)
-            # sqrt(3 kp F) ||S^T snapshots||
-            denom_c = np.sqrt(3 * S.shape[0] * snapshots.shape[0]) * norm(snapshots[:, S, :])
-            # V (ep, Kp, 3) = comp^T
-            b = snapshots[:, S, :]  # S^T p(t)   (F, kp, 3)
-            A = bases[S, :numBases_blocks * p, :]  # S^T V  (Kp, Kp, 3)
-            c = np.empty((self.nonlinearSnapshots.frs, S.size, 3))
-            z = np.empty(snapshots.shape)  # (F, ep, 3)
-
-            # TODO: can the following part be performed with tensors operations directly?
-            for f in range(self.nonlinearSnapshots.frs):
-                for d in range(3):
-                    c[f, :, d] = npla.solve(A[:, :, d], b[f, :, d])  # c(t) = (S^T V)^{-1} S^T p(t)  (Kp, 3) at each 'f'
-                    z[f, :, d] = bases[:, :S.shape[0], d] @ c[f, :, d]  # V c(t)  (ep, 3) at each 'f'
-
-            # TODO: try different norms
-            error_full.append((norm(z - snapshots)) / denom)  # ||Vc(t) - p(t)||
-            error_kp.append((norm(z[:, S, :] - snapshots[:, S, :])) / denom_c)
-
-    def test_PCA_reconstruction_error_at_kp_bases_using_weights(self, error_full, error_kp):
-        """
-         Computes re-construction error at full range of snapshots
-        :param error_full: error at all 'e' points
-        :param error_kp: error at only 'k' points
-        :return: passes filled lists
-        error_full = ||WC(t) - p(t)||/(sqrt(3 ep F) ||snapshots||),
-        error_kp= ||S^T WC(t) - S^T p(t)||/(sqrt(3 kp F) ||S^T snapshots||),
-                with S the 'kp' indecies of the k blocks in the 'ep' dim of V
-        """
-        p = self.nonlinearSnapshots.constraintsSize
-        e = self.nonlinearSnapshots.constraintVerts
-        nfrs = self.nonlinearSnapshots.frs
-        snapshots = self.nonlinearSnapshots.snapTensor.copy()  # (F, ep, 3)
-
-        denom = np.sqrt(3 * e * p * nfrs) * norm(snapshots)
-
-        for k in range(1, self.numComp + 1):
-            denom_c = np.sqrt(3 * k * p * nfrs) * norm(snapshots)
-            S = self.largeDeforBlocks[:k * p]  # (Kp,)
-
-            res = np.tensordot(self.weigs[:, :k * p], self.comps[:k * p, :, :], axes=1)
-            res -= snapshots  # || WC - p(t)||  #  (F, ep, 3)
-
-            error_full.append(norm(res) / denom)  # Kavan et.al. 2010
-            error_kp.append(norm(res[:, S, :]) / denom_c)
-
     def test_basesSingVals(self, writer=None):
         """
         Computes normalized singular values along all Kp vectors on the already fully-extracted PCA bases
@@ -424,8 +361,7 @@ class constraintsComponents:  # Components == bases
         pointsFile = os.path.join(output_dir, self.fileName_deim_points)
         p = self.nonlinearSnapshots.constraintsSize
 
-        store_interpol_points_vector(pointsFile, self.nonlinearSnapshots.frs,
-                     self.numComp, points, fileType)
+        store_interpol_points_vector(pointsFile, self.nonlinearSnapshots.frs, self.numComp, points, fileType)
         # store separate .bin for different numbers of components
         for k in range(start, end + 1, step):
             store_components(basesFile, numframes, k * p, numverts, 3, bases[:k * p, :, :], fileType, 'Kp')
@@ -482,7 +418,7 @@ class constraintsComponents:  # Components == bases
     #                  np.asarray(union).shape[0], np.asarray(union), extension='.bin')
     #
     @log_time(constProj_output_directory)
-    def deim_blocksForm(self):
+    def deim_blocksForm(self, error_in_pos_space):
         """
         :return:
         """
@@ -490,8 +426,10 @@ class constraintsComponents:  # Components == bases
         e = self.nonlinearSnapshots.constraintVerts
         d = self.nonlinearSnapshots.dim
         K = self.numComp
-
+        St = None
         bases = self.comps.swapaxes(0, 1)  # (ep, Kp, d)
+        if error_in_pos_space:
+            St = read_sparse_matrix_from_bin(constProj_weightedSt)
 
         # initialization
         vk = bases[:, :p, :]  # v0  (ep, :p, 3)
@@ -500,6 +438,7 @@ class constraintsComponents:  # Components == bases
         Pt = []
         res = []
         e_points = []
+        v_points = []
         for k in range(K):
             if k == 0:
                 r = vk
@@ -513,6 +452,11 @@ class constraintsComponents:  # Components == bases
                     c[:, :, i] = V[:, :, i] @ npla.solve(V[Pt, :, i], vk[Pt, :, i])  # (ep, kp,)@ (kp,kp)(kp,) --(ep,)xd
 
                 r = c - vk  # error  (ep, p, d)
+                if error_in_pos_space:
+                    St_r = St @ r.reshape(r.shape[0], -1)
+                    St_alpha = np.argmax((St_r**2).sum(axis=1))
+                    v_points.append(St_alpha)
+
                 res.append(norm(r))
                 if np.allclose(r, np.zeros(r.shape)):
                     print("ERROR!: deim res is zero!!")
@@ -535,42 +479,14 @@ class constraintsComponents:  # Components == bases
         self.deim_alpha = np.array(e_points)
         self.deim_S = np.array(Pt)
         self.deim_res_norm = np.array(res)
+        print(v_points)
 
-        print('DEIM K = ', self.deim_alpha.shape)
+        print('DEIM alpha shape = ', self.deim_alpha.shape)
 
-
-    #
-    #
-    # def max_raw(self, R, p):
-    #     # R (ep, F, 3)
-    #     magnitude = (R ** 2).sum(axis=2)
-    #     idx = np.argmax(magnitude.sum(axis=1))
-    #     return idx // p
-    #
-    # def test_deim_blocksForm_convergence(self, VM, Pt):
-    #
-    #     snapshots = self.nonlinearSnapshots.snapTensor.copy()  # (F, ep, 3)
-    #
-    #     denom = np.sqrt(3 * Pt.shape[0] * snapshots.shape[0])
-    #     p = self.nonlinearSnapshots.constraintsSize
-    #     K = VM.shape[1]//p
-    #     error_list = []
-    #     for k in range(K):
-    #         Pt_ = Pt[:k*p]
-    #         VM_ = VM[:, :k*p, :]
-    #         for frame in range(snapshots.shape[0]):
-    #
-    #             snap_r = snapshots[frame, Pt_, :]  # Pt p(q)
-    #
-    #             reconstructed_snapsh = np.empty((Pt_.shape[0], 3))
-    #             for i in range(3):
-    #                 reconstructed_snapsh[:, i] = VM_[Pt_, :, i] @ snap_r[:, i]
-    #
-    #             error = norm(reconstructed_snapsh - snapshots[frame, Pt_, :]) / denom
-    #             error_list.append(error)
-    #         print(np.mean(np.array(error_list)))
-    #     return
-    #
-    # '''
-    #     --- Store data ---
-    # '''
+        if len(v_points) != len(set(v_points)):
+            print("DEIM Large deformation vertices are not unique:", len(set(v_points)), "points out of", len(v_points))
+        tet_list = find_tetrahedrons_with_vertices(set(v_points), self.nonlinearSnapshots.tets)
+        print("We found",len(set(tet_list)), "related elements")
+        if len(tet_list) != len(set(tet_list)):
+            print("DEIM Large deformation elements are not unique:", len(set(tet_list)), "points out of", len(tet_list))
+        self.deim_error_in_pos_space_alpha = np.array(tet_list)

@@ -113,7 +113,7 @@ class posSnapshots:
 
         hrpdMass = np.zeros(N)  # m_vertexMass from hrpd simulation
 
-        if not fileName:
+        if not os.path.exists(fileName):
             # if no file given, use igl to compute masses
             m = igl.massmatrix(self.verts[0], self.tris, igl.MASSMATRIX_TYPE_VORONOI)
             hrpdMass = np.diag(m.todense())

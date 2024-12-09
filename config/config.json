@@ -62,20 +62,21 @@
 		{
 			"name": "tetstrain",
 			"elements": "_tets",
-			"snaps_folder": "tetstrain/FOM",
+			"snaps_folder": "/constraintProjection_snapshots/noPosReduction_noConstraintProjReduction/",
+			"snaps_pattern_full_p": "/aux_",
 			"rowSize": 3
 		},
 		"snapshots":
 		{
 			"max_numFrames": 200,
-			"numFrames": 200,
+			"numFrames": 20,
 			"read_all_from_first": true,
-			"processed_snapshots_folder": "NL_processed_snapshots_bin",
+			"processed_snapshots_file": "/processed_snapshots/",
 			"preAlignement": "_noAlignement" ,
 			"processed_snapshots_ready": false
 		},
 		"type": "deim",
-		"numComponents": 200,
+		"numComponents": 5,
 		"dim": 3,
 		"constraintsDim": 3,
 		"rest_shape": "first",

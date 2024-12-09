@@ -7,6 +7,7 @@ import cProfile
 import pstats
 import csv
 from utils.process import convert_sequence_to_hdf5, load_off, load_ply, align, view_anim_file, view_components
+from utils.utils import store_matrix, store_vector, write_tensor_to_bin_colmajor
 from functools import partial
 # vertex position parameters
 from config.config import compute_pos_bases, compute_constProj_bases, show_profile
@@ -32,8 +33,8 @@ profiler = cProfile.Profile()
 
 
 def main():
-    store_nonlinear_bases = False
-    run_deim_tests = True
+    store_nonlinear_bases = True
+    run_deim_tests = False
     if compute_pos_bases:  # if position bases will be computed
 
         print("Computing bases for positions vertices")
@@ -90,7 +91,6 @@ def main():
 
     if compute_constProj_bases:
         print("Computing nonlinear bases for")
-
         ''' Compute PCA bases/components as they are required any way!'''
         nonlinearBases = constraintsComponents()
 
@@ -108,7 +108,8 @@ def main():
         nonlinearBases.post_process_components()
 
         # Compute DEIM Interpolation points
-        nonlinearBases.deim_blocksForm()
+        deim_interpolation_in_pos_space = True
+        nonlinearBases.deim_blocksForm(deim_interpolation_in_pos_space)
 
         if run_deim_tests:
             header = ['numPoints', 'fro_error', 'max_err', 'relative_errors_x', 'relative_errors_y',
@@ -124,13 +125,14 @@ def main():
             dataFile.close()
 
         if store_nonlinear_bases:
-            start = 1
-            end = nonlinearBases.numComp
-            step = 1
+            start = nonlinearBases.numComp
+            end = nonlinearBases.numComp+1
+            step = 5
             nonlinearBases.store_components_to_files(constProj_output_directory, start, end,
-                                                     step, nonlinearBases.comps, nonlinearBases.deim_alpha, '.bin')
+                                                     step, nonlinearBases.comps, nonlinearBases.deim_error_in_pos_space_alpha, '.bin')
 
-
+            # write_tensor_to_bin_colmajor(nonlinearBases.comps.swapaxes(0,1), "bases_tensor_ep_kp_3")
+            # store_vector("sphere_deim_S", nonlinearBases.deim_alpha, nonlinearBases.numComp, extension='.bin')
 if __name__ == '__main__':
 
     if show_profile:

@@ -8,7 +8,7 @@ import numpy as np
 import struct
 from numpy.linalg import matrix_rank
 from numpy import save, count_nonzero
-
+from scipy.sparse import csr_matrix
 
 def store_components(fileName, F, K, N, dim, basesTensor, extension='.bin',  colName='K'):
     """
@@ -82,7 +82,7 @@ def store_interpol_points_vector(fileName, F, K, points, extension='.bin', colNa
     :param extension: files type
     :return: stored file in the given path
     """
-    assert points.shape[0] == K
+    assert K <= points.shape[0]
     if extension == '.bin':
         with open(fileName + 'F' + str(F) + colName + str(K) + extension, 'wb') as doc0:
             doc0.write(struct.pack("<i", K))  # write a 4 byte integer in little endian
@@ -111,6 +111,24 @@ def store_vector(fileName, points, numPoints, extension='.bin'):
 
     if extension == '.npy':  # important in case we want to compare parts of the stored components as matrices
         save(fileName + '_' + str(numPoints), points)
+
+
+def store_matrix(fileName, mat, d1, d2, extension='.bin'):
+
+    assert mat.shape == (d1, d2)
+
+    if extension == '.bin':
+        with open(fileName + extension, 'wb') as doc0:
+            doc0.write(struct.pack("<i", d2))  # write a 4 byte integer in little endian
+            doc0.write(struct.pack("<i", d1))  # write a 4 byte integer in little endian
+            for i in range(d1):
+                for j in range(d2):
+                    value = mat[i, j]
+                    doc0.write(struct.pack("<d", value))  # write a double precision (8 byte) in little endian
+        doc0.close()
+
+    if extension == '.npy':  # important in case we want to compare parts of the stored components as matrices
+        save(fileName, mat)
 
 
 def check_matrix_properties(A):
@@ -199,3 +217,48 @@ def log_time(filePath):
             return result
         return wrapper
     return decorator
+
+
+def write_tensor_to_bin_colmajor(tensor, filename):
+    # Get the tensor's dimensions (N, Kp, 3)
+    N, Kp, channels = tensor.shape
+
+    # Ensure the tensor is 3D with shape (K, N, 3)
+    if channels != 3:
+        raise ValueError("The tensor must have 3 channels as the last dimension")
+
+    # Convert the tensor to column-major order (Fortran style)
+    tensor_col_major = np.asfortranarray(tensor)
+
+    # Open the file in binary write mode
+    with open(filename, 'wb') as f:
+        # Write the dimensions as unsigned 32-bit integers
+        f.write(np.array([N, Kp, channels], dtype=np.uint32).tobytes())
+
+        # Write the tensor data in column-major order
+        f.write(tensor_col_major.tobytes())
+
+def read_sparse_matrix_from_bin(filename):
+    with open(filename, "rb") as f:
+        # Read dimensions
+        rows = struct.unpack('<i', f.read(4))[0]
+        cols = struct.unpack('<i', f.read(4))[0]
+
+        # Read non-zero count
+        nnz = struct.unpack('<i', f.read(4))[0]
+
+        # Read row indices, column indices, and values
+        row_indices = []
+        col_indices = []
+        values =[]
+        for v in range(nnz):
+            row_indices.append(struct.unpack('<i', f.read(4))[0] )
+            col_indices.append(struct.unpack('<i', f.read(4))[0])
+            values.append(struct.unpack('<d', f.read(8))[0])
+        # row_indices = np.fromfile(f, dtype=np.int32, count=nnz)
+        # col_indices = np.fromfile(f, dtype=np.int32, count=nnz)
+        # values = np.fromfile(f, dtype=np.float64, count=nnz)  # Adjust dtype to match PDScalar in C++
+
+    # Reconstruct sparse matrix in COO format
+    sparse_matrix = csr_matrix((values, (row_indices, col_indices)), shape=(rows, cols))
+    return sparse_matrix

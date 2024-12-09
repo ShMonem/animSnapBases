@@ -8,6 +8,19 @@ from scipy.sparse.linalg import splu
 
 from utils.process import veclen, normalized
 
+
+def compute_tetMasses(vertexMasses, tetrahedrons, tetSize, auxiliarySize=3):
+
+    masses =np.zeros(tetSize * auxiliarySize)
+    for t in range(tetrahedrons.shape[0]):
+        weights = np.array([vertexMasses[tetrahedrons[t, 0]], vertexMasses[tetrahedrons[t, 1]],
+                  vertexMasses[tetrahedrons[t, 2]], vertexMasses[tetrahedrons[t, 3]]])
+        weight = weights.sum()
+
+        for k in range(auxiliarySize):
+            masses[t * auxiliarySize + k] = weight
+
+    return masses
 '''
 The following functions are borrowed from: https://github.com/tneumann/splocs
 Copyright (c) 2013 Thomas Neumann
@@ -141,3 +154,29 @@ class GeodesicDistanceComputation(object):
         # print(phi.max())
         return phi
 
+
+def find_tetrahedrons_with_vertices(vertex_indices, tets):
+    """
+    Find all tetrahedrons that contain any of the given vertices.
+
+    Parameters:
+        vertex_indices (list of int): List of indices of vertices.
+        tets (list of list of int): List of tetrahedrons, each tetrahedron is represented by a list of vertex indices.
+
+    Returns:
+        list of list of int: List of tetrahedrons that contain any of the given vertices.
+    """
+    # Convert the list of vertex indices to a set for faster lookup
+    vertex_indices_set = set(vertex_indices)
+
+    # List to hold the tetrahedrons that include any of the specified vertices
+    matching_tet_indices = []
+
+    # Iterate over each tetrahedron
+    # Iterate over each tetrahedron
+    for index, tet in enumerate(tets):
+        # Check if any vertex of the tetrahedron is in the vertex_indices_set
+        if any(vertex in vertex_indices_set for vertex in tet):
+            matching_tet_indices.append(index)
+
+    return matching_tet_indices

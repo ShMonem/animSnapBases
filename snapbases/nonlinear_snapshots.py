@@ -3,12 +3,17 @@ import numpy as np
 import struct
 import sys
 import cProfile
-from utils.utils import log_time
-from config.config import constProj_input_snapshots_pattern, constProj_rest_shape, constProj_dim, \
+from utils.utils import log_time, read_sparse_matrix_from_bin
+from utils.process import view_anim_file, view_components
+from utils.support import compute_tetMasses
+import h5py
+from config.config import name, constProj_input_snapshots_pattern, constProj_rest_shape, constProj_dim, \
                             constProj_masses_file, constProj_numFrames, constProj_p_size, constProj_massWeight,\
-                            constProj_standarize, constProj_output_directory
+                            constProj_standarize, constProj_output_directory, constProj_weightedSt, tri_mesh_file,\
+                            constProj_constrained_Stp0
 
-
+import igl
+from scipy.sparse import coo_matrix
 root_folder = os.getcwd()
 profiler = cProfile.Profile()
 
@@ -39,6 +44,10 @@ class nonlinearSnapshots:
 
         self.snapTensor = None  # preprocessed snapshots tensors on which we compute components (basis/ modes)
                                 # expected size of (F, ep, 3)
+        # Elements of the tetrahedralized mesh
+        self.verts = None
+        self.tris = None
+        self.tets = None
 
 
     def config(self):
@@ -84,7 +93,7 @@ class nonlinearSnapshots:
 
         print("reading the nonlinear snapshots tensor ...")
         Xtemp = []
-        for i in range(self.frs):
+        for i in range(1, self.frs):
             file = open(self.snapshots_file+str(i)+".bin", "rb")
             #  read matrix dimension
             ni = struct.unpack('<i', file.read(4))[0]   # read a 4 byte integer in little endian
@@ -95,7 +104,7 @@ class nonlinearSnapshots:
                 for rowi in range(ni):
                     value = struct.unpack('<d', file.read(8))[0]  # read 8 byte little endian double
                     Mat_i[rowi, coli] = value
-            if i == 0:
+            if i == 1:
                 Xtemp = Mat_i[np.newaxis, :, :]    # create snapshots tensor
 
             else:
@@ -109,34 +118,58 @@ class nonlinearSnapshots:
         print("pre-process stats,  min:", np.min(self.snapTensor), "max: ", np.max(self.snapTensor),
               "mean: ", np.mean(self.snapTensor), "std:", np.std(self.snapTensor) )
 
+        #self.store_snapshots_animations(constProj_output_directory, "nonlinear_animation.h5")
+        #view_anim_file( "bign_ST.h5")
     def load_factorize_masses(self):
-        # load  m_vertexMass for the constrained simulation
-        fileMass = open(self.mass_file, "rb")   # mass matrix from the auxiliary vatriable
-        ni = struct.unpack('<i', fileMass.read(4))[0]   # read a 4 byte integer in little endian
-        mi = struct.unpack('<i', fileMass.read(4))[0]
 
-        hrpdAuxiliariesMass = np.zeros((ni))
-        for j in range(ni):
-            value = struct.unpack('<d', fileMass.read(8))[0]  # read 8 byte as little endian double
-            hrpdAuxiliariesMass[j] = value
-        fileMass.close()
+        if os.path.exists(self.mass_file):
+            # load  m_vertexMass for the constrained simulation
+            fileMass = open(self.mass_file, "rb")  # mass matrix from the auxiliary vatriable
+            ni = struct.unpack('<i', fileMass.read(4))[0]  # read a 4 byte integer in little endian
+            mi = struct.unpack('<i', fileMass.read(4))[0]
+
+            hrpdAuxiliariesMass = np.zeros((ni))
+            for j in range(ni):
+                value = struct.unpack('<d', fileMass.read(8))[0]  # read 8 byte as little endian double
+                hrpdAuxiliariesMass[j] = value
+            fileMass.close()
+            self.mass = hrpdAuxiliariesMass.copy()
+        else:
+            try:
+                # if no file given, use igl to compute masses
+                v, t, f = igl.read_mesh("input_data/" + name + "/" + name + "_made_tet.mesh")
+                self.verts, self.tris, self.tets = v, f, t
+                m = igl.massmatrix(v, f, igl.MASSMATRIX_TYPE_VORONOI)  # surface masses
+                vertexMasses = np.diag(m.todense())
+                #vertexMasses = vertexMasses/vertexMasses.sum()
+                if self.constraintsSize == 1:
+                    self.mass = vertexMasses
+                elif self.constraintsSize == 2:
+                    # TODO : tri case
+                    print("ERROR: mass matris is not computed!!!")
+                    self.mass = np.zeros(f.shape[0])
+                elif self.constraintsSize == 3:
+                    self.mass = compute_tetMasses(vertexMasses, t, self.constraintVerts, self.constraintsSize)
+
+            except IOError:
+                print(self.mass_file + " could not be read")
 
         #  compute Cholesky factorization for the diagonal auxliary mass matrix
-        self.mass = hrpdAuxiliariesMass.copy()
-        massL = np.sqrt(hrpdAuxiliariesMass)  # ep
+
+        massL = np.sqrt(self.mass)  # ep
 
         #  check the Cholesky factorization is done properly:
-        assert(np.allclose(np.multiply(massL, massL)-hrpdAuxiliariesMass, np.zeros(ni)))  # assert: LL^T = Masses
+        assert(np.allclose(np.multiply(massL, massL)-self.mass, np.zeros(self.constraintVerts * self.constraintsSize)))  # assert: LL^T = Masses
 
-        invMassL = np.zeros(ni)  # ep
-        for j in range(ni):
+        invMassL = np.zeros(self.constraintVerts * self.constraintsSize)  # ep
+        for j in range(self.constraintVerts * self.constraintsSize):
             if massL[j]:
                 invMassL[j] = 1/massL[j]
             else:
                 invMassL[j] = 0
 
         #  check the inverse of the Cholesky factorization:
-        assert(np.allclose(np.multiply(invMassL, massL), np.ones(ni)))  # assert: L^{-1}L = I
+        assert(np.allclose(np.multiply(invMassL, massL), np.ones(self.constraintVerts * self.constraintsSize)))  # assert: L^{-1}L = I
 
         self.massL = massL
         self.invMassL = invMassL
@@ -164,3 +197,22 @@ class nonlinearSnapshots:
         self.pre_scale_factor = 1 / (np.std(self.snapTensor))
         self.snapTensor *= self.pre_scale_factor
 
+    def store_snapshots_animations(self, output_bases_dir, file_name):
+
+        output_file = os.path.join(output_bases_dir, file_name)
+        # output_animation = os.path.join(output_bases_dir, self.output_animation_file)
+
+        verts, tris = igl.read_triangle_mesh(tri_mesh_file)
+        St = read_sparse_matrix_from_bin(constProj_weightedSt)
+        anim = []
+        for l in range(self.snapTensor.shape[0]):
+            anim.append(St @ self.snapTensor[l, :, :])
+        anim = np.array(anim)
+
+        # save components as animation
+        with h5py.File(output_file, 'w') as f:
+            f['default'] = verts
+            f['tris'] = tris
+            for i, c in enumerate(verts):
+                f['comp%03d' % i] = c
+        f.close()

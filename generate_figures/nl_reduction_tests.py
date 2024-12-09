@@ -47,7 +47,7 @@ def plot_deim_reconstruction_errors(nlConst_bases: constraintsComponents, writer
     plt.ylabel('Normalized $\sigma$')
     plt.title("singVals at larg_deformation points")
     # plt.yscale("log")
-    plt.xticks(np.arange(1, k+1, 1))
+    # plt.xticks(np.arange(1, k+1, 1))
     plt.legend()
 
     plt.subplot(rows, cols, 2)
@@ -59,7 +59,7 @@ def plot_deim_reconstruction_errors(nlConst_bases: constraintsComponents, writer
     plt.ylabel('Fro. nom')
     plt.title("norm(R) at K PCA bases extraction")
     # plt.yscale("log")
-    plt.xticks(np.arange(1, k + 1, 1))
+    # plt.xticks(np.arange(1, k + 1, 1))
     plt.legend()
 
     plt.subplot(rows, cols, 3)
@@ -86,7 +86,7 @@ def plot_deim_reconstruction_errors(nlConst_bases: constraintsComponents, writer
     plt.ylabel('Fro. nom')
     plt.title("Normalized singVal(bases), full Kp range")
     # plt.yscale("log")
-    plt.xticks(values)
+    # plt.xticks(values)
     plt.legend()
     fig_name = os.path.join(constProj_output_directory, 'pca_extraction_tests')
     plt.savefig(fig_name)
@@ -139,7 +139,7 @@ def plot_deim_reconstruction_errors(nlConst_bases: constraintsComponents, writer
     plt.title('Frobenius Norm')
     plt.yscale("log")
     # Set x-ticks to integers only
-    plt.xticks(np.arange(1, k + 1, 1)) # range 0 <= r <= numComponents
+    # plt.xticks(np.arange(1, k + 1, 1)) # range 0 <= r <= numComponents
     plt.legend()
 
     # Plot Relative Errors for each component (x, y, z)
@@ -153,7 +153,7 @@ def plot_deim_reconstruction_errors(nlConst_bases: constraintsComponents, writer
     plt.ylabel('Relative Error')
     plt.title('Relative Errors per Component (X, Y, Z)')
     plt.yscale("log")
-    plt.xticks(np.arange(1, k+1, 1))
+    # plt.xticks(np.arange(1, k+1, 1))
     plt.legend()
 
     #plt.tight_layout()
@@ -161,4 +161,4 @@ def plot_deim_reconstruction_errors(nlConst_bases: constraintsComponents, writer
     plt.savefig(fig_name)
     # End of DEIM tests ------------------------------------------------------------------------------------------------
 
-    plt.show()
+    # plt.show()

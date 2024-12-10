@@ -478,6 +478,6 @@ class constraintsComponents:  # Components == bases
                 V = np.concatenate((V, vk), axis=1)
 
         self.deim_alpha = np.array(e_points)
-        print("Deim interpolation used", self.deim_alpha.shape[0], "constrained elements", self.deim_alpha)
+        print("Deim interpolation used", self.deim_alpha.shape[0], "constrained elements")
         print(len(e_jump), e_jump)
         print(len(e_range), e_range)

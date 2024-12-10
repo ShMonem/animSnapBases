@@ -129,7 +129,7 @@ def main():
             end = nonlinearBases.numComp+1
             step = 5
             nonlinearBases.store_components_to_files(constProj_output_directory, start, end,
-                                                     step, nonlinearBases.comps, nonlinearBases.deim_error_in_pos_space_alpha, '.bin')
+                                                     step, nonlinearBases.comps, nonlinearBases.deim_alpha, '.bin')
 
             # write_tensor_to_bin_colmajor(nonlinearBases.comps.swapaxes(0,1), "bases_tensor_ep_kp_3")
             # store_vector("sphere_deim_S", nonlinearBases.deim_alpha, nonlinearBases.numComp, extension='.bin')

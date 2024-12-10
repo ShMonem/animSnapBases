@@ -257,7 +257,7 @@ if compute_constProj_bases:
     # number of snapshots used in computations
     constProj_numFrames = config["constraintProj_bases"]["snapshots"]["numFrames"]
     # number of bases to be computed
-    constProj_numComponents = config["constraintProj_bases"]["numComponents"]
+    constProj_numComponents_verts = config["constraintProj_bases"]["numComponents_verts"]
     # p: the row size of the nonlinear constraint projection is p x 3
     constProj_p_size = config["constraintProj_bases"]["constraintType"]["rowSize"]
 
@@ -351,8 +351,7 @@ if compute_constProj_bases:
                                  + str(constProj_numFrames) \
                                  + "_Frames/" \
                                  + str(constProj_frame_increment) \
-                                 + "_increment_" \
-                                 + str(constProj_numComponents) + "_K_/"
+                                 + "_increment_" + "/"
 
     if not os.path.exists(constProj_output_directory):
         # Create a new directory because it does not exist

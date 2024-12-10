@@ -83,17 +83,18 @@ def store_interpol_points_vector(fileName, F, K, points, extension='.bin', colNa
     :return: stored file in the given path
     """
     assert K <= points.shape[0]
+    print("Storing ",points.shape[0] , "interpolation points")
     if extension == '.bin':
-        with open(fileName + 'F' + str(F) + colName + str(K) + extension, 'wb') as doc0:
-            doc0.write(struct.pack("<i", K))  # write a 4 byte integer in little endian
+        with open(fileName + 'F' + str(F) + colName + str(K)+ "_points" + str(points.shape[0]) + extension, 'wb') as doc0:
+            doc0.write(struct.pack("<i", points.shape[0]))  # write a 4 byte integer in little endian
             doc0.write(struct.pack("<i", 1))  # write a 4 byte integer in little endian
-            for k in range(K):
+            for k in range(points.shape[0]):
                 value = points[k]
                 doc0.write(struct.pack("<d", value))  # write a double precision (8 byte) in little endian
         doc0.close()
 
     if extension == '.npy':  # important in case we want to compare parts of the stored components as matrices
-        save(fileName + str(F) + 'K' + str(K), points)
+        save(fileName + str(F) + 'K' + str(K)+ "_points" + str(points.shape[0]), points)
 
 
 def store_vector(fileName, points, numPoints, extension='.bin'):

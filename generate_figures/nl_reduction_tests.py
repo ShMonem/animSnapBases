@@ -33,14 +33,11 @@ def plot_deim_reconstruction_errors(nlConst_bases: constraintsComponents, writer
     plt.subplot(rows, cols, 1)
 
     # singular values at 'K' largest deformation blocks during PCA bases extarction
-    plt.plot(r_values, nlConst_bases.measures_at_largeDeforVerts[:, 2] /
-             nlConst_bases.measures_at_largeDeforVerts[:, 2].max(), 'bo', ls='-.', label='$\sigma_x$')
-
-    plt.plot(r_values, nlConst_bases.measures_at_largeDeforVerts[:, 3] /
-             nlConst_bases.measures_at_largeDeforVerts[:, 3].max(), 'ro', ls='-.', label='$\sigma_y$')
-
-    plt.plot(r_values, nlConst_bases.measures_at_largeDeforVerts[:, 4] /
-             nlConst_bases.measures_at_largeDeforVerts[:, 4].max(), 'go', ls='-.', label='$\sigma_z$')
+    # singVals starts from entry 4 in the measures_at_largeDeforVerts array
+    mark=['bo', 'ro', 'go']
+    for i in range(p):
+        plt.plot(r_values, nlConst_bases.measures_at_largeDeforVerts[:, 3+i] /
+                 nlConst_bases.measures_at_largeDeforVerts[:, 3+i].max(), mark[i], ls='-.', label=f'$\sigma_{{{i}}}$')
 
     plt.legend(loc='upper center')
     plt.xlabel('Reduction Dimension (r)')
@@ -51,9 +48,8 @@ def plot_deim_reconstruction_errors(nlConst_bases: constraintsComponents, writer
     plt.legend()
 
     plt.subplot(rows, cols, 2)
-
-    # residual_norm values at 'K' largest deformation blocks
-    plt.plot(r_values, nlConst_bases.measures_at_largeDeforVerts[:, 5], 'rv', ls='-', label='$\| R_{pca} \|_F$ blocks')
+    # residual_norm values at 'K' largest deformation blocks: norm(R) is expected to be the 3rd entry
+    plt.plot(r_values, nlConst_bases.measures_at_largeDeforVerts[:, 2], 'rv', ls='-', label='$\| R_{pca} \|_F$ blocks')
     plt.legend(loc='upper center')
     plt.xlabel('Reduction Dimension (r)')
     plt.ylabel('Fro. nom')
@@ -109,9 +105,9 @@ def plot_deim_reconstruction_errors(nlConst_bases: constraintsComponents, writer
     relative_errors_z = []
 
     f = nlConst_bases.nonlinearSnapshots.snapTensor
-    for rp in rp_values:
+    for r in r_values:
         # Reconstruct the tensor for the current r
-        f_reconstructed = nlConst_bases.deim_constructed(rp)
+        f_reconstructed = nlConst_bases.deim_constructed(r)
 
         # Compute various errors
         fro_error = nlConst_bases.frobenius_error(f, f_reconstructed)
@@ -126,7 +122,7 @@ def plot_deim_reconstruction_errors(nlConst_bases: constraintsComponents, writer
         relative_errors_z.append(rel_errors[2])
 
         if writer is not None:
-            writer.writerow([rp//p, fro_error, max_err, rel_errors[0], rel_errors[1], rel_errors[2]])
+            writer.writerow([r, fro_error, max_err, rel_errors[0], rel_errors[1], rel_errors[2]])
 
     # Plot Frobenius and inf norm error
     plt.figure('Error measures for DEIM ', figsize=(20, 10))
@@ -158,6 +154,17 @@ def plot_deim_reconstruction_errors(nlConst_bases: constraintsComponents, writer
 
     #plt.tight_layout()
     fig_name = os.path.join(constProj_output_directory, 'deim_convergence_tests')
+    plt.savefig(fig_name)
+
+    plt.figure('Number of constrained elements in DEIM ', figsize=(20, 10))
+    plt.subplot(1, 1, 1)
+    plt.plot(nlConst_bases.deim_alpha_ranges, 'bo', ls='--', label=' 0 < elements < e')
+    plt.xlabel('Reduction Dimension (r)')
+    plt.ylabel('number of elements')
+    plt.title('Number of constrained elements in DEIM ')
+
+    fig_name = os.path.join(constProj_output_directory, 'deim_numberOfElements')
+    plt.legend()
     plt.savefig(fig_name)
     # End of DEIM tests ------------------------------------------------------------------------------------------------
 

@@ -34,7 +34,7 @@ profiler = cProfile.Profile()
 
 def main():
     store_nonlinear_bases = True
-    run_deim_tests = False
+    run_deim_tests = True
     if compute_pos_bases:  # if position bases will be computed
 
         print("Computing bases for positions vertices")
@@ -131,8 +131,7 @@ def main():
             nonlinearBases.store_components_to_files(constProj_output_directory, start, end,
                                                      step, nonlinearBases.comps, nonlinearBases.deim_alpha, '.bin')
 
-            # write_tensor_to_bin_colmajor(nonlinearBases.comps.swapaxes(0,1), "bases_tensor_ep_kp_3")
-            # store_vector("sphere_deim_S", nonlinearBases.deim_alpha, nonlinearBases.numComp, extension='.bin')
+
 if __name__ == '__main__':
 
     if show_profile:

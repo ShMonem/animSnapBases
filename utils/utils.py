@@ -83,7 +83,7 @@ def store_interpol_points_vector(fileName, F, K, points, extension='.bin', colNa
     :return: stored file in the given path
     """
     assert K <= points.shape[0]
-    print("Storing ",points.shape[0] , "interpolation points")
+    print("Storing ", points.shape[0], "interpolation points")
     if extension == '.bin':
         with open(fileName + 'F' + str(F) + colName + str(K)+ "_points" + str(points.shape[0]) + extension, 'wb') as doc0:
             doc0.write(struct.pack("<i", points.shape[0]))  # write a 4 byte integer in little endian

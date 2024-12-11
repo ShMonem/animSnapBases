@@ -56,7 +56,7 @@
 		"computeState":
 		{
 			"compute": true,
-			"testingComputations": "_Testing"
+			"testingComputations": "_Release"
 		},
 		"constraintType":
 		{
@@ -77,6 +77,7 @@
 		},
 		"type": "deim",
 		"numComponents_verts": 5,
+		"bases_res_tol": 1e-20,
 		"dim": 3,
 		"constraintsDim": 3,
 		"rest_shape": "first",

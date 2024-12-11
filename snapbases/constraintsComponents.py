@@ -7,7 +7,7 @@ import csv
 import cProfile
 from config.config import constProj_bases_type, constProj_support, constProj_numComponents_verts, constProj_store_sing_val, \
     constProj_massWeight, constProj_standarize, constProj_orthogonal, constProj_output_directory, constProj_weightedSt,\
-    constProj_snapshots_type
+    constProj_snapshots_type, bases_R_tol
 
 from snapbases.nonlinear_snapshots import nonlinearSnapshots
 from utils.utils import store_components, store_interpol_points_vector
@@ -41,12 +41,15 @@ class constraintsComponents:  # Components == bases
         self.fileName_deim_points = ""
         self.file_name_sing = ""
 
-        # DEIM atributes
+        # DEIM attributes
         # self.deim_S = None  # All interpolation rows (complete 0< rows < e.p) used to construct P^T
         # self.deim_M = None  # (P^T V)
         # self.deim_res_norm = None  # norm(vk - Vc)
-        self.deim_alpha = None  # Indices of interpolation blocks (0 < block < e), error measure in constained elements space
-        self.St = None   # differential operator that maps constarints projections to position space
+        self.deim_alpha = None  # Indices of interpolation blocks (0 < block < e)
+        # deim_alpha_ranges: a list/array to keep the number of interpolation elements in deim
+        # in a fixed dim (x,y,z) bases with size (e*p, k*p) use deim_alpha[:deim_alpha_range(k)] interpolation points
+        self.deim_alpha_ranges = None
+        self.St = None   # differential operator that maps constraints projections to position space
 
     def config(self, fileNameBases="p_nl_", fileName_deim_points="p_nl_interpol_points_",
                file_name_sing="pca_singValues"):
@@ -94,7 +97,10 @@ class constraintsComponents:  # Components == bases
     @log_time(constProj_output_directory)
     def compute_components_store_singvalues(self, store_bases_dir):
         # compute_geodesic_distance = self.nonlinearSnapshots.compute_geodesic_distance
-        headerSing = ['component', 'idx', 'singVal1', 'singVal2', 'singVal3', 'residual_matrix_norm']
+        headerSing = ['component', 'idx', 'residual_matrix_norm']
+        p = self.nonlinearSnapshots.constraintsSize
+        for i in range(p):
+            headerSing.append('singVal'+str(i))
 
         file_name = os.path.join(store_bases_dir, self.file_name_sing)
         if self.storeSingVal:
@@ -108,7 +114,7 @@ class constraintsComponents:  # Components == bases
             self.compute_nonlinearSnap_k_bases(None)
 
     @log_time(constProj_output_directory)
-    def compute_nonlinearSnap_k_bases(self, writer):
+    def compute_nonlinearSnap_k_bases(self, writer=None, headerSize=0):
 
         # inialized by a copy of the original snapshots tensor (F, ep, d)
         R = copy.deepcopy(self.nonlinearSnapshots.snapTensor)
@@ -121,15 +127,14 @@ class constraintsComponents:  # Components == bases
 
         p = self.nonlinearSnapshots.constraintsSize  # p: row size of each constraint
         e = self.nonlinearSnapshots.constraintVerts  # e: numConstraints
-        #self.measures_at_largeDeforVerts = np.empty((self.numComp, 6))
+        self.measures_at_largeDeforVerts = []
         self.St = read_sparse_matrix_from_bin(constProj_weightedSt)
 
         v_count = 0
-        tol = 1e-40
+        tol = bases_R_tol
         bases_count = 0
         while v_count < self.nvu and norm(R) > tol:
             #  find the constraint index explaining the most variance across the residual animation
-            #idx = self.indxLargestDeformation(np.swapaxes(R, 0, 1), p, e)  # 0 <= idx < e
             v = np.argmax(((self.St @ np.swapaxes(R, 0, 1).reshape(e*p, -1))**2).sum(axis=1))
 
             if constProj_snapshots_type == "tetstrain":
@@ -140,11 +145,12 @@ class constraintsComponents:  # Components == bases
             print("vert",v, "elements", len(elems))
             # keep list of the constraints indices verts with the largest deformation  0 <= idx < ep
             S_v_idx.append(v)
-            sigma = []
+
             ck = None
 
             # at each largest deformation idx, a bases block of size (ep, p, 3) is computed
             for idx in range(len(elems)):
+                sigma = []
                 S_ele_idns.append(idx)
                 for i in range(p):
                     #  find linear component explaining the motion of this constraint index
@@ -188,7 +194,7 @@ class constraintsComponents:  # Components == bases
                 for j in range(p):
                     singList.append(sigma[j])
 
-                #self.measures_at_largeDeforVerts[k, :] = singList
+                self.measures_at_largeDeforVerts.append(singList)
                 if self.storeSingVal:
                     writer.writerow(singList)
 
@@ -207,8 +213,8 @@ class constraintsComponents:  # Components == bases
         self.comps = np.array(C)
         self.weigs = np.array(W).T
         self.numComp = self.comps.shape[0]//p
+        self.measures_at_largeDeforVerts = np.array(self.measures_at_largeDeforVerts)
         print("bases shape",self.comps.shape, "number of components", self.numComp)
-
 
 
     @log_time(constProj_output_directory)
@@ -284,21 +290,21 @@ class constraintsComponents:  # Components == bases
 
         return mat_e
 
-    def deim_constructed(self, rp):
+    def deim_constructed(self, r):
 
         p = self.nonlinearSnapshots.constraintsSize
         f = self.nonlinearSnapshots.snapTensor
         F, ep, _ = f.shape
 
-        V_r = self.comps.swapaxes(0, 1)[:, :rp, :]  # (ep, rp, 3)
-        Pt = self.deim_S[:rp]
+        V_r = self.comps.swapaxes(0, 1)[:, :r*p, :]  # (ep, rp, 3)
+        Pt = self.deim_alpha[:self.deim_alpha_ranges[r-1]]
 
         reconstructed = np.zeros((F, ep, 3))
 
         for l in range(3):
-            u, piv = lu_factor(V_r[Pt, :, l])
+            u, piv = lu_factor(V_r[Pt, :, l].T @ V_r[Pt, :, l])
             for f in range(F):
-                reconstructed[f, :, l] = V_r[:, :, l] @ lu_solve((u, piv), self.nonlinearSnapshots.snapTensor[f, Pt, l])
+                reconstructed[f, :, l] = V_r[:, :, l] @ lu_solve((u, piv), V_r[Pt, :, l].T @ self.nonlinearSnapshots.snapTensor[f, Pt, l])
 
         return reconstructed
 
@@ -328,7 +334,7 @@ class constraintsComponents:  # Components == bases
         Computes the Frobenius norm of the reconstruction error.
         """
         error = f - f_reconstructed
-        return np.linalg.norm(error)/norm(f)
+        return np.linalg.norm(error)
 
     @staticmethod
     def relative_error_per_component(f, f_reconstructed):
@@ -478,6 +484,6 @@ class constraintsComponents:  # Components == bases
                 V = np.concatenate((V, vk), axis=1)
 
         self.deim_alpha = np.array(e_points)
+        self.deim_alpha_ranges = np.array(e_range)
         print("Deim interpolation used", self.deim_alpha.shape[0], "constrained elements")
-        print(len(e_jump), e_jump)
-        print(len(e_range), e_range)
+

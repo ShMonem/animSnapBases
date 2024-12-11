@@ -67,6 +67,7 @@ if compute_pos_bases:
     # number of bases to be computed
     vertPos_numComponents = config["vertexPos_bases"]["pca"]["numComponents"]
 
+
     if config["vertexPos_bases"]["snapshots"]["read_all_from_first"]:
         frame_increment = 1
     else:
@@ -258,6 +259,8 @@ if compute_constProj_bases:
     constProj_numFrames = config["constraintProj_bases"]["snapshots"]["numFrames"]
     # number of bases to be computed
     constProj_numComponents_verts = config["constraintProj_bases"]["numComponents_verts"]
+    # tolerance used to satisfy bases computation criterion
+    bases_R_tol = config["constraintProj_bases"]["bases_res_tol"]
     # p: the row size of the nonlinear constraint projection is p x 3
     constProj_p_size = config["constraintProj_bases"]["constraintType"]["rowSize"]
 

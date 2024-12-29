@@ -171,8 +171,7 @@ def find_tetrahedrons_with_vertices(vertex_indices, tets):
 
     # List to hold the tetrahedrons that include any of the specified vertices
     matching_tet_indices = []
-
-    # Iterate over each tetrahedron
+    count = 0
     # Iterate over each tetrahedron
     for index, tet in enumerate(tets):
         # Check if any vertex of the tetrahedron is in the vertex_indices_set
@@ -180,3 +179,115 @@ def find_tetrahedrons_with_vertices(vertex_indices, tets):
             matching_tet_indices.append(index)
 
     return matching_tet_indices
+
+def compute_edge_incidence_matrix_on_tets(tets):
+    """
+    Computes the edge incidence matrix for a tetrahedral mesh.
+
+    Parameters:
+    - tets: np.ndarray, array of tetrahedral indices.
+
+    Returns:
+    - edges: np.ndarray, array of edges (unique pairs of vertices) with consistent orientation.
+    """
+    edges_set = set()
+
+    for tet in tets:
+        # Extract edges from each tetrahedron
+        tet_edges = [
+            (tet[0], tet[1]),
+            (tet[0], tet[2]),
+            (tet[0], tet[3]),
+            (tet[1], tet[2]),
+            (tet[1], tet[3]),
+            (tet[2], tet[3])
+        ]
+
+        # Add edges to the set with consistent orientation (smallest index first)
+        for edge in tet_edges:
+            edges_set.add(tuple(sorted(edge)))
+
+    # Convert the set to a sorted array for consistent ordering
+    edges = np.array(sorted(edges_set))
+    return edges
+
+def compute_edge_incidence_matrix_on_tris(tris):
+    """
+    Computes the edge incidence matrix for a tetrahedral mesh.
+
+    Parameters:
+    - tets: np.ndarray, array of tetrahedral indices.
+
+    Returns:
+    - edges: np.ndarray, array of edges (unique pairs of vertices) with consistent orientation.
+    """
+    edges_set = set()
+
+    for tri in tris:
+        # Extract edges from each face
+        tri_edges = [
+            (tri[0], tri[1]),
+            (tri[1], tri[2]),
+            (tri[2], tri[0])
+        ]
+
+        # Add edges to the set with consistent orientation (smallest index first)
+        for edge in tri_edges:
+            edges_set.add(tuple(sorted(edge)))
+
+        # Convert the set to a sorted array for consistent ordering
+    edges = np.array(sorted(edges_set))
+    return edges
+
+
+def extract_sub_vertices_and_edges(vertices, sub_edges):
+    """
+    Extracts the subset of vertices and remaps edges for a subset of edges.
+
+    Parameters:
+    - vertices: np.ndarray, array of vertex positions.
+    - sub_edges: np.ndarray, (e, 2) array of edges (pairs of vertex indices).
+
+    Returns:
+    - sub_vertices: np.ndarray, array of positions for the subset of vertices.
+    - remapped_edges: np.ndarray, edges remapped to the subset of vertices.
+    """
+    # Find unique vertices in the subset of edges
+    unique_vertex_indices = np.unique(sub_edges)
+
+    # Create a mapping from global indices to local indices
+    index_map = {global_idx: local_idx for local_idx, global_idx in enumerate(unique_vertex_indices)}
+
+    # Remap edges to the local vertex indices
+    remapped_edges = np.array([[index_map[edge[0]], index_map[edge[1]]] for edge in sub_edges])
+
+    # Extract the subset of vertex positions
+    sub_vertices = vertices[unique_vertex_indices]
+
+    return sub_vertices, remapped_edges
+
+def extract_sub_vertices_and_tet_edges(vertices, sub_edges):
+    """
+    Extracts the subset of vertices and remaps tetrahedral edges for a subset of edges.
+
+    Parameters:
+    - vertices: np.ndarray, array of vertex positions.
+    - sub_edges: np.ndarray, (e, 2) array of edges (pairs of vertex indices).
+
+    Returns:
+    - sub_vertices: np.ndarray, array of positions for the subset of vertices.
+    - remapped_edges: np.ndarray, edges remapped to the subset of vertices.
+    """
+    # Find unique vertices in the subset of edges
+    unique_vertex_indices = np.unique(sub_edges)
+
+    # Create a mapping from global indices to local indices
+    index_map = {global_idx: local_idx for local_idx, global_idx in enumerate(unique_vertex_indices)}
+
+    # Remap edges to the local vertex indices
+    remapped_edges = np.array([[index_map[edge[0]], index_map[edge[1]]] for edge in sub_edges])
+
+    # Extract the subset of vertex positions
+    sub_vertices = vertices[unique_vertex_indices]
+
+    return sub_vertices, remapped_edges

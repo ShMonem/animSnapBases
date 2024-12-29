@@ -263,3 +263,66 @@ def read_sparse_matrix_from_bin(filename):
     # Reconstruct sparse matrix in COO format
     sparse_matrix = csr_matrix((values, (row_indices, col_indices)), shape=(rows, cols))
     return sparse_matrix
+
+
+def read_mesh_file(file_path):
+    """
+    Reads a .mesh file and returns vertices, tetrahedra, and triangles as NumPy arrays.
+
+    Parameters:
+        file_path (str): Path to the .mesh file.
+
+    Returns:
+        tuple: Numpy arrays of vertices, tetrahedra, and triangles.
+               Returns None if there is an error in reading the file.
+    """
+    try:
+        vertices, tets, tris = [], [], []
+        current_array = None
+
+        with open(file_path, 'r') as file:
+            for line in file:
+                line = line.strip()
+
+                # Identify the section and prepare to read the corresponding data
+                if line.startswith('Vertices'):
+                    current_array = vertices
+                    num_expected = int(next(file).strip())  # The next line should state the number of vertices
+                    continue
+                elif line.startswith('Tetrahedra'):
+                    current_array = tets
+                    num_expected = int(next(file).strip())
+                    continue
+                elif line.startswith('Triangles'):
+                    current_array = tris
+                    num_expected = int(next(file).strip())
+                    continue
+
+                # Skip empty lines or any line that doesn't fit into the above categories
+                if not line or current_array is None:
+                    continue
+
+                # Parse and store data
+                parts = line.split()
+                if current_array is vertices:
+                    # Expect x, y, z coordinates and one attribute (usually ignored)
+                    if len(parts) >= 4:
+                        current_array.append([float(parts[0]), float(parts[1]), float(parts[2])])
+                else:
+                    # For tets or tris, expect vertex indices and one attribute (usually ignored)
+                    if len(parts) >= 4:
+                        current_array.append([int(p) - 1 for p in parts[:-1]])  # Convert to zero-based index
+
+        # Convert lists to numpy arrays
+        vertices = np.array(vertices, dtype=float) if vertices else np.array([], dtype=float)
+        tets = np.array(tets, dtype=int) if tets else np.array([], dtype=int)
+        tris = np.array(tris, dtype=int) if tris else np.array([], dtype=int)
+
+        return vertices, tets, tris
+
+    except Exception as e:
+        print(f"An error occurred while reading the file: {e}")
+        return None
+
+
+

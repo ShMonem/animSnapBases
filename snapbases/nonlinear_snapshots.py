@@ -3,21 +3,17 @@ import numpy as np
 import struct
 import sys
 import cProfile
-from utils.utils import log_time, read_sparse_matrix_from_bin
+from utils.utils import log_time, read_sparse_matrix_from_bin, read_mesh_file
 from utils.process import view_anim_file, view_components
-from utils.support import compute_tetMasses
+from utils.support import compute_tetMasses, compute_edge_incidence_matrix_on_tris
 import h5py
-from config.config import name, constProj_input_snapshots_pattern, constProj_rest_shape, constProj_dim, \
-                            constProj_masses_file, constProj_numFrames, constProj_p_size, constProj_massWeight,\
-                            constProj_standarize, constProj_output_directory, constProj_weightedSt, tri_mesh_file,\
-                            constProj_constrained_Stp0
-
+from config.config import Config_parameters
 import igl
 from scipy.sparse import coo_matrix
 root_folder = os.getcwd()
 profiler = cProfile.Profile()
 
-
+constProj_output_directory = ""
 class nonlinearSnapshots:
     """
     Constraints snapshots class
@@ -25,7 +21,7 @@ class nonlinearSnapshots:
     if required the snapshots will be mass-weighted and/or standardized.
     """
 
-    def __init__(self):
+    def __init__(self,param: Config_parameters):
 
         self.snapshots_file = ""  # contains pre-aligned (only centered) snapshots
         self.rest_shape = ""  # which frame to use as rest-shape ("first" or "average")
@@ -33,7 +29,7 @@ class nonlinearSnapshots:
         self.mass_file = ""  # file contains mass weights as one vector
         self.frs = 0  # no. frames: F
         self.constraintsSize = 0  # 'p' in the paper. no. rows in each projection mat (=3, for TetStrain constraint)
-        self.constraintVerts = 0  # numConstraints/'e' in the paper. no. verts (tetVerts) influenced by the constraints
+        self.num_constained_elements = 0  # numConstraints/'e' in the paper. no. verts (tetVerts) influenced by the constraints
 
         self.mean = None  # (nVerts, 3)
         self.pre_scale_factor = 1  # normalization factor
@@ -48,18 +44,26 @@ class nonlinearSnapshots:
         self.verts = None
         self.tris = None
         self.tets = None
-
+        self.edges = None
+        self.tet_mesh = None
+        self.ele_type = ""  # str: type of constrained elements (_verts, _edges,_faces, _tets)
+        self.param = param
 
     def config(self):
         """
             All parameters of this function are defined and can be manipulated using config.json and config.py
         """
-        self.snapshots_file = constProj_input_snapshots_pattern  # contains pre-aligned (only centered) snapshots
-        self.rest_shape = constProj_rest_shape  # which frame to use as rest-shape ("first" or "average")
-        self.dim = constProj_dim
-        self.mass_file = constProj_masses_file  # file contains mass weights as one vector
-        self.frs = constProj_numFrames  # no. frames: F
-        self.constraintsSize = constProj_p_size  # 'p' in the paper. no. rows in each projection mat (=3, for TetStrain constraint)
+        global constProj_output_directory
+        self.snapshots_file = self.param.constProj_input_snapshots_pattern  # contains pre-aligned (only centered) snapshots
+        self.rest_shape = self.param.constProj_rest_shape  # which frame to use as rest-shape ("first" or "average")
+        self.dim = self.param.constProj_dim
+        self.mass_file = self.param.constProj_masses_file  # file contains mass weights as one vector
+        self.frs = self.param.constProj_numFrames  # no. frames: F
+        self.constraintsSize = self.param.constProj_p_size  # 'p' in the paper. no. rows in each projection mat (=3, for TetStrain constraint)
+        self.ele_type = self.param.constProj_element_type
+
+        self.tet_mesh = self.param.tet_mesh_file
+        constProj_output_directory = self.param.constProj_output_directory
 
     @log_time(constProj_output_directory)
     def snapshots_prepare(self):
@@ -71,7 +75,7 @@ class nonlinearSnapshots:
         self.read()
 
         # read/compute and factorize the mass matrix for the rest shape
-        if constProj_massWeight:
+        if self.param.constProj_massWeight:
             # read mass file
             self.load_factorize_masses()
 
@@ -79,12 +83,12 @@ class nonlinearSnapshots:
             assert self.snapTensor.shape[1] == self.massL.shape[0]
             self.snapTensor *= self.massL[:, None]
 
-        if constProj_standarize:
+        if self.param.constProj_standarize:
             self.standarize()
 
         print("after-process stats,  min:", np.min(self.snapTensor), "max: ", np.max(self.snapTensor),
               "mean: ", np.mean(self.snapTensor), "std:", np.std(self.snapTensor))
-        print('nonlinearSnapshots ready ... Volkwein ('+str(constProj_massWeight)+'), standarized ('+str(constProj_standarize)+').')
+        print('nonlinearSnapshots ready ... Volkwein ('+str(self.param.constProj_massWeight)+'), standarized ('+str(self.param.constProj_standarize)+').')
 
     @log_time(constProj_output_directory)
     def read(self):
@@ -111,10 +115,10 @@ class nonlinearSnapshots:
                 Xtemp = np.concatenate((Xtemp, Mat_i[np.newaxis, :, :]), axis=0)    # update snapshots tensor
             # (F, ep, 3)
 
-        self.constraintVerts = Xtemp.shape[1]//self.constraintsSize   # e == e.p//p
+        self.num_constained_elements = Xtemp.shape[1]//self.constraintsSize   # e == e.p//p
         self.snapTensor = Xtemp  # initialized with the un-pre-processed snapshots
         print("loaded snapshots size", self.snapTensor.shape)
-        print("No. constrained verts: ", self.constraintVerts)
+        print("No. constrained verts: ", self.num_constained_elements)
         print("pre-process stats,  min:", np.min(self.snapTensor), "max: ", np.max(self.snapTensor),
               "mean: ", np.mean(self.snapTensor), "std:", np.std(self.snapTensor) )
 
@@ -136,10 +140,13 @@ class nonlinearSnapshots:
             self.mass = hrpdAuxiliariesMass.copy()
         else:
             try:
-                # if no file given, use igl to compute masses
-                v, t, f = igl.read_mesh("input_data/" + name + "/" + name + "_made_tet.mesh")
-                self.verts, self.tris, self.tets = v, f, t
-                m = igl.massmatrix(v, f, igl.MASSMATRIX_TYPE_VORONOI)  # surface masses
+                # # if no file given, use igl to compute masses
+                self.verts, self.tets, self.tris = read_mesh_file(self.tet_mesh)
+                self.edges = compute_edge_incidence_matrix_on_tris(self.tris)
+
+                if self.verts is not None:
+                    print("Failed to read mesh data.")
+                m = igl.massmatrix(self.verts, self.tris, igl.MASSMATRIX_TYPE_VORONOI)  # surface masses
                 vertexMasses = np.diag(m.todense())
                 #vertexMasses = vertexMasses/vertexMasses.sum()
                 if self.constraintsSize == 1:
@@ -147,9 +154,9 @@ class nonlinearSnapshots:
                 elif self.constraintsSize == 2:
                     # TODO : tri case
                     print("ERROR: mass matris is not computed!!!")
-                    self.mass = np.zeros(f.shape[0])
+                    self.mass = np.zeros(self.tris.shape[0])
                 elif self.constraintsSize == 3:
-                    self.mass = compute_tetMasses(vertexMasses, t, self.constraintVerts, self.constraintsSize)
+                    self.mass = compute_tetMasses(vertexMasses, self.tets, self.num_constained_elements, self.constraintsSize)
 
             except IOError:
                 print(self.mass_file + " could not be read")
@@ -159,17 +166,17 @@ class nonlinearSnapshots:
         massL = np.sqrt(self.mass)  # ep
 
         #  check the Cholesky factorization is done properly:
-        assert(np.allclose(np.multiply(massL, massL)-self.mass, np.zeros(self.constraintVerts * self.constraintsSize)))  # assert: LL^T = Masses
+        assert(np.allclose(np.multiply(massL, massL)-self.mass, np.zeros(self.num_constained_elements * self.constraintsSize)))  # assert: LL^T = Masses
 
-        invMassL = np.zeros(self.constraintVerts * self.constraintsSize)  # ep
-        for j in range(self.constraintVerts * self.constraintsSize):
+        invMassL = np.zeros(self.num_constained_elements * self.constraintsSize)  # ep
+        for j in range(self.num_constained_elements * self.constraintsSize):
             if massL[j]:
                 invMassL[j] = 1/massL[j]
             else:
                 invMassL[j] = 0
 
         #  check the inverse of the Cholesky factorization:
-        assert(np.allclose(np.multiply(invMassL, massL), np.ones(self.constraintVerts * self.constraintsSize)))  # assert: L^{-1}L = I
+        assert(np.allclose(np.multiply(invMassL, massL), np.ones(self.num_constained_elements * self.constraintsSize)))  # assert: L^{-1}L = I
 
         self.massL = massL
         self.invMassL = invMassL
@@ -202,8 +209,8 @@ class nonlinearSnapshots:
         output_file = os.path.join(output_bases_dir, file_name)
         # output_animation = os.path.join(output_bases_dir, self.output_animation_file)
 
-        verts, tris = igl.read_triangle_mesh(tri_mesh_file)
-        St = read_sparse_matrix_from_bin(constProj_weightedSt)
+        verts, tris = igl.read_triangle_mesh(self.param.tri_mesh_file)
+        St = read_sparse_matrix_from_bin(self.param.constProj_weightedSt)
         anim = []
         for l in range(self.snapTensor.shape[0]):
             anim.append(St @ self.snapTensor[l, :, :])

@@ -5,10 +5,7 @@ from scipy.linalg import svd, norm, qr, lu_factor, lu_solve
 import copy
 import csv
 import cProfile
-from config.config import constProj_bases_type, constProj_support, constProj_numComponents_verts, constProj_store_sing_val, \
-    constProj_massWeight, constProj_standarize, constProj_orthogonal, constProj_output_directory, constProj_weightedSt,\
-    constProj_snapshots_type, bases_R_tol
-
+from config.config import Config_parameters
 from snapbases.nonlinear_snapshots import nonlinearSnapshots
 from utils.utils import store_components, store_interpol_points_vector
 from utils.utils import log_time, read_sparse_matrix_from_bin
@@ -16,19 +13,19 @@ from utils.support import find_tetrahedrons_with_vertices
 root_folder = os.getcwd()
 profiler = cProfile.Profile()
 
-
+constProj_output_directory = ""
 class constraintsComponents:  # Components == bases
-    def __init__(self):
+    def __init__(self,param: Config_parameters):
 
         self.basesType = ""
         self.numComp = 0  # number of bases/components
-        self.nvu = 0  # max number of vertecies around which we compute bases
         self.support = ""  # can be 'local' or 'global'
         self.storeSingVal = False  # boolean
 
         # Initialize snapshots class attribute
-        self.nonlinearSnapshots = nonlinearSnapshots()
+        self.nonlinearSnapshots = nonlinearSnapshots(param)
 
+        self.param = param
         self.comps = None  # bases tensor : V + average shape
         self.weigs = None  # weights matrix
         self.ortho_comps = None  # orthogonal bases tensor
@@ -42,9 +39,7 @@ class constraintsComponents:  # Components == bases
         self.file_name_sing = ""
 
         # DEIM attributes
-        # self.deim_S = None  # All interpolation rows (complete 0< rows < e.p) used to construct P^T
-        # self.deim_M = None  # (P^T V)
-        # self.deim_res_norm = None  # norm(vk - Vc)
+        self.deim_interpol_verts = []   # if error is tracked in position spaces, the verts wich coneect the elements
         self.deim_alpha = None  # Indices of interpolation blocks (0 < block < e)
         # deim_alpha_ranges: a list/array to keep the number of interpolation elements in deim
         # in a fixed dim (x,y,z) bases with size (e*p, k*p) use deim_alpha[:deim_alpha_range(k)] interpolation points
@@ -53,15 +48,17 @@ class constraintsComponents:  # Components == bases
 
     def config(self, fileNameBases="p_nl_", fileName_deim_points="p_nl_interpol_points_",
                file_name_sing="pca_singValues"):
+        global constProj_output_directory
+        self.basesType = self.param.constProj_bases_type
+        self.support = self.param.constProj_support  # can be 'local' or 'global'
 
-        self.basesType = constProj_bases_type
-        self.nvu = constProj_numComponents_verts  # number of bases/components
-        self.support = constProj_support  # can be 'local' or 'global'
-
-        self.storeSingVal = constProj_store_sing_val  # boolean
+        self.storeSingVal = self.param.constProj_store_sing_val  # boolean
         self.fileNameBases = fileNameBases
         self.fileName_deim_points = fileName_deim_points
         self.file_name_sing = file_name_sing
+        self.St = read_sparse_matrix_from_bin(self.param.constProj_weightedSt)
+        constProj_output_directory = self.param.constProj_output_directory
+
 
     @staticmethod
     def project_weight(x):
@@ -126,18 +123,17 @@ class constraintsComponents:  # Components == bases
         # add_to_indx = False   # Decide to add index to list or not
 
         p = self.nonlinearSnapshots.constraintsSize  # p: row size of each constraint
-        e = self.nonlinearSnapshots.constraintVerts  # e: numConstraints
+        e = self.nonlinearSnapshots.num_constained_elements  # e: numConstraints
         self.measures_at_largeDeforVerts = []
-        self.St = read_sparse_matrix_from_bin(constProj_weightedSt)
-
         v_count = 0
-        tol = bases_R_tol
+        tol = self.param.bases_R_tol
         bases_count = 0
-        while v_count < self.nvu and norm(R) > tol:
+        break_flag = False
+        while norm(R) > tol:
             #  find the constraint index explaining the most variance across the residual animation
             v = np.argmax(((self.St @ np.swapaxes(R, 0, 1).reshape(e*p, -1))**2).sum(axis=1))
 
-            if constProj_snapshots_type == "tetstrain":
+            if self.param.constProj_snapshots_type == "tetstrain":
                 elems = find_tetrahedrons_with_vertices([v], self.nonlinearSnapshots.tets)
             else:
                 print("ERROR! not yet implemented") # TODO
@@ -197,7 +193,8 @@ class constraintsComponents:  # Components == bases
                 self.measures_at_largeDeforVerts.append(singList)
                 if self.storeSingVal:
                     writer.writerow(singList)
-
+                if norm(R) < tol:
+                    break
             v_count += 1
 
         # Check redundancy
@@ -220,7 +217,7 @@ class constraintsComponents:  # Components == bases
     @log_time(constProj_output_directory)
     def post_process_components(self):
 
-        if constProj_standarize:
+        if self.param.constProj_standarize:
             # undo scaling
             self.comps /= self.nonlinearSnapshots.pre_scale_factor  # (Kp, ep, 3)
 
@@ -233,12 +230,12 @@ class constraintsComponents:  # Components == bases
             # undo the mean-subtraction (important for bases visualisation on the full character mesh)
             self.nonlinearSnapshots.snapTensor += self.nonlinearSnapshots.mean[np.newaxis]  # (F, ep, 3) + (1, ep, 3)
 
-        if constProj_orthogonal:
+        if self.param.constProj_orthogonal:
             # orthogonal per dimension
             for l in range(self.comps.shape[2]):
                 self.comps[:, :, l] = qr(self.comps[:, :, l].T, mode='economic')[0].T
 
-        if constProj_massWeight:
+        if self.param.constProj_massWeight:
 
             # compute M^{-1/2} U for each dimension x, y, z.
             assert self.comps.shape[1] == self.nonlinearSnapshots.invMassL.shape[0]
@@ -248,8 +245,8 @@ class constraintsComponents:  # Components == bases
             assert self.nonlinearSnapshots.snapTensor.shape[1] == self.nonlinearSnapshots.invMassL.shape[0]
             self.nonlinearSnapshots.snapTensor *= self.nonlinearSnapshots.invMassL[:, None]
 
-        print("Post-processing, Undo standardization: ", constProj_standarize, ". Orthogonal-ized", constProj_orthogonal,
-              ". Mass weighting", constProj_massWeight, ", and bases shape", self.comps.shape)
+        print("Post-processing, Undo standardization: ", self.param.constProj_standarize, ". Orthogonal-ized", self.param.constProj_orthogonal,
+              ". Mass weighting", self.param.constProj_massWeight, ", and bases shape", self.comps.shape)
 
     ''' 
         --- PCA Tests --- 
@@ -379,21 +376,23 @@ class constraintsComponents:  # Components == bases
         return s
 
     @log_time(constProj_output_directory)
-    def store_components_to_files(self, output_dir, start, end, step, bases, points, fileType):
+    def store_components_to_files(self, start, end, step, fileType):
         """
         fileType can be either '.bin' or '.npy'
         """
         print('Storing bases ...', end='', flush=True)
         numframes = self.nonlinearSnapshots.frs
-        numverts = self.nonlinearSnapshots.constraintVerts * self.nonlinearSnapshots.constraintsSize
-        basesFile = os.path.join(output_dir, self.fileNameBases)
-        pointsFile = os.path.join(output_dir, self.fileName_deim_points)
+        numverts = self.nonlinearSnapshots.num_constained_elements * self.nonlinearSnapshots.constraintsSize
+        basesFile = os.path.join(constProj_output_directory, self.fileNameBases)
+        pointsFile = os.path.join(constProj_output_directory, self.fileName_deim_points)
         p = self.nonlinearSnapshots.constraintsSize
 
-        store_interpol_points_vector(pointsFile, self.nonlinearSnapshots.frs, self.numComp, points, fileType)
         # store separate .bin for different numbers of components
         for k in range(start, end + 1, step):
-            store_components(basesFile, numframes, k * p, numverts, 3, bases[:k * p, :, :], fileType, 'Kp')
+            store_components(basesFile, numframes, k * p, numverts, 3, self.comps[:k * p, :, :], fileType, 'Kp')
+
+            store_interpol_points_vector(pointsFile, self.nonlinearSnapshots.frs, k, self.deim_alpha[:self.deim_alpha_ranges[k - 1]], fileType)
+
         print('done.')
 
     '''
@@ -405,16 +404,16 @@ class constraintsComponents:  # Components == bases
         :return:
         """
         p = self.nonlinearSnapshots.constraintsSize
-        e = self.nonlinearSnapshots.constraintVerts
+        e = self.nonlinearSnapshots.num_constained_elements
         d = self.nonlinearSnapshots.dim
         K = self.numComp
-        St = None
+
         bases = self.comps.swapaxes(0, 1)  # (ep, Kp, d)
         if error_in_pos_space:
-            if constProj_snapshots_type != "tetstrain":
+            if self.nonlinearSnapshots.ele_type != "_tets":
                 print("ERROR! Unknown constaints projection type in deim") # TODO generalize
                 return
-            St = read_sparse_matrix_from_bin(constProj_weightedSt)
+
         # initialization
         vk = bases[:, :p, :]  # v0  (ep, :p, 3)
         V = np.empty(vk.shape)
@@ -426,7 +425,7 @@ class constraintsComponents:  # Components == bases
         for k in range(K):
             if k == 0:
                 if error_in_pos_space:
-                    r = St @ vk.reshape(vk.shape[0], -1)
+                    r = self.St @ vk.reshape(vk.shape[0], -1)
                 else:
                     r = vk
             else:
@@ -440,7 +439,7 @@ class constraintsComponents:  # Components == bases
                         c[:, :, i] = V[:, :, i] @ npla.solve(V[Pt, :, i].T @ V[Pt, :, i], V[Pt, :, i].T @ vk[Pt, :, i])  # (ep, kp,)@ (kp,) --(ep,)xd
 
                     r = c - vk  # residual in constraint projection space  (ep, p, d)
-                    r = St @ r.reshape(r.shape[0], -1)   # residual in position space (|V|, p*d)
+                    r = self.St @ r.reshape(r.shape[0], -1)   # residual in position space (|V|, p*d)
                 else:
                     for i in range(d):
                         # V (Pt V)^{-1} Pt v_k
@@ -455,11 +454,12 @@ class constraintsComponents:  # Components == bases
 
             if error_in_pos_space:
                 v_interpolate = np.argmax((r ** 2).sum(axis=1))
+                self.deim_interpol_verts.append(v_interpolate)   # list of verts that showed largest errors
                 alpha_list = find_tetrahedrons_with_vertices([v_interpolate], self.nonlinearSnapshots.tets)
                 jump = 0
                 for al in range(len(alpha_list)):
                     alpha = alpha_list[al]
-                    if alpha not in e_points:
+                    if alpha not in e_points and jump < self.param.deim_ele_per_vert:
                         jump +=1
                         e_points.append(alpha)
                         # update selection mat with all elements that show largest deformation in position space

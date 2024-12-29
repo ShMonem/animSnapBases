@@ -13,6 +13,8 @@ from numpy.linalg import matrix_rank
 import scipy.linalg as spla
 from scipy.linalg import svd, norm, cho_factor, cho_solve, cholesky, orth
 from utils.support import GeodesicDistanceComputation
+from utils.utils import read_mesh_file
+
 import cProfile
 import pstats
 import igl
@@ -27,7 +29,7 @@ class posSnapshots:
     if required the snapshots will be further pre-processed through standerization and/or mass weighting
     """
 
-    def __init__(self, input_animation_file, rest_shape, masses_file, standarize=True, massWeight=True):
+    def __init__(self, input_animation_file, rest_shape, masses_file, tet_mesh_file, standarize=True, massWeight=True):
 
         self.input_animation_file = input_animation_file  # contains pre-aligned (only centered) snapshots
         self.rest_shape = rest_shape  # which frame to use as rest-shape ("first" or "average")
@@ -48,7 +50,7 @@ class posSnapshots:
         self.snapTensor = None  # preprocessed snapshots tensors on which we compute components (basis/ modes)
 
         self.compute_geodesic_distance = None  # geodesic distances computed on the average shape
-
+        self.tet_mesh = tet_mesh_file
         # One time compute snapTensor
         self.do_snapshots_precomputations(standarize, massWeight)
 
@@ -106,18 +108,22 @@ class posSnapshots:
         print("Faces: ", self.tris.shape[0])
         print("Frames: ", self.frs)
 
-    def read_factorize_masses(self):
+    def read_factorize_masses(self, mass_on_tet_mesh=True):
         # if masses file is available, read it
         fileName = self.massesFile
         N = self.nVerts
 
-        hrpdMass = np.zeros(N)  # m_vertexMass from hrpd simulation
+        Mass_mat = np.zeros(N)  # m_vertexMass from hrpd simulation
 
         if not os.path.exists(fileName):
             # if no file given, use igl to compute masses
-            m = igl.massmatrix(self.verts[0], self.tris, igl.MASSMATRIX_TYPE_VORONOI)
-            hrpdMass = np.diag(m.todense())
-            hrpdMass = hrpdMass / hrpdMass.sum() * 2
+            if mass_on_tet_mesh:
+                _, self.tets, _ = read_mesh_file(self.tet_mesh)
+                m = igl.massmatrix(self.verts[0], self.tets)
+            else:
+                m = igl.massmatrix(self.verts[0], self.tris, igl.MASSMATRIX_TYPE_VORONOI)
+            Mass_mat = np.diag(m.todense())
+            Mass_mat = Mass_mat / Mass_mat.sum() * 2
         else:
             try:
                 with open(fileName, "rb") as fileMass:  # mass matrix (im: boxed in -0.5-0.5)
@@ -127,14 +133,14 @@ class posSnapshots:
                     for j in range(N):
                         value = struct.unpack('<d', fileMass.read(8))[0]
                             # read 8 byte and interpret them as little endian double
-                        hrpdMass[j] = value
+                        Mass_mat[j] = value
 
                 fileMass.close()
             except IOError:
                 print(fileName + " could not be read")
 
-        self.mass = hrpdMass.copy()
-        massL = cholesky(np.diag(hrpdMass))  # (N, N)
+        self.mass = Mass_mat.copy()
+        massL = cholesky(np.diag(Mass_mat))  # (N, N)
         invMassL = spla.inv(massL)  # (N, N)
 
         self.massL = np.diagonal(massL)  # (N,)

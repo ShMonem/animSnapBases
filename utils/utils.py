@@ -220,6 +220,36 @@ def log_time(filePath):
     return decorator
 
 
+def class_log_time(filePath):
+    def decorator(func):
+        @functools.wraps(func)  # To keep the function metadata intact
+        def wrapper(*args, **kwargs):
+            global has_written
+
+            # Check if the file exists and whether we have written in the current run
+            if not has_written:
+                mode = "w"  # First time, write mode (replace file)
+                has_written = True  # Set flag to True after first write
+            else:
+                mode = "a"  # Subsequent writes, append mode
+
+            start_time = time.time()  # Start timing
+            result = func(*args, **kwargs)  # Run the actual function
+            end_time = time.time()  # End timing
+            elapsed_time = end_time - start_time
+
+            # Print to the screen
+            print(f"Function '{func.__name__}' executed in {elapsed_time:.4f} seconds.")
+
+            # Log the function name and time to a text file
+            with open(filePath+"function_timings.txt", mode) as f:
+                f.write(f"Function '{func.__name__}' executed in {elapsed_time:.4f} seconds.\n")
+
+            return result
+        return wrapper
+    return decorator
+
+
 def write_tensor_to_bin_colmajor(tensor, filename):
     # Get the tensor's dimensions (N, Kp, 3)
     N, Kp, channels = tensor.shape

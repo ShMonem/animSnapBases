@@ -19,6 +19,7 @@ vertPos_output_directory = ""
 class posComponents:  # Components == bases
     def __init__(self, param: Config_parameters):
         global vertPos_output_directory
+        vertPos_output_directory = param.vertPos_output_directory
         # bases type, can only be 'PCA' and 'SPLOCS'
         self.basesType = param.vertPos_bases_type
         assert self.basesType == 'PCA' or self.basesType == 'SPLOCS'
@@ -44,7 +45,7 @@ class posComponents:  # Components == bases
 
         self.measures_at_largeDeforVerts = None  # singVals & resNorm computed at 'K' largest deformation verts
         self.fileNameBases = "q_pos_"
-        vertPos_output_directory = param.vertPos_output_directory
+
         self.param = param
 
     @staticmethod
@@ -212,7 +213,7 @@ class posComponents:  # Components == bases
 
         return fro_err, max_err, rel_err_x, rel_err_y, rel_err_z
 
-                
+
     @staticmethod
     def frobenius_error(f, f_reconstructed):
         """
@@ -259,7 +260,7 @@ class posComponents:  # Components == bases
 
         headerSing = ['component', 'singVal']
 
-        file_name = os.path.join(vertPos_output_directory, "PCA_singValues")
+        file_name = os.path.join(vertPos_output_directory, self.param.name+"_posBases_pcaExtraction_singValues_errorNorm")
         if self.storeSingVal:
             with open(file_name + '.csv', 'w', encoding='UTF8') as singFile:
                 writer = csv.writer(singFile)
@@ -338,7 +339,7 @@ class posComponents:  # Components == bases
                 f['comp%03d' % i] = c
         f.close()
 
-    def test_basesSingVals(self, writer=None):
+    def test_basesSingVals(self):
         """
         Computes normalized singular values along all Kp vectors on the already fully-extracted PCA bases
         :return:
@@ -349,8 +350,5 @@ class posComponents:  # Components == bases
         for i in range(3):
             U, sing, Vt = svd(bases[:, :, i], full_matrices=False)
             s[:, i] = sing / sing.max()
-
-            if writer is not None:
-                writer.writerow(s[:, i])
         # print('min sing values over dimensions:', s[:, 0].min(), s[:, 1].min(), s[:, 2].min())
         return s

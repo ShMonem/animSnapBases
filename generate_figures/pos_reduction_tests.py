@@ -9,7 +9,7 @@ from snapbases.posComponents import posComponents
 from config.config import Config_parameters
 
 
-def tets_plots_pca(bases: posComponents, param:Config_parameters,writer=None):
+def tets_plots_pca(bases: posComponents, param:Config_parameters):
     """
     Plots different reconstruction errors for varying reduction dimensions "r".
     :param f: Original tensor (T, N, 3)
@@ -18,13 +18,12 @@ def tets_plots_pca(bases: posComponents, param:Config_parameters,writer=None):
     """
     vertPos_output_directory = param.vertPos_output_directory
 
-    @log_time(vertPos_output_directory)
-    def ren_tests(bases: posComponents, param:Config_parameters,writer=None):
+    def ren_tests(bases: posComponents, param:Config_parameters):
         k = bases.numComp
         r_values = range(1, k + 1)
 
         # PCA tests --------------------------------------------------------------------------------------------------------
-        plt.figure('Error measures for PCA.', figsize=(20, 10))
+        plt.figure('Error measures for PCA - pos bases.', figsize=(20, 10))
 
         store_kp_singVals = True
 
@@ -61,13 +60,15 @@ def tets_plots_pca(bases: posComponents, param:Config_parameters,writer=None):
         plt.subplot(rows, cols, 3)
         # singular vals for the bases over full Kp range
         if store_kp_singVals:
-            header_ = ['x', 'y', 'z']
-            file_name_ = os.path.join(vertPos_output_directory, "deim_Kp_singVals")
+            header_ = ['row','x', 'y', 'z']
+            file_name_ = os.path.join(vertPos_output_directory, param.name + "_posBases_xyz_fullBasesRange_K_singVals")
             with open(file_name_ + '.csv', 'w', encoding='UTF8') as dataFile_:
                 writer_ = csv.writer(dataFile_)
                 writer_.writerow(header_)
 
-                s = bases.test_basesSingVals(writer_)
+                s = bases.test_basesSingVals()
+                for row in range(s.shape[0]):
+                    writer_.writerow([row +1 ,s[row, 0], s[row, 1], s[row, 2]])
 
             dataFile_.close()
         else:
@@ -94,12 +95,17 @@ def tets_plots_pca(bases: posComponents, param:Config_parameters,writer=None):
         if param.q_orthogonal:
             bases.is_utmu_orthogonal()  # test U^T M U = I (K x K)
 
-        # Convergence tests ------------------------------------------------------------------------------------------------
+        # Convergence tests with rotations ---------------------------------------------------------------------------------
+
+    ren_tests(bases, param)
+
+
+# Convergence tests ------------------------------------------------------------------------------------------------
         # Note: This convergences tests section is not relaible
         # frobenius_errors, max_errors, relative_errors_x, relative_errors_y, relative_errors_z = bases.test_convergence(1, k, 1)
         #
         # # Plot Frobenius and inf norm error
-        # plt.figure('Error measures for PCA ', figsize=(20, 10))
+        # plt.figure('Error measures for PCA pos bases', figsize=(20, 10))
         #
         # plt.subplot(1, 2, 1)
         # plt.plot(frobenius_errors, label='Frobenius Error', marker='o')
@@ -129,7 +135,3 @@ def tets_plots_pca(bases: posComponents, param:Config_parameters,writer=None):
         # # plt.tight_layout()
         # fig_name = os.path.join(vertPos_output_directory, 'deim_convergence_tests')
         # plt.savefig(fig_name)
-
-        # Convergence tests with rotations ---------------------------------------------------------------------------------
-
-    ren_tests(bases, param, writer)

@@ -74,10 +74,6 @@ def main(param: Config_parameters):
 
         # run re-construction and analysis tests
         if param.run_pca_tests:
-            global vertPos_output_directory, q_orthogonal
-
-            vertPos_output_directory = param.vertPos_output_directory
-            q_orthogonal = param.q_orthogonal
             from generate_figures.pos_reduction_tests import tets_plots_pca
 
             tets_plots_pca(bases, param)
@@ -85,7 +81,7 @@ def main(param: Config_parameters):
         if param.store_bases:
             start = 1
             end = bases.numComp
-            step = 5
+            step = 1
             bases.store_components_to_files(start, end, step, ".bin")
 
 
@@ -103,7 +99,7 @@ def main(param: Config_parameters):
         nonlinearBases.nonlinearSnapshots.snapshots_prepare()
 
         # Compute PCA bases for nonlinear function and store singular value if desired
-        nonlinearBases.compute_components_store_singvalues(param.constProj_output_directory)
+        nonlinearBases.compute_components_store_singvalues()
 
         # Post-process bases w.r.to standardization and mass weighting
         nonlinearBases.post_process_components()
@@ -113,36 +109,24 @@ def main(param: Config_parameters):
         nonlinearBases.deim_blocksForm(deim_interpolation_in_pos_space)
 
         if param.run_deim_tests:
-
             from generate_figures.nl_reduction_tests import tets_plots_deim
-            tets_plots_deim(nonlinearBases, param, None)
-            # header = ['numPoints', 'fro_error', 'max_err', 'relative_errors_x', 'relative_errors_y',
-            #           'relative_errors_z']
-            #
-            # file_name = os.path.join(param.constProj_output_directory, "deim_convergence_tests")
-            # with open(file_name + '.csv', 'w', encoding='UTF8') as dataFile:
-            #     writer = csv.writer(dataFile)
-            #     writer.writerow(header)
-            #
-            #     tets_plots_deim(nonlinearBases, writer)
-            #
-            # dataFile.close()
+            tets_plots_deim(nonlinearBases,param)
 
         if param.store_nonlinear_bases:
             start = 1
             end = nonlinearBases.numComp
-            step = 5
+            step = 1
             nonlinearBases.store_components_to_files(start, end, step, '.bin')
 
 
 if __name__ == '__main__':
     meshes = ["sphere"]
     subspaces = ["posSubspace", "tetstrainSubspace"]
-    param = Config_parameters()
+
     for mesh in meshes:
         for subspace in subspaces:
+            param = Config_parameters()
             jason_file = "config/"+mesh+"_gFall_"+subspace+".json"
-
             param.reset(jason_file)
             if param.show_profile:
                 profiler.enable()

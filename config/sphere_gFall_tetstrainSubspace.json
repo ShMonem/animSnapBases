@@ -37,7 +37,7 @@
 		},
 		"type": "deim",
 		"max_element_per_deim_vert": 20,
-		"bases_res_tol": 1e-10,
+		"bases_res_tol": 1e-20,
 		"dim": 3,
 		"constraintsDim": 3,
 		"rest_shape": "first",

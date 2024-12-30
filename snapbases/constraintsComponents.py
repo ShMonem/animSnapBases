@@ -10,12 +10,19 @@ from snapbases.nonlinear_snapshots import nonlinearSnapshots
 from utils.utils import store_components, store_interpol_points_vector
 from utils.utils import log_time, read_sparse_matrix_from_bin
 from utils.support import find_tetrahedrons_with_vertices
+
+import time
+import functools
+
 root_folder = os.getcwd()
 profiler = cProfile.Profile()
 
 constProj_output_directory = ""
+
 class constraintsComponents:  # Components == bases
     def __init__(self,param: Config_parameters):
+        global constProj_output_directory
+        constProj_output_directory = param.constProj_output_directory
 
         self.basesType = ""
         self.numComp = 0  # number of bases/components
@@ -45,10 +52,10 @@ class constraintsComponents:  # Components == bases
         # in a fixed dim (x,y,z) bases with size (e*p, k*p) use deim_alpha[:deim_alpha_range(k)] interpolation points
         self.deim_alpha_ranges = None
         self.St = None   # differential operator that maps constraints projections to position space
+        self.param = param
 
     def config(self, fileNameBases="p_nl_", fileName_deim_points="p_nl_interpol_points_",
-               file_name_sing="pca_singValues"):
-        global constProj_output_directory
+               file_name_sing="_constrprojBases_pcaExtraction_singValues"):
         self.basesType = self.param.constProj_bases_type
         self.support = self.param.constProj_support  # can be 'local' or 'global'
 
@@ -57,7 +64,6 @@ class constraintsComponents:  # Components == bases
         self.fileName_deim_points = fileName_deim_points
         self.file_name_sing = file_name_sing
         self.St = read_sparse_matrix_from_bin(self.param.constProj_weightedSt)
-        constProj_output_directory = self.param.constProj_output_directory
 
 
     @staticmethod
@@ -92,16 +98,16 @@ class constraintsComponents:  # Components == bases
         return idx
 
     @log_time(constProj_output_directory)
-    def compute_components_store_singvalues(self, store_bases_dir):
+    def compute_components_store_singvalues(self):
         # compute_geodesic_distance = self.nonlinearSnapshots.compute_geodesic_distance
         headerSing = ['component', 'idx', 'residual_matrix_norm']
         p = self.nonlinearSnapshots.constraintsSize
         for i in range(p):
             headerSing.append('singVal'+str(i))
 
-        file_name = os.path.join(store_bases_dir, self.file_name_sing)
+        file_name = os.path.join(self.param.constProj_output_directory, self.param.name +self.file_name_sing)
         if self.storeSingVal:
-            with open(file_name + "_K_" + str(self.numComp) + '.csv', 'w', encoding='UTF8') as singFile:
+            with open(file_name + '.csv', 'w', encoding='UTF8') as singFile:
                 writer = csv.writer(singFile)
                 writer.writerow(headerSing)
 
@@ -358,7 +364,7 @@ class constraintsComponents:  # Components == bases
         error = np.abs(f - f_reconstructed)
         return np.max(error)/np.max(f)
 
-    def test_basesSingVals(self, writer=None):
+    def test_basesSingVals(self):
         """
         Computes normalized singular values along all Kp vectors on the already fully-extracted PCA bases
         :return:
@@ -370,8 +376,6 @@ class constraintsComponents:  # Components == bases
             U, sing, Vt = svd(bases[:, :, i], full_matrices=False)
             s[:, i] = sing / sing.max()
 
-            if writer is not None:
-                writer.writerow(s[:, i])
         # print('min sing values over dimensions:', s[:, 0].min(), s[:, 1].min(), s[:, 2].min())
         return s
 

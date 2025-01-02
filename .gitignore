@@ -28,3 +28,4 @@ venv_requirements.txt
 /imgui.ini
 /generate_figures/PODerrorsVal.csv
 /generate_figures/L2_errorMeasurs.py
+/function_timings.txt

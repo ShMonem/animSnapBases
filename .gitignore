@@ -26,3 +26,5 @@ venv_requirements.txt
 /input_data/
 /.polyscope.ini
 /imgui.ini
+/generate_figures/PODerrorsVal.csv
+/generate_figures/L2_errorMeasurs.py

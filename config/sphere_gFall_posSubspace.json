@@ -27,7 +27,7 @@
 			"rest_shape": "first",
 			"massWeighted": "_Volkwein",
 			"standarized": "_Standarized",
-			"orthogonalized": "_Orthogonalized",
+			"orthogonalized": "_nonOrthogonalized",
 			"support":
 				{
 					"min_dist": 0.1,
@@ -54,7 +54,8 @@
 		},
 	"constraintProj_bases":
 	{
-		"computeState": {
+		"computeState":
+		{
 			"compute": false
 		}
 	}

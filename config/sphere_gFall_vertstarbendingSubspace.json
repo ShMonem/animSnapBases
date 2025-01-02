@@ -20,11 +20,11 @@
 		},
 		"constraintType":
 		{
-			"name": "tristrain",
-			"elements": "_tris",
+			"name": "vertstarbending",
+			"elements": "_verts",
 			"snaps_folder": "/constraintProjection_snapshots/noPosReduction_noConstraintProjReduction/",
 			"snaps_pattern_full_p": "/aux_",
-			"rowSize": 2
+			"rowSize": 1
 		},
 		"snapshots":
 		{
@@ -36,8 +36,8 @@
 			"processed_snapshots_ready": false
 		},
 		"type": "deim",
-		"max_element_per_deim_vert": 6,
-		"bases_res_tol": 0.19,
+		"max_element_per_deim_vert": 7,
+		"bases_res_tol": 1.0,
 		"dim": 3,
 		"constraintsDim": 3,
 		"rest_shape": "first",

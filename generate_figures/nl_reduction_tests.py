@@ -8,6 +8,10 @@ from utils.support import compute_edge_incidence_matrix_on_tets, extract_sub_ver
 import os
 from snapbases.constraintsComponents import constraintsComponents
 
+import polyscope as ps
+
+ps.init()
+
 angle = 0
 frame = 1
 
@@ -183,6 +187,7 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, param:Config_parameter
 
         if param.visualize_deim_elements:
             visualize_interpolation_elements(nlConst_bases, param.visualize_deim_elements_at_K, constProj_output_directory)
+        plt.close()
 
     run_tests(nlConst_bases, constProj_output_directory, param)
     # End of DEIM tests ------------------------------------------------------------------------------------------------
@@ -201,14 +206,13 @@ def visualize_interpolation_elements(nlConst_bases: constraintsComponents, visua
     - highlight_tets: list[int], indices of tetrahedra to highlight.
     - highlight_faces: list[tuple], specific faces (triplets of vertex indices) to highlight.
     """
-    import polyscope as ps
-    ps.init()
+
     deim_verts = nlConst_bases.deim_interpol_verts[:visualize_deim_elements_at_K]
     highlight_elements = nlConst_bases.deim_alpha[:nlConst_bases.deim_alpha_ranges[visualize_deim_elements_at_K - 1]]
     highlight_type = nlConst_bases.nonlinearSnapshots.ele_type
 
     # Register the mesh
-    ps.register_volume_mesh("Tet Mesh", nlConst_bases.nonlinearSnapshots.verts, nlConst_bases.nonlinearSnapshots.tets,
+    ps.register_surface_mesh("Tet Mesh", nlConst_bases.nonlinearSnapshots.verts, nlConst_bases.nonlinearSnapshots.tris,
                             transparency=0.1, color=(0.89, 0.807, 0.565))
     ps.register_point_cloud("deim Vertices", nlConst_bases.nonlinearSnapshots.verts[deim_verts], enabled=True,
                             color=(0.9, 0.1, 0.25), radius=0.008)
@@ -225,14 +229,16 @@ def visualize_interpolation_elements(nlConst_bases: constraintsComponents, visua
                                 color=ele_color)
 
     # Highlight faces
-    elif highlight_type == "_faces":
-        faces = nlConst_bases.nonlinearSnapshots.tris[highlight_elements]
-        ps.register_surface_mesh("Highlighted Faces", nlConst_bases.nonlinearSnapshots.verts, faces)
+    elif highlight_type == "_tris":
+        ps.register_surface_mesh("Highlighted Faces", nlConst_bases.nonlinearSnapshots.verts,
+                                 nlConst_bases.nonlinearSnapshots.tris[highlight_elements], transparency=0.8,
+                                color=ele_color)
 
     # Highlight edges
     elif highlight_type == "_triEdges":
         edges = nlConst_bases.nonlinearSnapshots.edges[highlight_elements]
-        sub_verts, sub_edges = extract_sub_vertices_and_edges(nlConst_bases.nonlinearSnapshots.verts, edges)
+        sub_verts, sub_edges = extract_sub_vertices_and_edges(nlConst_bases.nonlinearSnapshots.verts, edges, transparency=0.8,
+                                color=ele_color)
         ps.register_curve_network("Highlighted Tri- Edges", sub_verts, sub_edges)
 
     elif highlight_type == "_tetEdges":
@@ -275,7 +281,7 @@ def visualize_interpolation_elements(nlConst_bases: constraintsComponents, visua
 
         if frame <= num_frames:
             # Capture the screenshot
-            filename = os.path.join(output_dir, f"{file_prefix}_{frame:03d}.png")
+            filename = os.path.join(output_dir, nlConst_bases.param.name + "_" + nlConst_bases.param.constProj_name + "_" + f"{file_prefix}_{frame:03d}.png")
             ps.screenshot(filename, transparent_bg=False)
             frame +=1
         else:

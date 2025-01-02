@@ -544,4 +544,4 @@ class Config_parameters:
             self.visualize_deim_elements = config["constraintProj_bases"]["visualize_deim_elements"]
             self.visualize_deim_elements_at_K = config["constraintProj_bases"]["visualize_elements_at_bases_num"]
 
-            print("Parameters have been reset!")
+        print("Parameters have been resetusing:", jason_file, "!")

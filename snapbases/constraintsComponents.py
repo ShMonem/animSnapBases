@@ -424,7 +424,7 @@ class constraintsComponents:  # Components == bases
 
         bases = self.comps.swapaxes(0, 1)  # (ep, Kp, d)
         if error_in_pos_space:
-            if self.nonlinearSnapshots.ele_type not in ["_tets", "_tris", "_verts"] : # TODO generalize
+            if self.nonlinearSnapshots.ele_type not in ["_tets", "_tris", "_verts"] :
                 print("ERROR! Unknown constained elements type in deim")
                 return
 
@@ -748,7 +748,7 @@ class constraintsComponents:  # Components == bases
             ps.register_curve_network("Highlighted Tri- Edges", sub_verts, sub_edges)
 
         elif highlight_type == "_tetEdges":
-            # TODO: check if required!
+            # check if required!
             edges = compute_edge_incidence_matrix_on_tets(self.nonlinearSnapshots.tets)[highlight_elements]
             sub_verts, sub_edges = extract_sub_vertices_and_tet_edges(self.nonlinearSnapshots.verts, edges)
             ps.register_curve_network("Highlighted Tet-Edges", sub_verts, sub_edges)

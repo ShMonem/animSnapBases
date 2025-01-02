@@ -9,12 +9,26 @@ from scipy.sparse.linalg import splu
 from utils.process import veclen, normalized
 
 
-def compute_tetMasses(vertexMasses, tetrahedrons, tetSize, auxiliarySize=3):
-
+def compute_tetMasses(vertexMasses, tetrahedrons, tetSize, auxiliarySize):
+    assert auxiliarySize == 3
     masses =np.zeros(tetSize * auxiliarySize)
     for t in range(tetrahedrons.shape[0]):
         weights = np.array([vertexMasses[tetrahedrons[t, 0]], vertexMasses[tetrahedrons[t, 1]],
                   vertexMasses[tetrahedrons[t, 2]], vertexMasses[tetrahedrons[t, 3]]])
+        weight = weights.sum()
+
+        for k in range(auxiliarySize):
+            masses[t * auxiliarySize + k] = weight
+
+    return masses
+
+def compute_triMasses(vertexMasses, triangles, triSize, auxiliarySize):
+
+    assert auxiliarySize == 2
+    masses =np.zeros(triSize * auxiliarySize)
+    for t in range(triangles.shape[0]):
+        weights = np.array([vertexMasses[triangles[t, 0]], vertexMasses[triangles[t, 1]],
+                  vertexMasses[triangles[t, 2]]])
         weight = weights.sum()
 
         for k in range(auxiliarySize):
@@ -154,18 +168,22 @@ class GeodesicDistanceComputation(object):
         # print(phi.max())
         return phi
 
+def get_triangles_per_vert(vertex_indices, tris):
+    # Convert the list of vertex indices to a set for faster lookup
+    vertex_indices_set = set(vertex_indices)
 
-def find_tetrahedrons_with_vertices(vertex_indices, tets):
-    """
-    Find all tetrahedrons that contain any of the given vertices.
+    # List to hold the tetrahedrons that include any of the specified vertices
+    matching_tri_indices = []
+    count = 0
+    # Iterate over each tetrahedron
+    for index, tri in enumerate(tris):
+        # Check if any vertex of the tetrahedron is in the vertex_indices_set
+        if any(vertex in vertex_indices_set for vertex in tri):
+            matching_tri_indices.append(index)
 
-    Parameters:
-        vertex_indices (list of int): List of indices of vertices.
-        tets (list of list of int): List of tetrahedrons, each tetrahedron is represented by a list of vertex indices.
+    return matching_tri_indices
 
-    Returns:
-        list of list of int: List of tetrahedrons that contain any of the given vertices.
-    """
+def get_tetrahedrons_per_vert(vertex_indices, tets):
     # Convert the list of vertex indices to a set for faster lookup
     vertex_indices_set = set(vertex_indices)
 
@@ -179,6 +197,15 @@ def find_tetrahedrons_with_vertices(vertex_indices, tets):
             matching_tet_indices.append(index)
 
     return matching_tet_indices
+
+def get_vertices_per_vert(vertex_index, faces):
+    neighbors = set()
+    for face in faces:
+        if vertex_index in face:
+            # Add all vertices of the face to the neighbors set but remove the original vertex
+            neighbors.update(face)
+    #neighbors.discard(vertex_index)  # Remove the original vertex from the set of neighbors
+    return list(neighbors)
 
 def compute_edge_incidence_matrix_on_tets(tets):
     """

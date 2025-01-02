@@ -6,12 +6,15 @@ import os
 import cProfile
 import pstats
 import csv
+
+from tvtk.tools.visual import sphere
+
 from utils.process import convert_sequence_to_hdf5, load_off, load_ply, align, view_anim_file, view_components
 from utils.utils import store_matrix, store_vector, write_tensor_to_bin_colmajor
 from functools import partial
 # vertex position parameters
 from config.config import Config_parameters
-
+import time
 root_folder = os.getcwd()
 profiler = cProfile.Profile()
 
@@ -109,8 +112,8 @@ def main(param: Config_parameters):
         nonlinearBases.deim_blocksForm(deim_interpolation_in_pos_space)
 
         if param.run_deim_tests:
-            from generate_figures.nl_reduction_tests import tets_plots_deim
-            tets_plots_deim(nonlinearBases,param)
+            # from generate_figures.nl_reduction_tests import tets_plots_deim
+            nonlinearBases.tets_plots_deim()
 
         if param.store_nonlinear_bases:
             start = 1
@@ -120,19 +123,23 @@ def main(param: Config_parameters):
 
 
 if __name__ == '__main__':
-    meshes = ["sphere"]
-    subspaces = ["posSubspace", "tetstrainSubspace"]
+    # # current available examples:
+    # meshes = ["sphere"]
+    # subspaces = ["posSubspace", "tetstrainSubspace", "tristrainSubspace","vertstarbendingSubspace"]
+    #
+    # mesh, subspace = 0, 0
+    # param = Config_parameters()
+    # jason_file = "config/"+ meshes[mesh] +"_gFall_"+subspaces[subspace] +".json"
+    #
+    # param.reset(jason_file)
+    # main(param)
 
-    for mesh in meshes:
-        for subspace in subspaces:
-            param = Config_parameters()
-            jason_file = "config/"+mesh+"_gFall_"+subspace+".json"
-            param.reset(jason_file)
-            if param.show_profile:
-                profiler.enable()
-                main(param)
-                profiler.disable()
-                stats = pstats.Stats(profiler).sort_stats('tottime')
-                stats.print_stats()
-            else:
-                main(param)
+    from generate_figures.onMesh_accuracyMeasures import compute_accuracy, readOriginalMesh
+    compute_accuracy( "input_data/sphere/sphere_made_tet.mesh", False,
+                        1, 200, 1,
+    "input_data/sphere/_gravitationalFall/constraintProjection_snapshots/noPosReduction_noConstraintProjReduction/tetstrain/Stp_",
+    30,
+    "input_data/sphere/_gravitationalFall/constraintProjection_snapshots/noPosReduction_ConsProjDEIM/",
+                      "_tetstrain/Stp_")
+
+

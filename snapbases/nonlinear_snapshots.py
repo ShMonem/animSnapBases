@@ -5,7 +5,7 @@ import sys
 import cProfile
 from utils.utils import log_time, read_sparse_matrix_from_bin, read_mesh_file
 from utils.process import view_anim_file, view_components
-from utils.support import compute_tetMasses, compute_edge_incidence_matrix_on_tris
+from utils.support import compute_tetMasses, compute_triMasses, compute_edge_incidence_matrix_on_tris
 import h5py
 from config.config import Config_parameters
 import igl
@@ -28,8 +28,8 @@ class nonlinearSnapshots:
         self.dim = 0
         self.mass_file = ""  # file contains mass weights as one vector
         self.frs = 0  # no. frames: F
-        self.constraintsSize = 0  # 'p' in the paper. no. rows in each projection mat (=3, for TetStrain constraint)
-        self.num_constained_elements = 0  # numConstraints/'e' in the paper. no. verts (tetVerts) influenced by the constraints
+        self.constraintsSize = 0  # 'p' in the paper. no. rows in each projection mat
+        self.num_constained_elements = 0  # numConstraints/'e'  (verts, tris, tets)
 
         self.mean = None  # (nVerts, 3)
         self.pre_scale_factor = 1  # normalization factor
@@ -59,7 +59,8 @@ class nonlinearSnapshots:
         self.dim = self.param.constProj_dim
         self.mass_file = self.param.constProj_masses_file  # file contains mass weights as one vector
         self.frs = self.param.constProj_numFrames  # no. frames: F
-        self.constraintsSize = self.param.constProj_p_size  # 'p' in the paper. no. rows in each projection mat (=3, for TetStrain constraint)
+        self.constraintsSize = self.param.constProj_p_size  # 'p' in the paper. no. rows in each projection mat
+        # (=3 for TetStrain constraint, =2 for tristrain, =1 otherwise)
         self.ele_type = self.param.constProj_element_type
 
         self.tet_mesh = self.param.tet_mesh_file
@@ -144,17 +145,15 @@ class nonlinearSnapshots:
                 self.verts, self.tets, self.tris = read_mesh_file(self.tet_mesh)
                 self.edges = compute_edge_incidence_matrix_on_tris(self.tris)
 
-                if self.verts is not None:
-                    print("Failed to read mesh data.")
+                if self.verts is None:
+                    print("Failed to read tet mesh data.")
                 m = igl.massmatrix(self.verts, self.tris, igl.MASSMATRIX_TYPE_VORONOI)  # surface masses
                 vertexMasses = np.diag(m.todense())
                 #vertexMasses = vertexMasses/vertexMasses.sum()
                 if self.constraintsSize == 1:
                     self.mass = vertexMasses
                 elif self.constraintsSize == 2:
-                    # TODO : tri case
-                    print("ERROR: mass matris is not computed!!!")
-                    self.mass = np.zeros(self.tris.shape[0])
+                    self.mass = compute_triMasses(vertexMasses, self.tris, self.num_constained_elements, self.constraintsSize)
                 elif self.constraintsSize == 3:
                     self.mass = compute_tetMasses(vertexMasses, self.tets, self.num_constained_elements, self.constraintsSize)
 

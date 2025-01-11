@@ -25,8 +25,11 @@ class posComponents:  # Components == bases
         assert self.basesType == 'PCA' or self.basesType == 'SPLOCS'
 
         # position snapshots from which the components are computed are loaded and pre-processed if required
-        aligned_snapshots_h5_file = os.path.join(param.aligned_snapshots_directory, param.aligned_snapshots_animation_file)
-        self.pos_snapshots = posSnapshots(aligned_snapshots_h5_file, param.vertPos_rest_shape, param.vertPos_masses_file,
+        training_aligned_snapshots_h5_file = os.path.join(param.aligned_snapshots_directory, param.train_aligned_snapshots_animation_file)
+        testing_aligned_snapshots_h5_file = os.path.join(param.aligned_snapshots_directory, param.test_aligned_snapshots_animation_file)
+
+        self.pos_snapshots = posSnapshots(training_aligned_snapshots_h5_file, testing_aligned_snapshots_h5_file,
+                                          param.vertPos_rest_shape, param.vertPos_masses_file,
                                           param.tet_mesh_file,
                                           param.q_standarize, param.q_massWeight)
 
@@ -258,7 +261,7 @@ class posComponents:  # Components == bases
     @log_time(vertPos_output_directory)
     def compute_components_store_singvalues(self):
 
-        headerSing = ['component', 'singVal']
+        headerSing = ['component', 'singVal', 'norm_R']
 
         file_name = os.path.join(vertPos_output_directory, self.param.name+"_posBases_pcaExtraction_singValues_errorNorm")
         if self.storeSingVal:

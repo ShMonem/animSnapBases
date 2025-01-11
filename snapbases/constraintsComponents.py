@@ -109,7 +109,7 @@ class constraintsComponents:  # Components == bases
         for i in range(p):
             headerSing.append('singVal'+str(i))
 
-        file_name = os.path.join(self.param.constProj_output_directory, self.param.name +self.file_name_sing)
+        file_name = os.path.join(self.param.constProj_output_directory, self.param.name +"_"+self.param.constProj_name+self.file_name_sing)
         if self.storeSingVal:
             with open(file_name + '.csv', 'w', encoding='UTF8') as singFile:
                 writer = csv.writer(singFile)
@@ -303,11 +303,10 @@ class constraintsComponents:  # Components == bases
 
         return mat_e
 
-    def deim_constructed(self, r):
+    def deim_train_constructed(self, r):
 
         p = self.nonlinearSnapshots.constraintsSize
-        f = self.nonlinearSnapshots.snapTensor
-        F, ep, _ = f.shape
+        F, ep, _ = self.nonlinearSnapshots.snapTensor.shape
 
         V_r = self.comps.swapaxes(0, 1)[:, :r*p, :]  # (ep, rp, 3)
         Pt = self.deim_alpha[:self.deim_alpha_ranges[r-1]]
@@ -318,6 +317,23 @@ class constraintsComponents:  # Components == bases
             u, piv = lu_factor(V_r[Pt, :, l].T @ V_r[Pt, :, l])
             for f in range(F):
                 reconstructed[f, :, l] = V_r[:, :, l] @ lu_solve((u, piv), V_r[Pt, :, l].T @ self.nonlinearSnapshots.snapTensor[f, Pt, l])
+
+        return reconstructed
+
+    def deim_test_constructed(self, r):
+
+        p = self.nonlinearSnapshots.constraintsSize
+        F, ep, _ = self.nonlinearSnapshots.test_snapTensor.shape
+
+        V_r = self.comps.swapaxes(0, 1)[:, :r*p, :]  # (ep, rp, 3)
+        Pt = self.deim_alpha[:self.deim_alpha_ranges[r-1]]
+
+        reconstructed = np.zeros((F, ep, 3))
+
+        for l in range(3):
+            u, piv = lu_factor(V_r[Pt, :, l].T @ V_r[Pt, :, l])
+            for f in range(F):
+                reconstructed[f, :, l] = V_r[:, :, l] @ lu_solve((u, piv), V_r[Pt, :, l].T @ self.nonlinearSnapshots.test_snapTensor[f, Pt, l])
 
         return reconstructed
 

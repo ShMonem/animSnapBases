@@ -6,9 +6,7 @@ import os
 import cProfile
 import pstats
 import csv
-
-from tvtk.tools.visual import sphere
-
+import argparse
 from utils.process import convert_sequence_to_hdf5, load_off, load_ply, align, view_anim_file, view_components
 from utils.utils import store_matrix, store_vector, write_tensor_to_bin_colmajor
 from functools import partial
@@ -26,9 +24,10 @@ def main(param: Config_parameters):
         print("Computing bases for positions vertices")
         # in case input_animation_dir has ot been created yet:
         # read snapshots: list of meshes in .off or .ply format
-        aligned_snapshots_h5_file = os.path.join(param.aligned_snapshots_directory, param.aligned_snapshots_animation_file)
+        aligned_training_snapshots_h5_file = os.path.join(param.aligned_snapshots_directory, param.train_aligned_snapshots_animation_file)
+        aligned_testing_snapshots_h5_file = os.path.join(param.aligned_snapshots_directory, param.test_aligned_snapshots_animation_file)
 
-        if not os.path.exists(aligned_snapshots_h5_file):
+        if not os.path.exists(aligned_training_snapshots_h5_file) or not os.path.exists(aligned_testing_snapshots_h5_file) :
 
             print("preparing snapshots...")
             # Create a new directory if it does not exist
@@ -40,22 +39,33 @@ def main(param: Config_parameters):
                 print("Directory is created to store aligned snapshots animations!")
 
                 print("Frame increament: ", param.frame_increment)
-            snapsots_h5_file = os.path.join(param.input_animation_dir, param.snapshots_animation_file)
+            train_snapsots_h5_file = os.path.join(param.input_animation_dir, param.train_snapshots_animation_file)
+            test_snapsots_h5_file = os.path.join(param.input_animation_dir, param.test_snapshots_animation_file)
+
             if param.snapshots_format == ".off":
+                # training snapshots
                 convert_sequence_to_hdf5(param.input_snapshots_pattern, partial(load_off, no_colors=True),
-                                         snapsots_h5_file, param.vertPos_numFrames, param.frame_increment)
+                                         train_snapsots_h5_file, param.vertPos_numFrames, param.frame_increment)
+                # testing snapshots
+                convert_sequence_to_hdf5(param.input_snapshots_pattern, partial(load_off, no_colors=True),
+                                         test_snapsots_h5_file, param.vertPos_numFrames,
+                                         param.frame_increment+param.train_test_jump)
             elif param.snapshots_format == ".ply":
                 # TODO: test
                 convert_sequence_to_hdf5(param.input_snapshots_pattern, load_ply,
-                                         snapsots_h5_file, param.vertPos_numFrames, param.frame_increment)
+                                         train_snapsots_h5_file, param.vertPos_numFrames, param.frame_increment)
+                convert_sequence_to_hdf5(param.input_snapshots_pattern, load_ply,
+                                         test_snapsots_h5_file, param.vertPos_numFrames,
+                                         param.frame_increment+param.train_test_jump)
             else:
                 print("Yet, only .off/.ply mesh files are supported for snapshots!")
                 return
 
-            align(snapsots_h5_file, aligned_snapshots_h5_file, param.rigid)
+            align(train_snapsots_h5_file, aligned_training_snapshots_h5_file, param.rigid)
+            align(test_snapsots_h5_file, aligned_testing_snapshots_h5_file, param.rigid)
 
         else:
-            print("A snapshots file already exists: \n", aligned_snapshots_h5_file,
+            print("A training and testing snapshots file already exists: \n", aligned_training_snapshots_h5_file,
                   "\n .. skip import! ")
 
         # read and pre-process snapshots
@@ -70,7 +80,7 @@ def main(param: Config_parameters):
 
         # visualize aligned snapshots and computed bases
         if param.visualize_snapshots:
-            view_anim_file(aligned_snapshots_h5_file)
+            view_anim_file(aligned_training_snapshots_h5_file)
 
         if param.visualize_bases:
             view_components(os.path.join(param.vertPos_output_directory, bases.output_components_file))
@@ -111,35 +121,76 @@ def main(param: Config_parameters):
         deim_interpolation_in_pos_space = True
         nonlinearBases.deim_blocksForm(deim_interpolation_in_pos_space)
 
-        if param.run_deim_tests:
-            # from generate_figures.nl_reduction_tests import tets_plots_deim
-            nonlinearBases.tets_plots_deim()
-
         if param.store_nonlinear_bases:
             start = 1
             end = nonlinearBases.numComp
             step = 1
             nonlinearBases.store_components_to_files(start, end, step, '.bin')
 
+        if param.run_deim_tests:
+            from generate_figures.nl_reduction_tests import tets_plots_deim
+            tets_plots_deim(nonlinearBases, pca_tests= True, postProcess_tests=False,
+                                            deim_tests=True, visualize_deim_elements=True)
 
 if __name__ == '__main__':
-    # # current available examples:
-    # meshes = ["sphere"]
+    # -----------------------------------------------------------------------------------------------------------------
+    # current available examples:
+    # meshes = ["sphere", "armadillo", "bunny", "elephant", "octopus"]
     # subspaces = ["posSubspace", "tetstrainSubspace", "tristrainSubspace","vertstarbendingSubspace"]
+
+    parser = argparse.ArgumentParser(description="Set bses parameters.")
+    parser.add_argument('--mesh', type=str, default="octopus", help='Give a character mesh (default: sphere)')
+    parser.add_argument('--subspace', type=str, default="tetstrainSubspace",
+                        help='Subspaces for which bases are computed (default: posSubspace)')
+
+    args = parser.parse_args()
+    param = Config_parameters()
     #
-    # mesh, subspace = 0, 0
-    # param = Config_parameters()
-    # jason_file = "config/"+ meshes[mesh] +"_gFall_"+subspaces[subspace] +".json"
-    #
-    # param.reset(jason_file)
-    # main(param)
+    jason_file = "config/examples/"+ args.mesh +"_gFall_"+ args.subspace+".json"
+    param.reset(jason_file)
+    main(param)
+    # -----------------------------------------------------------------------------------------------------------------
+    # when snapshots of the reduced simulations is available we run more on mesh accuracy tests
+    # position space
+    if param.compute_pos_bases and  param.reduced_snapshots_available:
+        from generate_figures.onMesh_accuracyMeasures import compute_accuracy, readOriginalMesh
+        # Reconstruction
+        compute_accuracy( param.tet_mesh_file, param.snapshots_format,
+                          1, param.vertPos_numFrames, 50, 10, 200,
+                          param.input_snapshots_files_name,
+                          param.input_pos_snapshots_dir + "/posPCA_","_noConstraintProjReduction/pos_",
+                          "posSubspace",
+                          param.vertPos_output_directory
+                          )
+        # Testing om unseen data
+        compute_accuracy(param.tet_mesh_file, param.snapshots_format,
+                         param.vertPos_numFrames +1, param.vertPos_numFrames+50, 50, 10, 200,
+                         param.input_snapshots_files_name,
+                         param.input_pos_snapshots_dir + "/posPCA_", "_noConstraintProjReduction/pos_",
+                         "posSubspace",
+                         param.vertPos_output_directory,
+                         case ="_test_on_unseen_set"
+                         )
 
-    from generate_figures.onMesh_accuracyMeasures import compute_accuracy, readOriginalMesh
-    compute_accuracy( "input_data/sphere/sphere_made_tet.mesh", False,
-                        1, 200, 1,
-    "input_data/sphere/_gravitationalFall/constraintProjection_snapshots/noPosReduction_noConstraintProjReduction/tetstrain/Stp_",
-    30,
-    "input_data/sphere/_gravitationalFall/constraintProjection_snapshots/noPosReduction_ConsProjDEIM/",
-                      "_tetstrain/Stp_")
 
-
+    # constraint projection space
+    if param.compute_constProj_bases and param.reduced_constProj_snapshots_available:
+        from generate_figures.onMesh_accuracyMeasures import compute_accuracy, readOriginalMesh
+        # Reconstruction
+        compute_accuracy(param.tet_mesh_file, param.snapshots_format,
+                             1, param.constProj_numFrames, 10, 10, 120,
+                             param._pos_snaps_folder+"/pos_",
+                             param._deim_pos_snaps_folder, "_"+param.constProj_name+"/pos_",
+                             "posSubspace",
+                             param.vertPos_output_directory
+                             )
+        # Testing om unseen data
+        compute_accuracy(param.tet_mesh_file, param.snapshots_format,
+                         param.constProj_numFrames +1, param.constProj_numFrames+50, 10, 10, 120,
+                         param._pos_snaps_folder + "/pos_",
+                         param._deim_pos_snaps_folder, "_" + param.constProj_name + "/pos_",
+                         "posSubspace",
+                         param.vertPos_output_directory,
+                         case="_test_on_unseen_set"
+                         )
+    # -----------------------------------------------------------------------------------------------------------------

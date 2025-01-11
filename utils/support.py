@@ -30,6 +30,8 @@ def compute_triMasses(vertexMasses, triangles, triSize, auxiliarySize):
         weights = np.array([vertexMasses[triangles[t, 0]], vertexMasses[triangles[t, 1]],
                   vertexMasses[triangles[t, 2]]])
         weight = weights.sum()
+        if weight == 0:
+            print("zero weight")
 
         for k in range(auxiliarySize):
             masses[t * auxiliarySize + k] = weight

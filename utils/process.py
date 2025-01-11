@@ -119,7 +119,7 @@ def preprocess_mesh_animation(verts, tris):
     e1 = verts[0, tris[:,1]] - verts[0, tris[:,0]]
     e2 = verts[0, tris[:,2]] - verts[0, tris[:,0]]
     n = np.cross(e1, e2)
-    tris = tris[veclen(n) > 1.e-8]
+    tris = tris[np.linalg.norm(n, axis=1) > 1.e-8]
     # remove unconnected vertices
     ij = np.r_[np.c_[tris[:,0], tris[:,1]],
                np.c_[tris[:,0], tris[:,2]],

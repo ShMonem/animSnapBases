@@ -29,13 +29,18 @@ class posSnapshots:
     if required the snapshots will be further pre-processed through standerization and/or mass weighting
     """
 
-    def __init__(self, input_animation_file, rest_shape, masses_file, tet_mesh_file, standarize=True, massWeight=True):
+    def __init__(self, input_train_animation_file, input_test_animation_file, rest_shape, masses_file, tet_mesh_file, standarize=True, massWeight=True):
 
-        self.input_animation_file = input_animation_file  # contains pre-aligned (only centered) snapshots
+        self.input_animation_file = input_train_animation_file  # contains pre-aligned (only centered) snapshots
+        self.input_test_animation_file = input_test_animation_file  # contains pre-aligned (only centered) snapshots
+
+
         self.rest_shape = rest_shape  # which frame to use as rest-shape ("first" or "average")
 
         self.verts = None  # vertices
+        self.test_verts = None
         self.tris = None  # faces
+        self.test_tris = None
         self.frs = 0  # no. frames: F
         self.nVerts = 0  # no. vertices: N
 
@@ -108,7 +113,13 @@ class posSnapshots:
         print("Faces: ", self.tris.shape[0])
         print("Frames: ", self.frs)
 
-    def read_factorize_masses(self, mass_on_tet_mesh=True):
+        with h5py.File(self.input_test_animation_file, 'r') as test_f:
+            self.test_verts = test_f['verts'][()].astype(float)  # (F, N, 3)
+            self.test_tris = test_f['tris'][()]
+
+
+
+    def read_factorize_masses(self, mass_on_tet_mesh=False):
         # if masses file is available, read it
         fileName = self.massesFile
         N = self.nVerts

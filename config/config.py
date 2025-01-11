@@ -41,8 +41,6 @@ class Config_parameters:
         # pre alignment done to frames, can be '_centered' or '_alignedRigid'
         self.preAlignement = ""
 
-        # number of snapshots used in computations (NO. files you have)
-        self.vertPos_maxFrames = -1
         self.snapshots_format = ""  # either ".off" or ".ply"
         # where snapshots are stored
         self.snapshots_folder = ""
@@ -59,6 +57,7 @@ class Config_parameters:
         # number of bases to be computed
         self.vertPos_numComponents = -1
         self.frame_increment = -1
+        self.train_test_jump = 1
 
         # notice that data should be put in place so that all .py can have access too!
         self.input_snapshots_pattern = ""
@@ -143,8 +142,6 @@ class Config_parameters:
         # where snapshots can be stored after pre-processing # TODO
         self.constProj_preprocessed_snapshots_folder = ""
         self.constProj_snapshots_ready = False
-        # number of snapshots used in computations (NO. files you have)
-        self.constProj_maxFrames = -1
         # number of snapshots used in computations
         self.constProj_numFrames = -1
         # tolerance used to satisfy bases computation criterion
@@ -154,7 +151,7 @@ class Config_parameters:
         # in deim algorithm we can choose to include a limited number of constained elements per large deformation vertex
         self.deim_ele_per_vert = -1
         self.constProj_frame_increment = -1
-
+        self.constProj_train_test_jump = 1
         # notice that data should be put in place so that all .py can have access too!
         self.constProj_input_snapshots_pattern = ""
 
@@ -192,16 +189,17 @@ class Config_parameters:
             config = json.load(fp)
         fp.close()
 
+        self.snapshots_repo_dir = config["object"]["experiment_dir"]  # where snapshots can be found
         # set data sources and parameters
         self.name = config["object"]["mesh"]
         self.experiment = config["object"]["experiment"]  # name of you simulations
 
         self.compute_pos_bases =config["vertexPos_bases"]['computeState']["compute"]
         # weighted selection matrix that maps constraints projections to position space
-        self.tet_mesh_file = "input_data/" \
+        self.tet_mesh_file = self.snapshots_repo_dir \
                     + self.name + "/" \
                     + self.name + "_made_tet.mesh"
-        self.tri_mesh_file = "input_data/" \
+        self.tri_mesh_file = self.snapshots_repo_dir \
                     + self.name + "/" \
                     + self.name + ".obj"
         if self.compute_pos_bases:
@@ -223,7 +221,7 @@ class Config_parameters:
             else: print("Error! unknown alignment method.")
 
             # number of snapshots used in computations (NO. files you have)
-            self.vertPos_maxFrames = config["vertexPos_bases"]["snapshots"]["max_numFrames"]
+            self.frame_increment  = config["vertexPos_bases"]["snapshots"]["frame_increment"]
             self.snapshots_format = config["vertexPos_bases"]["snapshots"]["format"]   # either ".off" or ".ply"
             # where snapshots are stored
             self.snapshots_folder = config["vertexPos_bases"]["snapshots"]["snaps_folder"]
@@ -240,34 +238,46 @@ class Config_parameters:
             # number of bases to be computed
             self.vertPos_numComponents = config["vertexPos_bases"]["pca"]["numComponents"]
 
-
-            if config["vertexPos_bases"]["snapshots"]["read_all_from_first"]:
-                self.frame_increment = 1
-            else:
-                self.frame_increment = self.vertPos_maxFrames//self.vertPos_numFrames
-                assert self.frame_increment <= 10    # max number of frame increment
-
             # notice that data should be put in place so that all .py can have access too!
-            self.input_snapshots_pattern = "input_data/" \
+            self.input_pos_snapshots_dir = self.snapshots_repo_dir \
+                                           + self.name + "/" \
+                                           + self.experiment \
+                                           + "/position_snapshots/"
+
+            self.input_snapshots_pattern = self.snapshots_repo_dir \
                                       + self.name + "/" \
                                       + self.experiment \
                                       + "/position_snapshots/" \
                                       + self.snapshots_folder \
                                       + "/pos_*" + self.snapshots_format
 
-            self.input_animation_dir = "input_data/" \
+            self.input_snapshots_files_name = self.snapshots_repo_dir \
+                                           + self.name + "/" \
+                                           + self.experiment \
+                                           + "/position_snapshots/" \
+                                           + self.snapshots_folder \
+                                           + "/pos_"
+
+            self.reduced_snapshots_available = config["vertexPos_bases"]["snapshots"]["reduced_snaps_available"]
+
+            self.input_animation_dir = self.snapshots_repo_dir \
                                   + self.name + "/" \
                                   + self.experiment \
                                   + "/" + self.animation_folder + "/"
 
-            self.snapshots_animation_file = "snapshots_" \
+            self.train_snapshots_animation_file = "train_snapshots_" \
                                        + str(self.vertPos_numFrames) \
-                                       + "outOf" \
-                                       + str(self.vertPos_maxFrames)\
                                        +"_Frames_" \
                                        + str(self.frame_increment) \
                                        + "_increment_" \
                                        + self.preAlignement + ".h5"
+
+            self.test_snapshots_animation_file = "test_snapshots_" \
+                                            + str(self.vertPos_numFrames) \
+                                            + "_Frames_" \
+                                            + str(self.frame_increment) \
+                                            + "_increment_" \
+                                            + self.preAlignement + ".h5"
 
             # note that the input .h5 for bases/components computation is the output from the snapshots algnment
 
@@ -292,7 +302,7 @@ class Config_parameters:
 
             # masses file if required to pre-process snapshots
             # if not found, then libigl is necessary to compute masses
-            self.vertPos_masses_file = "input_data/" + self.name + "/" + self.name + "_vertPos_massMatrix.bin"
+            self.vertPos_masses_file = self.snapshots_repo_dir + self.name + "/" + self.name + "_vertPos_massMatrix.bin"
 
             # set bases parameters
             if config['vertexPos_bases']['standarized'] == '_Standarized':  # '_Standarized'/ '_nonStandarized'
@@ -334,7 +344,7 @@ class Config_parameters:
             """
 
             self.vertPos_output_directory = "results/" + self.name + "/" + self.experiment + "/q_bases/" + self.vertPos_bases_name_extention + \
-                                     "/" + str(self.vertPos_numFrames)+ "outOf" + str(self.vertPos_maxFrames)+"_Frames/" + \
+                                     "/" + str(self.vertPos_numFrames)+"_Frames/" + \
                                      str(self.frame_increment) + "_increment_/"
 
             if not os.path.exists(self.vertPos_output_directory):
@@ -350,19 +360,22 @@ class Config_parameters:
                                           + "/" + self.experiment \
                                           + "/q_snapshots_h5/"
 
-            self.aligned_snapshots_animation_file = "aligned_snapshots" \
+            self.train_aligned_snapshots_animation_file = "train_aligned_snapshots" \
                                                + str(self.vertPos_numFrames) \
-                                               + "outOf" + str(self.vertPos_maxFrames)\
                                                + "_Frames_" \
                                                + str(self.frame_increment) \
                                                + "_increment_" \
                                                + self.preAlignement \
                                                + ".h5"
-
+            self.test_aligned_snapshots_animation_file = "test_aligned_snapshots" \
+                                                          + str(self.vertPos_numFrames) \
+                                                          + "_Frames_" \
+                                                          + str(self.frame_increment) \
+                                                          + "_increment_" \
+                                                          + self.preAlignement \
+                                                          + ".h5"
             self.vertPos_output_animation_file = "bases_animations" \
                                             + str(self.vertPos_numFrames) \
-                                            + "outOf" \
-                                            + str(self.vertPos_maxFrames)\
                                             + "_Frames_" \
                                             + 'computed_' \
                                             + str(self.vertPos_numComponents) \
@@ -377,8 +390,6 @@ class Config_parameters:
                                        + "/" + self.experiment \
                                        + "/using_" \
                                        + str(self.vertPos_numFrames)\
-                                       + "outOf"\
-                                       + str(self.vertPos_maxFrames)\
                                        + "_Frames_/"
 
             self.visualize_bases = config["vertexPos_bases"]["visualize"]   # boolean
@@ -418,6 +429,9 @@ class Config_parameters:
             # pre alignment done to frames, can be '_centered' or '_alignedRigid'
             self.constProj_preAlignement = config["constraintProj_bases"]["snapshots"]["preAlignement"]
 
+            self.reduced_constProj_snapshots_available = config["constraintProj_bases"]["snapshots"]["reduced_snaps_available"]
+
+
             if self.constProj_preAlignement == "_noAlignement": centered = True
             elif self.constProj_preAlignement == "_centered": centered = False
             else: print("Error! unknown alignment method for .")
@@ -425,12 +439,13 @@ class Config_parameters:
             # where snapshots are stored
             self.constProj_snapshots_type = config["constraintProj_bases"]["constraintType"]["name"]
             self.constProj_snapshots_folder = config["constraintProj_bases"]["constraintType"]["snaps_folder"]
+
             self.snaps_pattern_full_p = config["constraintProj_bases"]["constraintType"]["snaps_pattern_full_p"]
             # where snapshots can be stored after pre-processing # TODO
             self.constProj_preprocessed_snapshots_folder = config["constraintProj_bases"]["snapshots"]["processed_snapshots_file"]
             self.constProj_snapshots_ready = config["constraintProj_bases"]["snapshots"]["processed_snapshots_ready"]
             # number of snapshots used in computations (NO. files you have)
-            self.constProj_maxFrames = config["constraintProj_bases"]["snapshots"]["max_numFrames"]
+            self.constProj_frame_increment = config["constraintProj_bases"]["snapshots"]["frame_increment"]
             # number of snapshots used in computations
             self.constProj_numFrames = config["constraintProj_bases"]["snapshots"]["numFrames"]
             # tolerance used to satisfy bases computation criterion
@@ -440,21 +455,15 @@ class Config_parameters:
             # in deim algorithm we can choose to include a limited number of constained elements per large deformation vertex
             self.deim_ele_per_vert = config["constraintProj_bases"]["max_element_per_deim_vert"]
 
-            if config["constraintProj_bases"]["snapshots"]["read_all_from_first"]:
-                self.constProj_frame_increment = 1
-            else:
-                self.constProj_frame_increment = self.constProj_numFrames//self.constProj_maxFrames
-                assert self.constProj_frame_increment <= 10    # max number of frame increment
-
             # notice that data should be put in place so that all .py can have access too!
-            self.constProj_input_snapshots_pattern = "input_data/" \
+            self.constProj_input_snapshots_pattern = self.snapshots_repo_dir \
                                                 + self.name + "/" \
                                                 + self.experiment \
                                                 + self.constProj_snapshots_folder \
                                                 + self.constProj_snapshots_type \
                                                 + self.snaps_pattern_full_p
 
-            self.constProj_input_preprocessed_snapshots_dir = "input_data/" \
+            self.constProj_input_preprocessed_snapshots_dir = self.snapshots_repo_dir \
                                                          + self.name + "/" \
                                                          + self.experiment + "/" \
                                                          + self.constProj_preprocessed_snapshots_folder + "/"
@@ -465,33 +474,40 @@ class Config_parameters:
 
             self.constProj_preprocessed_snapshots_file = "snapshots_" \
                                                     + str(self.constProj_numFrames)\
-                                                    + "outOf" + str(self.constProj_maxFrames)\
                                                     + "_Frames_" \
                                                     + str(self.constProj_frame_increment)\
                                                     + "_increment_" + self.constProj_preAlignement \
                                                     + ".bin"
 
-            self.constProj_masses_file = "input_data/" \
+            self.constProj_masses_file = self.snapshots_repo_dir \
                                     + self.name + "/" \
                                     + self.name + "_" \
                                     + self.constProj_element \
                                     + "_massMatrix.bin"
 
             # weighted selection matrix that maps constraints projections to position space
-            self.constProj_weightedSt = "input_data/" \
+            self.constProj_weightedSt = self.snapshots_repo_dir \
                                                 + self.name + "/" \
                                                 + self.experiment \
                                                 + self.constProj_snapshots_folder \
                                                 + self.constProj_snapshots_type +"/" \
                                                 + self.name + "_lambdaSt_weighted.bin"
 
-            self.constProj_constrained_Stp0 = "input_data/" \
+            self.constProj_constrained_Stp0 = self.snapshots_repo_dir \
                                    + self.name + "/" \
                                    + self.experiment \
                                    + self.constProj_snapshots_folder \
                                    + self.constProj_snapshots_type + "/" \
                                    +"St_aux_0.off"
 
+            self._pos_snaps_folder = self.snapshots_repo_dir \
+                                     + self.name + "/" \
+                                     + self.experiment + "/" \
+                                     + config["constraintProj_bases"]["constraintType"]["pos_snaps_folder"]
+            self._deim_pos_snaps_folder = self.snapshots_repo_dir \
+                                     + self.name + "/" \
+                                     + self.experiment + "/" \
+                                     + config["constraintProj_bases"]["constraintType"]["deim_pos_snaps_folder"]
             """
             Set necessary boolean parameters
             """
@@ -524,8 +540,6 @@ class Config_parameters:
                                          + "/p_bases/"\
                                          + self.constProj_name + "/" \
                                          + self.constProj_bases_name_extention +  "/" \
-                                         + str(self.constProj_numFrames) \
-                                         + "outOf" \
                                          + str(self.constProj_numFrames) \
                                          + "_Frames/" \
                                          + str(self.constProj_frame_increment) \

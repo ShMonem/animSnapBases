@@ -1,3 +1,5 @@
+from os import wait3
+
 import numpy as np
 import matplotlib.pyplot as plt
 from utils.utils import log_time
@@ -16,20 +18,22 @@ angle = 0
 frame = 1
 
 
-def tets_plots_deim(nlConst_bases: constraintsComponents, param:Config_parameters):
+def tets_plots_deim(nlConst_bases: constraintsComponents, pca_tests= True, postProcess_tests=False, deim_tests=False, steps=5, visualize_deim_elements=False):
     """
     Plots different reconstruction errors for varying reduction dimensions "r".
     :param f: Original tensor (T, N, 3)
     :param V_f: Basis tensor (N, max_r, 3)
     :param max_r: Maximum reduction dimension (number of modes)
     """
-    constProj_output_directory = param.constProj_output_directory
-    def run_tests(nlConst_bases: constraintsComponents, constProj_output_directory, param:Config_parameters):
-        k = nlConst_bases.numComp
-        p = nlConst_bases.nonlinearSnapshots.constraintsSize
-        rp_values = range(p, k * p + 1, p)
-        r_values = range(1, k + 1)
+    constProj_output_directory = nlConst_bases.param.constProj_output_directory
 
+    # def run_tests(nlConst_bases: constraintsComponents, constProj_output_directory, param:Config_parameters):
+    k = nlConst_bases.numComp
+    p = nlConst_bases.nonlinearSnapshots.constraintsSize
+    # rp_values = range(p, k * p + 1, p)
+    r_values = range(1, k + 1)
+
+    def run_pca_tests():
         # PCA tests --------------------------------------------------------------------------------------------------------
         plt.figure('Error measures for PCA.', figsize=(20, 10))
 
@@ -69,7 +73,7 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, param:Config_parameter
         # singular vals for the bases over full Kp range
         if store_kp_singVals:
             header_ = ['i', 'x', 'y', 'z']
-            file_name_ = os.path.join(constProj_output_directory,param.name + "_constrprojBases_xyz_fullBasesRange_Kp_singVals")
+            file_name_ = os.path.join(constProj_output_directory,nlConst_bases.param.name +"_"+nlConst_bases.param.constProj_name+"_constrprojBases_xyz_fullBasesRange_Kp_singVals")
             with open(file_name_ + '.csv', 'w', encoding='UTF8') as dataFile_:
                 writer_ = csv.writer(dataFile_)
                 writer_.writerow(header_)
@@ -98,81 +102,106 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, param:Config_parameter
         plt.legend()
         fig_name = os.path.join(constProj_output_directory, 'constrprojBases_pca_extraction_tests')
         plt.savefig(fig_name)
-        # End of PCA tests -------------------------------------------------------------------------------------------------
-
+    # End of PCA tests -------------------------------------------------------------------------------------------------
+    # DEIM tests -------------------------------------------------------------------------------------------------------
+    def run_postProcess_tests():
         # After post-process tests
-        testSparsity(nlConst_bases.comps)
-        test_linear_dependency(nlConst_bases.comps, 3,
-                               nlConst_bases.numComp * nlConst_bases.nonlinearSnapshots.constraintsSize)
+        # testSparsity(nlConst_bases.comps)
+        # test_linear_dependency(nlConst_bases.comps, 3,
+        #                        nlConst_bases.numComp * nlConst_bases.nonlinearSnapshots.constraintsSize)
 
-        if param.constProj_orthogonal:
+        if nlConst_bases.param.constProj_orthogonal:
             nlConst_bases.is_utmu_orthogonal()  # test U^T M U = I (Kp x Kp)
 
-        # DEIM tests -------------------------------------------------------------------------------------------------------
+    def run_deim_tests():
+        global num_usage
+        num_usage = 0
+        def reconstruction_test(f, reconstruction_method, file):
+            r_values = range(1, k + 1, steps)
+            frobenius_errors = []
+            max_errors = []
+            relative_errors_x = []
+            relative_errors_y = []
+            relative_errors_z = []
+            writer = None
+            dataFile = None
+            global num_usage
+            header = ['numPoints', 'fro_error', 'max_err', 'relative_errors_x', 'relative_errors_y', 'relative_errors_z',
+                      'relative3d']
+            with open(file + '.csv', 'w', encoding='UTF8') as dataFile:
+                writer = csv.writer(dataFile)
+                writer.writerow(header)
+                for r in r_values:
+                    print("Deim-blocks:", r)
+                    # Reconstruct the tensor for the current r
+                    f_reconstructed = reconstruction_method(r)
 
-        frobenius_errors = []
-        max_errors = []
-        relative_errors_x = []
-        relative_errors_y = []
-        relative_errors_z = []
-        best_num_element_to_plot = 0
-        f = nlConst_bases.nonlinearSnapshots.snapTensor
+                    # Compute various errors
+                    fro_error = nlConst_bases.frobenius_error(f, f_reconstructed)
+                    max_err = nlConst_bases.max_pointwise_error(f, f_reconstructed)
+                    rel_errors = nlConst_bases.relative_error_per_component(f, f_reconstructed)
 
-        header = ['numPoints', 'fro_error', 'max_err', 'relative_errors_x', 'relative_errors_y', 'relative_errors_z']
+                    # Store errors
+                    frobenius_errors.append(fro_error)
+                    max_errors.append(max_err)
+                    relative_errors_x.append(rel_errors[0])
+                    relative_errors_y.append(rel_errors[1])
+                    relative_errors_z.append(rel_errors[2])
 
-        file_name = os.path.join(param.constProj_output_directory, "deim_convergence_tests")
-        with open(file_name + '.csv', 'w', encoding='UTF8') as dataFile:
-            writer = csv.writer(dataFile)
+                    writer.writerow([r, fro_error, max_err, rel_errors[0], rel_errors[1], rel_errors[2],
+                                    np.sum([rel_errors[0], rel_errors[1], rel_errors[2]])/3])
+            dataFile.close()
+            del dataFile
+
+            # Plot Frobenius and inf norm error
+            plt.figure('Error measures for DEIM ', figsize=(20, 10))
+
+            plt.subplot(1, 2, 1)
+            plt.plot(r_values, frobenius_errors, label='Frobenius Error', marker='o')
+            plt.plot(r_values, max_errors, label='Inf Error', marker='o')
+            plt.xlabel('Reduction Dimension (r)')
+            plt.ylabel('Error')
+            plt.title('Frobenius Norm')
+            plt.yscale("log")
+            # Set x-ticks to integers only
+            # plt.xticks(np.arange(1, k + 1, 1)) # range 0 <= r <= numComponents
+            plt.legend()
+
+            # Plot Relative Errors for each component (x, y, z)
+            plt.subplot(1, 2, 2)
+            relative_error = np.sum(np.array([relative_errors_x, relative_errors_y, relative_errors_z]), axis=0)
+            plt.plot(r_values, relative_errors_x, label='Relative Error X', marker='o')
+            plt.plot(r_values, relative_errors_y, label='Relative Error Y', marker='x')
+            plt.plot(r_values, relative_errors_z, label='Relative Error Z', marker='s')
+            plt.plot(r_values, relative_error, label='sumRelative Error', marker='v')
+            plt.xlabel('Reduction Dimension (r)')
+            plt.ylabel('Relative Error')
+            plt.title('Relative Errors per Component (X, Y, Z)')
+            plt.yscale("log")
+            # plt.xticks(np.arange(1, k+1, 1))
+            plt.legend()
+
+            #plt.tight_layout()
+            fig_name = file
+            plt.savefig(fig_name)
+
+            plt.close()
+
+        # test convergence on training data
+        f_train = nlConst_bases.nonlinearSnapshots.snapTensor
+        file_train = os.path.join(nlConst_bases.param.constProj_output_directory, nlConst_bases.param.name + "_" +
+                                  nlConst_bases.param.constProj_name + "_deim_train_convergence_tests")
+        reconstruction_test(f_train, nlConst_bases.deim_train_constructed, file_train)
+        # store number of elements per bases blocks
+        header = ['numPoints', 'num_elements']
+        file_name = os.path.join(nlConst_bases.param.constProj_output_directory,
+                                 nlConst_bases.param.name + "_" + nlConst_bases.param.constProj_name + "_deim_num_interpol_elemnets")
+        with open(file_name + '.csv', 'w', encoding='UTF8') as dataFile2:
+            writer = csv.writer(dataFile2)
             writer.writerow(header)
             for r in r_values:
-                # Reconstruct the tensor for the current r
-                f_reconstructed = nlConst_bases.deim_constructed(r)
-
-                # Compute various errors
-                fro_error = nlConst_bases.frobenius_error(f, f_reconstructed)
-                max_err = nlConst_bases.max_pointwise_error(f, f_reconstructed)
-                rel_errors = nlConst_bases.relative_error_per_component(f, f_reconstructed)
-
-                # Store errors
-                frobenius_errors.append(fro_error)
-                max_errors.append(max_err)
-                relative_errors_x.append(rel_errors[0])
-                relative_errors_y.append(rel_errors[1])
-                relative_errors_z.append(rel_errors[2])
-
-                writer.writerow([r, fro_error, max_err, rel_errors[0], rel_errors[1], rel_errors[2]])
-        dataFile.close()
-        # Plot Frobenius and inf norm error
-        plt.figure('Error measures for DEIM ', figsize=(20, 10))
-
-        plt.subplot(1, 2, 1)
-        plt.plot(frobenius_errors, label='Frobenius Error', marker='o')
-        plt.plot(r_values, max_errors, label='Inf Error', marker='o')
-        plt.xlabel('Reduction Dimension (r)')
-        plt.ylabel('Error')
-        plt.title('Frobenius Norm')
-        plt.yscale("log")
-        # Set x-ticks to integers only
-        # plt.xticks(np.arange(1, k + 1, 1)) # range 0 <= r <= numComponents
-        plt.legend()
-
-        # Plot Relative Errors for each component (x, y, z)
-        plt.subplot(1, 2, 2)
-        relative_error = np.sum(np.array([relative_errors_x, relative_errors_y, relative_errors_z]), axis=0)
-        plt.plot(r_values, relative_errors_x, label='Relative Error X', marker='o')
-        plt.plot(r_values, relative_errors_y, label='Relative Error Y', marker='x')
-        plt.plot(r_values, relative_errors_z, label='Relative Error Z', marker='s')
-        plt.plot(r_values, relative_error, label='sumRelative Error', marker='v')
-        plt.xlabel('Reduction Dimension (r)')
-        plt.ylabel('Relative Error')
-        plt.title('Relative Errors per Component (X, Y, Z)')
-        plt.yscale("log")
-        # plt.xticks(np.arange(1, k+1, 1))
-        plt.legend()
-
-        #plt.tight_layout()
-        fig_name = os.path.join(constProj_output_directory, 'constrproj_deim_reconstruction_norms_tests')
-        plt.savefig(fig_name)
+                writer.writerow([r, nlConst_bases.deim_alpha_ranges[r - 1]])
+        dataFile2.close()
 
         plt.figure('Number of constrained elements in DEIM ', figsize=(20, 10))
         plt.subplot(1, 1, 1)
@@ -181,21 +210,34 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, param:Config_parameter
         plt.ylabel('number of elements')
         plt.title('Number of constrained elements in DEIM ')
 
-        fig_name = os.path.join(constProj_output_directory, 'deim_numberOfElements')
         plt.legend()
-        plt.savefig(fig_name)
-
-        if param.visualize_deim_elements:
-            visualize_interpolation_elements(nlConst_bases, param.visualize_deim_elements_at_K, constProj_output_directory)
+        plt.savefig(file_name+"plot")
         plt.close()
+        #test convergence on unseen data
+        f_test = nlConst_bases.nonlinearSnapshots.test_snapTensor
+        file_test = os.path.join(nlConst_bases.param.constProj_output_directory, nlConst_bases.param.name + "_" +
+                                  nlConst_bases.param.constProj_name + "_deim_test_convergence_tests")
+        reconstruction_test(f_test, nlConst_bases.deim_test_constructed, file_test)
 
-    run_tests(nlConst_bases, constProj_output_directory, param)
+
+
+    if pca_tests:
+        run_pca_tests()
+    if postProcess_tests:
+        run_postProcess_tests()
+    if deim_tests:
+        run_deim_tests()
+
+    if visualize_deim_elements:
+        visualize_interpolation_elements(nlConst_bases, nlConst_bases.param.visualize_deim_elements_at_K,
+                                         constProj_output_directory)
+    # run_tests(nlConst_bases, constProj_output_directory, param)
     # End of DEIM tests ------------------------------------------------------------------------------------------------
 
     # plt.show()
 
 def visualize_interpolation_elements(nlConst_bases: constraintsComponents, visualize_deim_elements_at_K,
-                                     constProj_output_directory, ele_color=(0.5, 0.8, 0.5), num_frames = 30, file_prefix = "frame"):
+                                     constProj_output_directory, ele_color=(0.5, 0.8, 0.5), num_frames = 50, file_prefix = "frame"):
     """
     Highlights specific elements (vertices, tetrahedra, faces) in a tetrahedral mesh using Polyscope.
 
@@ -213,7 +255,7 @@ def visualize_interpolation_elements(nlConst_bases: constraintsComponents, visua
 
     # Register the mesh
     ps.register_surface_mesh("Tet Mesh", nlConst_bases.nonlinearSnapshots.verts, nlConst_bases.nonlinearSnapshots.tris,
-                            transparency=0.1, color=(0.89, 0.807, 0.565))
+                            transparency=0.18, color=(0.89, 0.807, 0.565))
     ps.register_point_cloud("deim Vertices", nlConst_bases.nonlinearSnapshots.verts[deim_verts], enabled=True,
                             color=(0.9, 0.1, 0.25), radius=0.008)
 

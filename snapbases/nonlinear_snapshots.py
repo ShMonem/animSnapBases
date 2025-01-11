@@ -40,6 +40,9 @@ class nonlinearSnapshots:
 
         self.snapTensor = None  # preprocessed snapshots tensors on which we compute components (basis/ modes)
                                 # expected size of (F, ep, 3)
+
+        self.test_snapTensor = None  # preprocessed test snapshots tensors on which we compute components (basis/ modes)
+        # expected size of (F, ep, 3)
         # Elements of the tetrahedralized mesh
         self.verts = None
         self.tris = None
@@ -98,7 +101,8 @@ class nonlinearSnapshots:
 
         print("reading the nonlinear snapshots tensor ...")
         Xtemp = []
-        for i in range(1, self.frs):
+
+        for i in range(0, self.frs* self.param.constProj_frame_increment, self.param.constProj_frame_increment):
             file = open(self.snapshots_file+str(i)+".bin", "rb")
             #  read matrix dimension
             ni = struct.unpack('<i', file.read(4))[0]   # read a 4 byte integer in little endian
@@ -109,7 +113,7 @@ class nonlinearSnapshots:
                 for rowi in range(ni):
                     value = struct.unpack('<d', file.read(8))[0]  # read 8 byte little endian double
                     Mat_i[rowi, coli] = value
-            if i == 1:
+            if i == 0:
                 Xtemp = Mat_i[np.newaxis, :, :]    # create snapshots tensor
 
             else:
@@ -122,6 +126,30 @@ class nonlinearSnapshots:
         print("No. constrained verts: ", self.num_constained_elements)
         print("pre-process stats,  min:", np.min(self.snapTensor), "max: ", np.max(self.snapTensor),
               "mean: ", np.mean(self.snapTensor), "std:", np.std(self.snapTensor) )
+        # --------------------------------------------------------------------------------------------------------------
+        X_test = [] # load test snapshots
+        for i in range(self.param.constProj_train_test_jump, self.frs* self.param.constProj_frame_increment, self.param.constProj_frame_increment):
+            file = open(self.snapshots_file+str(i)+".bin", "rb")
+            #  read matrix dimension
+            ni = struct.unpack('<i', file.read(4))[0]   # read a 4 byte integer in little endian
+            mi = struct.unpack('<i', file.read(4))[0]
+            Mat_i = np.zeros((ni, mi))   # (ep, 3)  #  expected dimension of each snapshot
+
+            for coli in range(mi):
+                for rowi in range(ni):
+                    value = struct.unpack('<d', file.read(8))[0]  # read 8 byte little endian double
+                    Mat_i[rowi, coli] = value
+            if i == self.param.constProj_train_test_jump:
+                X_test = Mat_i[np.newaxis, :, :]    # create snapshots tensor
+
+            else:
+                X_test = np.concatenate((X_test, Mat_i[np.newaxis, :, :]), axis=0)    # update snapshots tensor
+
+        self.test_snapTensor = X_test
+        print("loaded test snapshots size", self.test_snapTensor.shape)
+        print("non-processed test stats,  min:", np.min(self.test_snapTensor), "max: ", np.max(self.test_snapTensor),
+              "mean: ", np.mean(self.test_snapTensor), "std:", np.std(self.test_snapTensor))
+        # --------------------------------------------------------------------------------------------------------------
 
         #self.store_snapshots_animations(constProj_output_directory, "nonlinear_animation.h5")
         #view_anim_file( "bign_ST.h5")
@@ -144,17 +172,20 @@ class nonlinearSnapshots:
                 # # if no file given, use igl to compute masses
                 self.verts, self.tets, self.tris = read_mesh_file(self.tet_mesh)
                 self.edges = compute_edge_incidence_matrix_on_tris(self.tris)
-
-                if self.verts is None:
-                    print("Failed to read tet mesh data.")
-                m = igl.massmatrix(self.verts, self.tris, igl.MASSMATRIX_TYPE_VORONOI)  # surface masses
+                m = igl.massmatrix(self.verts, self.tets)
                 vertexMasses = np.diag(m.todense())
+                if self.verts is None:
+                    print("ERROR: Failed to read tet mesh data.")
+                    return
                 #vertexMasses = vertexMasses/vertexMasses.sum()
                 if self.constraintsSize == 1:
                     self.mass = vertexMasses
                 elif self.constraintsSize == 2:
+                    # m = igl.massmatrix(self.verts, self.tris, igl.MASSMATRIX_TYPE_VORONOI)  # surface masses
+                    # vertexMasses = np.diag(m.todense())
                     self.mass = compute_triMasses(vertexMasses, self.tris, self.num_constained_elements, self.constraintsSize)
                 elif self.constraintsSize == 3:
+                    # vertexMasses = np.diag(m.todense())
                     self.mass = compute_tetMasses(vertexMasses, self.tets, self.num_constained_elements, self.constraintsSize)
 
             except IOError:

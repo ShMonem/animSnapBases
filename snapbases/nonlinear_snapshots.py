@@ -3,7 +3,7 @@ import numpy as np
 import struct
 import sys
 import cProfile
-from utils.utils import log_time, read_sparse_matrix_from_bin, read_mesh_file
+from utils.utils import log_time, read_sparse_matrix_from_bin, read_mesh_file, read_obj
 from utils.process import view_anim_file, view_components
 from utils.support import compute_tetMasses, compute_triMasses, compute_edge_incidence_matrix_on_tris
 import h5py
@@ -67,6 +67,7 @@ class nonlinearSnapshots:
         self.ele_type = self.param.constProj_element_type
 
         self.tet_mesh = self.param.tet_mesh_file
+        self.tri_mesh = self.param.tri_mesh_file
         constProj_output_directory = self.param.constProj_output_directory
 
     @log_time(constProj_output_directory)
@@ -170,22 +171,32 @@ class nonlinearSnapshots:
         else:
             try:
                 # # if no file given, use igl to compute masses
-                self.verts, self.tets, self.tris = read_mesh_file(self.tet_mesh)
-                self.edges = compute_edge_incidence_matrix_on_tris(self.tris)
-                m = igl.massmatrix(self.verts, self.tets)
-                vertexMasses = np.diag(m.todense())
-                if self.verts is None:
-                    print("ERROR: Failed to read tet mesh data.")
-                    return
-                #vertexMasses = vertexMasses/vertexMasses.sum()
                 if self.constraintsSize == 1:
+                    self.verts, self.tris = igl.read_triangle_mesh(self.tri_mesh)
+                    if self.verts is None:
+                        print("ERROR: Failed to read tet mesh data.")
+                        return
+                    # self.edges = compute_edge_incidence_matrix_on_tris(self.tris)
+                    m = igl.massmatrix(self.verts, self.tris, igl.MASSMATRIX_TYPE_VORONOI)
+                    vertexMasses = np.diag(m.todense())
                     self.mass = vertexMasses
                 elif self.constraintsSize == 2:
-                    # m = igl.massmatrix(self.verts, self.tris, igl.MASSMATRIX_TYPE_VORONOI)  # surface masses
-                    # vertexMasses = np.diag(m.todense())
+                    self.verts, self.tris = igl.read_triangle_mesh(self.tri_mesh)
+                    if self.verts is None:
+                        print("ERROR: Failed to read tet mesh data.")
+                        return
+                    # self.edges = compute_edge_incidence_matrix_on_tris(self.tris)
+                    m = igl.massmatrix(self.verts, self.tris, igl.MASSMATRIX_TYPE_VORONOI)
+                    vertexMasses = np.diag(m.todense())
                     self.mass = compute_triMasses(vertexMasses, self.tris, self.num_constained_elements, self.constraintsSize)
                 elif self.constraintsSize == 3:
-                    # vertexMasses = np.diag(m.todense())
+                    self.verts, self.tets, self.tris = read_mesh_file(self.tet_mesh)
+                    if self.verts is None:
+                        print("ERROR: Failed to read tet mesh data.")
+                        return
+                    # self.edges = compute_edge_incidence_matrix_on_tris(self.tris)
+                    m = igl.massmatrix(self.verts, self.tets)
+                    vertexMasses = np.diag(m.todense())
                     self.mass = compute_tetMasses(vertexMasses, self.tets, self.num_constained_elements, self.constraintsSize)
 
             except IOError:

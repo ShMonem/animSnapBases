@@ -139,8 +139,8 @@ if __name__ == '__main__':
     # subspaces = ["posSubspace", "tetstrainSubspace", "tristrainSubspace","vertstarbendingSubspace"]
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
-    parser.add_argument('--mesh', type=str, default="octopus", help='Give a character mesh (default: sphere)')
-    parser.add_argument('--subspace', type=str, default="tetstrainSubspace",
+    parser.add_argument('--mesh', type=str, default="sphere", help='Give a character mesh (default: sphere)')
+    parser.add_argument('--subspace', type=str, default="posSubspace",
                         help='Subspaces for which bases are computed (default: posSubspace)')
 
     args = parser.parse_args()

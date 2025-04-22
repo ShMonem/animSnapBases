@@ -30,3 +30,4 @@ venv_requirements.txt
 /generate_figures/L2_errorMeasurs.py
 /function_timings.txt
 /latex/
+media/

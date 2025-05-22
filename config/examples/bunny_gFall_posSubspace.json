@@ -1,0 +1,94 @@
+{
+	"object":
+	{
+		"mesh": "bunny",
+		"experiment": "_gravitationalFall",
+		"experiment_dir": "../redPD_mirror/results/"
+	},
+	"vertexPos_bases":
+		{
+			"run_tests": false,
+			"computeState":
+			{
+				"compute": true,
+				"testingComputations": "_Release"
+			},
+			"snapshots":
+			{
+				"max_numFrames": 200,
+				"frame_increment": 1,
+				"numFrames": 200,
+				"format": ".off",
+				"snaps_folder": "noPosReduction_noConstraintProjReduction",
+				"read_all_from_first": true,
+				"anims_folder": "FOM_animations_h5",
+				"preAlignement": "_centered" ,
+				"anim_folder_ready": false,
+				"visualize_aligned_animations": false,
+				"reduced_snaps_available": false
+			},
+			"dim": 3,
+			"rest_shape": "first",
+			"massWeighted": "_Volkwein",
+			"standarized": "_Standarized",
+			"orthogonalized": "_nonOrthogonalized",
+			"support":
+				{
+					"min_dist": 0.1,
+					"max_dist": 0.25
+				},
+			"pca":
+				{
+					"compute": true,
+					"numComponents": 200,
+					"supported": "_Local",
+					"store_sing_val": true
+				},
+			"splocs":
+				{
+					"compute": false,
+					"max_itrs": 20,
+					"admm_num_itrs": 10,
+					"lambda": 2,
+					"rho": 10.0
+				},
+			"store":false,
+			"visualize": true
+		},
+	"constraintProj_bases":
+	{
+		"computeState":
+		{
+			"compute": false,
+			"testingComputations": "_Release"
+		},
+		"constraintType":
+		{
+			"name": "tetstrain",
+			"elements": "_tets",
+			"snaps_folder": "/constraintProjection_snapshots/noPosReduction_noConstraintProjReduction/",
+			"snaps_pattern_full_p": "/aux_",
+			"rowSize": 3
+		},
+		"snapshots":
+		{
+			"max_numFrames": 200,
+			"numFrames": 200,
+			"read_all_from_first": true,
+			"processed_snapshots_file": "/processed_snapshots/",
+			"preAlignement": "_noAlignement" ,
+			"processed_snapshots_ready": false
+		},
+		"type": "deim",
+		"numComponents_verts": 5,
+		"bases_res_tol": 1e-20,
+		"dim": 3,
+		"constraintsDim": 3,
+		"rest_shape": "first",
+		"massWeighted": "_Volkwein",
+		"standarized": "_Standarized",
+		"supported": "_Global",
+		"orthogonalized": "_Orthogonalized",
+		"store_sing_val": "Yes"
+	}
+}

@@ -112,7 +112,7 @@ def preprocess_mesh_animation(verts, tris):
         - normalize animation into -0.5 ... 0.5 cube
     """
     print ("Vertices: ", verts.shape)
-    print ("Triangles: ", verts.shape)
+    print ("Triangles: ", tris.shape)
     assert verts.ndim == 3
     assert tris.ndim == 2
     # check for zero-area triangles and filter
@@ -144,7 +144,7 @@ def preprocess_mesh_animation(verts, tris):
     verts /= verts_scale
     print ("after preprocessing:")
     print ("Vertices: ", verts.shape)
-    print ("Triangles: ", verts.shape)
+    print ("Triangles: ", tris.shape)
     return verts, tris, ~keep_vert, verts_mean, verts_scale
 
 def veclen(vectors):

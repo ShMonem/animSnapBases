@@ -54,7 +54,7 @@ class nonlinearSnapshots:
 
     def config(self):
         """
-            All parameters of this function are defined and can be manipulated using config.json and config.py
+            All parameters of this function are defined and can be manipulated using relative *.json and config.py
         """
         global constProj_output_directory
         self.snapshots_file = self.param.constProj_input_snapshots_pattern  # contains pre-aligned (only centered) snapshots

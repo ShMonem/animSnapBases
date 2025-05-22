@@ -104,7 +104,7 @@ def main(param: Config_parameters):
         ''' Compute PCA bases/components as they are required any way!'''
         nonlinearBases = constraintsComponents(param)
 
-        # Configuring snapsots parameters and nonliner parameters can be modified in config.json and config.py
+        # Configuring snapsots parameters and nonliner parameters can be modified in config/examples/*.json and config.py
         nonlinearBases.nonlinearSnapshots.config()
         nonlinearBases.config()
 
@@ -139,7 +139,7 @@ if __name__ == '__main__':
     # subspaces = ["posSubspace", "tetstrainSubspace", "tristrainSubspace","vertstarbendingSubspace"]
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
-    parser.add_argument('--mesh', type=str, default="sphere", help='Give a character mesh (default: sphere)')
+    parser.add_argument('--mesh', type=str, default="bunny", help='Give a character mesh (default: sphere)')
     parser.add_argument('--subspace', type=str, default="posSubspace",
                         help='Subspaces for which bases are computed (default: posSubspace)')
 

@@ -4,7 +4,7 @@
 
 """
 Configuration for bases computation.
-Options for bases type and different properties can be changed in the "config.json"s
+Options for bases type and different properties can be changed in the .json config files
 
 """
 
@@ -13,8 +13,8 @@ import os
 
 """
     1st: position space configurations
-    Options for bases type and different properties can be modified in 
-    config.json 
+    Options for bases type and different properties can be modified in relevant
+    .json  config file
 """
 
 

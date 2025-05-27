@@ -9,7 +9,8 @@ import struct
 from numpy.linalg import matrix_rank
 from numpy import save, count_nonzero
 from scipy.sparse import csr_matrix
-
+import shutil
+import os
 def store_components(fileName, F, K, N, dim, basesTensor, extension='.bin',  colName='K'):
     """
     :param fileName: file to store data
@@ -369,3 +370,20 @@ def read_obj(filename):
                 # Assumes that the OBJ file uses 1-based index
                 faces.append([int(p.split('/')[0]) - 1 for p in parts[1:]])
     return np.array(vertices), np.array(faces)
+
+
+def copy_and_delete_file(original_path, new_path):
+    """
+    Copies content from original_path to new_path and deletes the original file.
+
+    Parameters:
+        original_path (str): Path to the original file (e.g., 'file1.txt')
+        new_path (str): Path to the new file (e.g., 'file2.txt')
+    """
+    # Copy file content
+    shutil.copyfile(original_path, new_path)
+
+    # Delete the original file permanently
+    os.remove(original_path)
+
+    print(f"Copied '{original_path}' to '{new_path}' and deleted the original.")

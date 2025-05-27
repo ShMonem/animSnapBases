@@ -8,7 +8,7 @@ from snapbases.posComponents import posComponents
 
 from config.config import Config_parameters
 
-
+@log_time("")
 def tets_plots_pca(bases: posComponents, param:Config_parameters):
     """
     Plots different reconstruction errors for varying reduction dimensions "r".

@@ -106,9 +106,9 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, pca_tests= True, postP
     # DEIM tests -------------------------------------------------------------------------------------------------------
     def run_postProcess_tests():
         # After post-process tests
-        # testSparsity(nlConst_bases.comps)
-        # test_linear_dependency(nlConst_bases.comps, 3,
-        #                        nlConst_bases.numComp * nlConst_bases.nonlinearSnapshots.constraintsSize)
+        testSparsity(nlConst_bases.comps)
+        test_linear_dependency(nlConst_bases.comps, 3,
+                               nlConst_bases.numComp * nlConst_bases.nonlinearSnapshots.constraintsSize)
 
         if nlConst_bases.param.constProj_orthogonal:
             nlConst_bases.is_utmu_orthogonal()  # test U^T M U = I (Kp x Kp)
@@ -237,7 +237,7 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, pca_tests= True, postP
     # plt.show()
 
 def visualize_interpolation_elements(nlConst_bases: constraintsComponents, visualize_deim_elements_at_K,
-                                     constProj_output_directory, ele_color=(0.5, 0.8, 0.5), num_frames = 50, file_prefix = "frame"):
+                                     constProj_output_directory, ele_color=(0.5, 0.8, 0.5), num_frames = 100, file_prefix = "frame"):
     """
     Highlights specific elements (vertices, tetrahedra, faces) in a tetrahedral mesh using Polyscope.
 

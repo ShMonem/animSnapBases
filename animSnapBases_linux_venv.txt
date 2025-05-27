@@ -1,55 +1,53 @@
-# Environment: animSnapBases
-aiohappyeyeballs==2.6.1
-aiohttp==3.11.18
-aiosignal==1.3.2
+aiohappyeyeballs @ file:///home/conda/feedstock_root/build_artifacts/aiohappyeyeballs_1741775197943/work
+aiohttp @ file:///home/conda/feedstock_root/build_artifacts/aiohttp_1745255672738/work
+aiosignal @ file:///home/conda/feedstock_root/build_artifacts/aiosignal_1734342155601/work
 apptools==5.2.1
-async-timeout==5.0.1
-attrs==25.3.0
-certifi==2025.4.26
+async-timeout @ file:///home/conda/feedstock_root/build_artifacts/async-timeout_1733235340728/work
+attrs @ file:///home/conda/feedstock_root/build_artifacts/attrs_1741918516150/work
+certifi @ file:///home/conda/feedstock_root/build_artifacts/certifi_1746569525376/work/certifi
 configobj==5.0.8
 contourpy==1.1.1
-cycler==0.12.1
+cycler @ file:///home/conda/feedstock_root/build_artifacts/cycler_1733332471406/work
 envisage==7.0.3
 fonttools==4.51.0
-frozenlist==1.6.0
+frozenlist @ file:///home/conda/feedstock_root/build_artifacts/frozenlist_1746635328256/work
 h5py==3.6.0
-idna==3.10
+idna @ file:///home/conda/feedstock_root/build_artifacts/idna_1733211830134/work
 importlib_metadata==7.1.0
 importlib_resources==6.4.0
 kiwisolver==1.4.5
 libigl==2.5.1
-loguru==0.7.3
-matplotlib==3.7.5
-mayavi==4.8.3
-msgpack==1.1.0
-multidict==6.4.4
+loguru @ file:///home/conda/feedstock_root/build_artifacts/loguru_1746634721458/work
+matplotlib==3.5.3
+mayavi @ file:///home/conda/feedstock_root/build_artifacts/mayavi_1747662904171/work
+msgpack @ file:///home/conda/feedstock_root/build_artifacts/msgpack-python_1725975012026/work
+multidict @ file:///home/conda/feedstock_root/build_artifacts/multidict_1747722347633/work
 munkres==1.1.4
 numpy==1.26.4
 packaging==24.0
 pillow==10.3.0
-pip==25.1.1
-ply==3.11
-propcache==0.3.1
-puremagic==1.29
-pyface==8.0.0
+ply @ file:///home/conda/feedstock_root/build_artifacts/ply_1733239724146/work
+polyscope==2.4.0
+potpourri3d==1.2.1
+propcache @ file:///home/conda/feedstock_root/build_artifacts/propcache_1744524932661/work
+puremagic @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_puremagic_1746195463/work
+pyface @ file:///home/conda/feedstock_root/build_artifacts/pyface_1734362429785/work
 Pygments==2.17.2
 pyparsing==3.1.2
 PyQt5==5.15.9
 PyQt5-Qt5==5.15.16
 PyQt5-sip==12.13.0
-python-dateutil==2.9.0.post0
+python-dateutil @ file:///home/conda/feedstock_root/build_artifacts/python-dateutil_1733215673016/work
 scipy==1.10.1
-setuptools==80.8.0
-sip==6.10.0
+sip @ file:///home/conda/feedstock_root/build_artifacts/sip_1745411216123/work
 six==1.16.0
-toml==0.10.2
-tomli==2.2.1
+toml @ file:///home/conda/feedstock_root/build_artifacts/toml_1734091811753/work
+tomli @ file:///home/conda/feedstock_root/build_artifacts/tomli_1733256695513/work
 traits==6.4.3
-traitsui==8.0.0
-typing_extensions==4.13.2
-unicodedata2==16.0.0
+traitsui @ file:///home/conda/feedstock_root/build_artifacts/traitsui_1734365678418/work
+typing_extensions @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_typing_extensions_1744302253/work
+unicodedata2 @ file:///home/conda/feedstock_root/build_artifacts/unicodedata2_1736692503055/work
 vtk==9.3.0
-wheel==0.45.1
-wslink==2.3.4
-yarl==1.20.0
+wslink @ file:///home/conda/feedstock_root/build_artifacts/wslink_1747717868707/work
+yarl @ file:///home/conda/feedstock_root/build_artifacts/yarl_1744972437465/work
 zipp==3.19.1

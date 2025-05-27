@@ -56,9 +56,13 @@ def readOriginalMesh(filePath, tri=False):
 	print("GaussianCurvature: ", len(GauCur))  # per vertex scalar
 	return v0, f0
 
-def compute_accuracy(orig_mesh, snapsFormat, frame_start, frame_end, r_start, r_step, r_end,
-					 full_files_path, reduced_files_path, reduced_ext, type, dir, case="_test_on_training_set"):
+def compute_accuracy(orig_mesh, snapsFormat, frame_start, frame_end, frame_jump, r,
+					 full_files_path, reduced_files_path, reduced_ext, type, dir, color=(1.0, 0.5, 0.0), case="_test_on_training_set"):
 
+	"""
+	r : num_reduction_components
+
+	"""
 	global f, num_verts, denom
 	v0, f = readOriginalMesh(orig_mesh, False)
 	denom = np.sqrt(3 * (frame_end - frame_start) * v0.shape[0])
@@ -91,39 +95,38 @@ def compute_accuracy(orig_mesh, snapsFormat, frame_start, frame_end, r_start, r_
 						"accum_norm_min","accum_norm_meann", "accum_norm_max" ,
 						"accum_angle_min","accum_angle_mean","accum_angle_max" ]
 
-		with open(os.path.join(dir, type + "_on_mesh_measures"+case) +'.csv', 'w', encoding='UTF8') as acc_file:
+		with open(os.path.join(dir, "_on_mesh_measures"+case) +'.csv', 'w', encoding='UTF8') as acc_file:
 			writer = csv.writer(acc_file)
 			writer.writerow(headerComp)
 			r_list=[]
-			for r in range(r_start, r_end, r_step):
-				accum_norm_mat = np.zeros(num_verts)
-				accum_angle_mat = np.zeros(num_verts)
-				frames_err_r = []
-				normal_angles_r = []
-				full_mesh_error =[]
-				for k in range(frame_start, frame_end, 1):
-					f1 = full_files_path + str(k) + snapsFormat
-					f2 = reduced_files_path + str(r) + reduced_ext + str(k) + snapsFormat
-					(v, f) = pp3d.read_mesh(f1)
-					(v_r, _) = pp3d.read_mesh(f2)
+			accum_norm_mat = np.zeros(num_verts)
+			accum_angle_mat = np.zeros(num_verts)
+			frames_err_r = []
+			normal_angles_r = []
+			full_mesh_error =[]
+			for k in range(frame_start, frame_end, frame_jump):
+				f1 = full_files_path + str(k) + snapsFormat
+				f2 = reduced_files_path + str(r) + reduced_ext + str(k) + snapsFormat
+				(v, f) = pp3d.read_mesh(f1)
+				(v_r, _) = pp3d.read_mesh(f2)
 
-					# pointwise error
-					frame_err = ((v - v_r) ** 2).sum(axis=1) / ((v) ** 2).sum(axis=1)/denom
-					full_frame_error = npla.norm(v-v_r)/npla.norm(v)/denom
-					full_mesh_error.append(full_frame_error)
-					frames_err_r.append(frame_err)
-					accum_norm_mat += frame_err
+				# pointwise error
+				frame_err = ((v - v_r) ** 2).sum(axis=1) / ((v) ** 2).sum(axis=1)/denom
+				full_frame_error = npla.norm(v-v_r)/npla.norm(v)/denom
+				full_mesh_error.append(full_frame_error)
+				frames_err_r.append(frame_err)
+				accum_norm_mat += frame_err
 
-					n = igl.per_vertex_normals(v, f)
-					n_r = igl.per_vertex_normals(v_r, f)
-					normal_angles_r.append(angle_between_row_vectors(n, n_r))
-					accum_angle_mat += angle_between_row_vectors(n, n_r)
+				n = igl.per_vertex_normals(v, f)
+				n_r = igl.per_vertex_normals(v_r, f)
+				normal_angles_r.append(angle_between_row_vectors(n, n_r))
+				accum_angle_mat += angle_between_row_vectors(n, n_r)
 
-				plt.plot(full_mesh_error, label= r)
-				plt.show()
-				plt.plot(np.array(frames_err_r).sum(axis=1), label= r)
-				plt.legend()
-				plt.show()
+			plt.plot(full_mesh_error, label= r)
+			#plt.show()
+			plt.plot(np.array(frames_err_r).sum(axis=1), label= r)
+			plt.legend()
+			#plt.show()
 			# 	writer.writerow([r, np.array(frames_err_r).min(),  np.array(frames_err_r).mean(),
 			# 					 np.array(frames_err_r).max(),np.array(frames_err_r).sum(),
 			# 					 np.array(normal_angles_r).min(), np.array(normal_angles_r).mean(),
@@ -154,11 +157,16 @@ def compute_accuracy(orig_mesh, snapsFormat, frame_start, frame_end, r_start, r_
 		accum_per_vert_min = []
 		normal_angles = []
 		frame = frame_start
-		reduction = r_start
+		reduction = r
 		frames_range = []
 		normal_angles_r = []
 
-		screenshot_dir = os.path.join(dir, "error_screenshots"+case)
+		if show_angles_norm:
+			measure = "normal_vec"
+		else:
+			measure = "l2_norm"
+
+		screenshot_dir = os.path.join(dir, "error_screenshots"+case, measure)
 		if not os.path.exists(screenshot_dir):
 			os.makedirs(screenshot_dir)
 			print("Directory is created to store screenshots!", screenshot_dir)
@@ -169,11 +177,12 @@ def compute_accuracy(orig_mesh, snapsFormat, frame_start, frame_end, r_start, r_
 
 			k = frame
 			r = reduction
+
 			if overlap:
 
-				screenshot_file = os.path.join(screenshot_dir, type + "_comp_overlap_" + str(r) + "_fr_" +str(k))
+				screenshot_file = os.path.join(screenshot_dir, "comp_overlap_" + str(r) + "_fr_" +str(k))
 			else:
-				screenshot_file = os.path.join(screenshot_dir, type + "_comp_nonoverlap_" + str(r) + "_fr_" +str(k))
+				screenshot_file = os.path.join(screenshot_dir,"comp_nonoverlap_" + str(r) + "_fr_" +str(k))
 
 			f1 =full_files_path + str(k) + snapsFormat
 			f2 = reduced_files_path+ str(r) + reduced_ext + str(k) +snapsFormat
@@ -209,7 +218,7 @@ def compute_accuracy(orig_mesh, snapsFormat, frame_start, frame_end, r_start, r_
 			n = igl.per_vertex_normals(v, f)
 			n_r = igl.per_vertex_normals(v_r, f)
 
-			ps_mesh1 = ps.register_surface_mesh("mesh", v, f, color=(227, 156, 28))
+			ps_mesh1 = ps.register_surface_mesh("mesh", v, f, color= color )
 			ps_mesh2 = ps.register_surface_mesh("mesh_r", v_r, f)
 
 			# ps_cloud = ps.register_point_cloud("reduced mesh verts", v_r)
@@ -222,19 +231,22 @@ def compute_accuracy(orig_mesh, snapsFormat, frame_start, frame_end, r_start, r_
 											 enabled=True)
 			ps.set_ground_plane_mode("shadow_only")
 			ps.screenshot(screenshot_file)
-			frame +=1
-			if frame == frame_end + 1:
-				frame = 1
-				reduction += r_step
-
-
-			if reduction  >= r_end + 1:
+			frame +=frame_jump
+			# if frame == frame_end + 1:
+			# 	frame = 1
+			# 	reduction += r_step
+			#
+			#
+			# if reduction  >= r_end + 1:
+			# 	ps.unshow()
+			if frame > frame_end:
 				ps.unshow()
-
 		# Update the Polyscope viewer
 		ps.set_user_callback(callback)
 		ps.show()
 
-	write_to_file()
+	# write_to_file()
 	visualize(overlap=True, show_angles_norm=True)
 	visualize(overlap=True, show_angles_norm=False)
+
+

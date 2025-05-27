@@ -3,11 +3,11 @@
 	{
 		"mesh": "bunny",
 		"experiment": "_gravitationalFall",
-		"experiment_dir": "../redPD_mirror/results/"
+		"experiment_dir": "../redPD_mirror/results/",
+		"snap_format": ".off"
 	},
 	"vertexPos_bases":
 		{
-			"run_tests": false,
 			"computeState":
 			{
 				"compute": true,
@@ -52,43 +52,13 @@
 					"lambda": 2,
 					"rho": 10.0
 				},
-			"store":false,
+			"store":true,
+			"run_tests": true,
 			"visualize": true
 		},
-	"constraintProj_bases":
-	{
-		"computeState":
-		{
+	"constraintProj_bases": {
+		"computeState": {
 			"compute": false,
-			"testingComputations": "_Release"
-		},
-		"constraintType":
-		{
-			"name": "tetstrain",
-			"elements": "_tets",
-			"snaps_folder": "/constraintProjection_snapshots/noPosReduction_noConstraintProjReduction/",
-			"snaps_pattern_full_p": "/aux_",
-			"rowSize": 3
-		},
-		"snapshots":
-		{
-			"max_numFrames": 200,
-			"numFrames": 200,
-			"read_all_from_first": true,
-			"processed_snapshots_file": "/processed_snapshots/",
-			"preAlignement": "_noAlignement" ,
-			"processed_snapshots_ready": false
-		},
-		"type": "deim",
-		"numComponents_verts": 5,
-		"bases_res_tol": 1e-20,
-		"dim": 3,
-		"constraintsDim": 3,
-		"rest_shape": "first",
-		"massWeighted": "_Volkwein",
-		"standarized": "_Standarized",
-		"supported": "_Global",
-		"orthogonalized": "_Orthogonalized",
-		"store_sing_val": "Yes"
+		}
 	}
 }

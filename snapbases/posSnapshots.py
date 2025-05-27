@@ -14,6 +14,7 @@ import scipy.linalg as spla
 from scipy.linalg import svd, norm, cho_factor, cho_solve, cholesky, orth
 from utils.support import GeodesicDistanceComputation
 from utils.utils import read_mesh_file
+from utils.utils import log_time
 
 import cProfile
 import pstats
@@ -59,6 +60,7 @@ class posSnapshots:
         # One time compute snapTensor
         self.do_snapshots_precomputations(standarize, massWeight)
 
+    @log_time("")
     def do_snapshots_precomputations(self, standarize, massWeight):
         """
         One time snapshots loading and possibly pre-processing. Options are:
@@ -102,6 +104,7 @@ class posSnapshots:
         
         print('Snapshots ready... Volkwein ('+str(massWeight)+'), standarized ('+str(standarize)+').')
 
+    @log_time("")
     def read(self):
         with h5py.File(self.input_animation_file, 'r') as f:
             self.verts = f['verts'][()].astype(float)  # (F, N, 3)
@@ -117,8 +120,7 @@ class posSnapshots:
             self.test_verts = test_f['verts'][()].astype(float)  # (F, N, 3)
             self.test_tris = test_f['tris'][()]
 
-
-
+    @log_time("")
     def read_factorize_masses(self, mass_on_tet_mesh=False):
         # if masses file is available, read it
         fileName = self.massesFile
@@ -157,6 +159,7 @@ class posSnapshots:
         self.massL = np.diagonal(massL)  # (N,)
         self.invMassL = np.diagonal(invMassL)  # (N,)
 
+    @log_time("")
     def standarize(self):
         # we subtract Xmean and normalize w. r. to. std(X) to bring data center as close as possible to zero
         # and the standard deviation as close as possible to one!

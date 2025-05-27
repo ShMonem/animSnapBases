@@ -202,6 +202,9 @@ class Config_parameters:
         self.tri_mesh_file = self.snapshots_repo_dir \
                     + self.name + "/" \
                     + self.name + ".obj"
+
+        self.snapshots_format = config["object"]["snap_format"]  # either ".off" or ".ply"
+
         if self.compute_pos_bases:
             # testing state (only decoration for file name)
             # _Released / _Debugging / _Testing
@@ -222,7 +225,6 @@ class Config_parameters:
 
             # number of snapshots used in computations (NO. files you have)
             self.frame_increment  = config["vertexPos_bases"]["snapshots"]["frame_increment"]
-            self.snapshots_format = config["vertexPos_bases"]["snapshots"]["format"]   # either ".off" or ".ply"
             # where snapshots are stored
             self.snapshots_folder = config["vertexPos_bases"]["snapshots"]["snaps_folder"]
             # where animations will be stored and found
@@ -344,7 +346,7 @@ class Config_parameters:
             """
 
             self.vertPos_output_directory = "results/" + self.name + "/" + self.experiment + "/q_bases/" + self.vertPos_bases_name_extention + \
-                                     "/" + str(self.vertPos_numFrames)+"_Frames/" + \
+                                      str(self.vertPos_numFrames)+"_Frames_" + \
                                      str(self.frame_increment) + "_increment_/"
 
             if not os.path.exists(self.vertPos_output_directory):
@@ -411,7 +413,7 @@ class Config_parameters:
         """
 
         self.compute_constProj_bases =config["constraintProj_bases"]['computeState']["compute"]
-
+        self.run_main_constProj_bases = config["constraintProj_bases"]['computeState']["run_main"]
         if self.compute_constProj_bases:
             self.constProj_name = config["constraintProj_bases"]["constraintType"]["name"]
             self.constProj_element_type = config["constraintProj_bases"]["constraintType"]["elements"]
@@ -539,11 +541,11 @@ class Config_parameters:
                                          + self.experiment\
                                          + "/p_bases/"\
                                          + self.constProj_name + "/" \
-                                         + self.constProj_bases_name_extention +  "/" \
+                                         + self.constProj_bases_name_extention \
                                          + str(self.constProj_numFrames) \
-                                         + "_Frames/" \
+                                         + "_Frames_" \
                                          + str(self.constProj_frame_increment) \
-                                         + "_increment_" + "/"
+                                         + "_increment" + "/"
 
             if not os.path.exists(self.constProj_output_directory):
                 # Create a new directory because it does not exist

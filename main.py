@@ -8,7 +8,7 @@ import pstats
 import csv
 import argparse
 from utils.process import convert_sequence_to_hdf5, load_off, load_ply, align, view_anim_file, view_components
-from utils.utils import store_matrix, store_vector, write_tensor_to_bin_colmajor
+from utils.utils import store_matrix, store_vector, write_tensor_to_bin_colmajor, copy_and_delete_file
 from functools import partial
 # vertex position parameters
 from config.config import Config_parameters
@@ -78,6 +78,9 @@ def main(param: Config_parameters):
         # store bases
         bases.store_animations(param.vertPos_output_directory)
 
+        # copy time log file to correct directory
+        copy_and_delete_file("function_timings.txt", os.path.join(param.vertPos_output_directory,"time_logs.txt"))
+
         # visualize aligned snapshots and computed bases
         if param.visualize_snapshots:
             view_anim_file(aligned_training_snapshots_h5_file)
@@ -121,6 +124,9 @@ def main(param: Config_parameters):
         deim_interpolation_in_pos_space = True
         nonlinearBases.deim_blocksForm(deim_interpolation_in_pos_space)
 
+        # copy time log file to correct directory
+        copy_and_delete_file("function_timings.txt", os.path.join(param.vertPos_output_directory,"time_logs.txt"))
+
         if param.store_nonlinear_bases:
             start = 1
             end = nonlinearBases.numComp
@@ -129,8 +135,8 @@ def main(param: Config_parameters):
 
         if param.run_deim_tests:
             from generate_figures.nl_reduction_tests import tets_plots_deim
-            tets_plots_deim(nonlinearBases, pca_tests= True, postProcess_tests=False,
-                                            deim_tests=True, visualize_deim_elements=True)
+            tets_plots_deim(nonlinearBases, pca_tests= False, postProcess_tests=False,
+                                            deim_tests=False, visualize_deim_elements=True)
 
 if __name__ == '__main__':
     # -----------------------------------------------------------------------------------------------------------------
@@ -140,7 +146,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
     parser.add_argument('--mesh', type=str, default="bunny", help='Give a character mesh (default: sphere)')
-    parser.add_argument('--subspace', type=str, default="posSubspace",
+    parser.add_argument('--subspace', type=str, default="tetstrainSubspace",
                         help='Subspaces for which bases are computed (default: posSubspace)')
 
     args = parser.parse_args()
@@ -148,7 +154,8 @@ if __name__ == '__main__':
     #
     jason_file = "config/examples/"+ args.mesh +"_gFall_"+ args.subspace+".json"
     param.reset(jason_file)
-    main(param)
+    if param.run_main_constProj_bases:
+        main(param)
     # -----------------------------------------------------------------------------------------------------------------
     # when snapshots of the reduced simulations is available we run more on mesh accuracy tests
     # position space
@@ -177,20 +184,25 @@ if __name__ == '__main__':
     if param.compute_constProj_bases and param.reduced_constProj_snapshots_available:
         from generate_figures.onMesh_accuracyMeasures import compute_accuracy, readOriginalMesh
         # Reconstruction
+        pos_file_pattern = "/pos_"
         compute_accuracy(param.tet_mesh_file, param.snapshots_format,
-                             1, param.constProj_numFrames, 10, 10, 120,
-                             param._pos_snaps_folder+"/pos_",
-                             param._deim_pos_snaps_folder, "_"+param.constProj_name+"/pos_",
-                             "posSubspace",
-                             param.vertPos_output_directory
-                             )
+                        0, param.constProj_numFrames*param.constProj_frame_increment, param.constProj_frame_increment,
+                        param.visualize_deim_elements_at_K,
+                        param._pos_snaps_folder+pos_file_pattern,
+                        param._deim_pos_snaps_folder, "_"+param.constProj_name+pos_file_pattern,
+                        param.constProj_name ,
+                        param.constProj_output_directory,
+                         color=(1.0, 0.5, 0.0)
+                        )
         # Testing om unseen data
         compute_accuracy(param.tet_mesh_file, param.snapshots_format,
-                         param.constProj_numFrames +1, param.constProj_numFrames+50, 10, 10, 120,
-                         param._pos_snaps_folder + "/pos_",
-                         param._deim_pos_snaps_folder, "_" + param.constProj_name + "/pos_",
-                         "posSubspace",
-                         param.vertPos_output_directory,
+                         1, param.constProj_numFrames*param.constProj_frame_increment, param.constProj_frame_increment,
+                         param.visualize_deim_elements_at_K,
+                         param._pos_snaps_folder + pos_file_pattern,
+                         param._deim_pos_snaps_folder, "_" + param.constProj_name + pos_file_pattern,
+                         param.constProj_name ,
+                         param.constProj_output_directory,
+                         color=(0.4, 2.0, 0.4) ,
                          case="_test_on_unseen_set"
                          )
     # -----------------------------------------------------------------------------------------------------------------

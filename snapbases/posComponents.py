@@ -14,12 +14,9 @@ from snapbases.posSnapshots import posSnapshots
 from config.config import Config_parameters
 from utils.utils import log_time
 
-vertPos_output_directory = ""
 
 class posComponents:  # Components == bases
     def __init__(self, param: Config_parameters):
-        global vertPos_output_directory
-        vertPos_output_directory = param.vertPos_output_directory
         # bases type, can only be 'PCA' and 'SPLOCS'
         self.basesType = param.vertPos_bases_type
         assert self.basesType == 'PCA' or self.basesType == 'SPLOCS'
@@ -66,7 +63,7 @@ class posComponents:  # Components == bases
         return (clip(phi, min_dist, max_dist) - min_dist) \
                / (max_dist - min_dist)
 
-    @log_time(vertPos_output_directory)
+    @log_time("")
     def extract_k_components(self, writer,
                              num_iters_max=20, num_admm_iterations=10):
         R = self.pos_snapshots.snapTensor.copy()
@@ -131,7 +128,7 @@ class posComponents:  # Components == bases
 
         print("Computed '", self.basesType, "' bases size ", self.comps.shape)
 
-    @log_time(vertPos_output_directory)
+    @log_time("")
     def splocs_glob_optimization(self, num_iters_max, num_admm_iterations,
                                  R, compute_geodesic_distance):
         # prepare auxiluary variables
@@ -191,7 +188,7 @@ class posComponents:  # Components == bases
             # TODO convergence check plot
             print("itr %03d, Energy =%f, Error =%f" % (it, energy, E_rms))
 
-    @log_time(vertPos_output_directory)
+    @log_time("")
     def test_convergence(self, start, end, step, writer=None):
         snapshots = self.pos_snapshots.snapTensor.copy()   # (F, N, 3)
         # snapshots_inf_norm = argmax(linalg.norm(snapshots.reshape(e, p, -1), ord='fro', axis=(1, 2)))
@@ -258,12 +255,12 @@ class posComponents:  # Components == bases
             shrinkage = maximum(0.0, 1 - beta * Lambda / xlen)
         return x * shrinkage[..., newaxis]
 
-    @log_time(vertPos_output_directory)
+    @log_time("")
     def compute_components_store_singvalues(self):
 
         headerSing = ['component', 'singVal', 'norm_R']
 
-        file_name = os.path.join(vertPos_output_directory, self.param.name+"_posBases_pcaExtraction_singValues_errorNorm")
+        file_name = os.path.join(self.param.vertPos_output_directory, self.param.name+"_posBases_pcaExtraction_singValues_errorNorm")
         if self.storeSingVal:
             with open(file_name + '.csv', 'w', encoding='UTF8') as singFile:
                 writer = csv.writer(singFile)
@@ -274,7 +271,7 @@ class posComponents:  # Components == bases
         else:
             self.extract_k_components(None)
 
-    @log_time(vertPos_output_directory)
+    @log_time("")
     def post_process_components(self):
         print("Post-processing pos components ...")
         if self.param.q_standarize:
@@ -304,6 +301,7 @@ class posComponents:  # Components == bases
         print("... Volkwein ("+str(self.param.q_massWeight)+")... standerized ("+str(self.param.q_standarize) +
               ")... support (" +str(self.support) + "), orthogonalized ("+str(self.param.q_orthogonal)+").")
 
+    @log_time("")
     def is_utmu_orthogonal(self):
         print('... testing M orthogonality, U^T M U = I (K x K) ...', end='', flush=True)
         # comps size (K , N, 3)
@@ -314,7 +312,7 @@ class posComponents:  # Components == bases
             Mu_l, utMu_l = None, None
         print('(True).')
 
-    @log_time(vertPos_output_directory)
+    @log_time("")
     def store_components_to_files(self, start, end, step, fileType):
         """
         fileType can be either '.bin' or '.npy'
@@ -322,13 +320,13 @@ class posComponents:  # Components == bases
         print('Storing bases ...', end='', flush=True)
         numframes, numverts = self.pos_snapshots.frs, self.pos_snapshots.nVerts
 
-        basesFile = os.path.join(vertPos_output_directory, self.fileNameBases)
+        basesFile = os.path.join(self.param.vertPos_output_directory, self.fileNameBases)
         # store separate .bin for different numbers of components
         for k in range(start, end + 1, step):
             store_components(basesFile, numframes, k, numverts, 3, self.comps[:k, :, :], fileType, 'K')
         print('done.')
 
-    @log_time(vertPos_output_directory)
+    @log_time("")
     def store_animations(self, output_bases_dir):
 
         output_components = os.path.join(output_bases_dir, self.output_components_file)
@@ -342,6 +340,7 @@ class posComponents:  # Components == bases
                 f['comp%03d' % i] = c
         f.close()
 
+    @log_time("")
     def test_basesSingVals(self):
         """
         Computes normalized singular values along all Kp vectors on the already fully-extracted PCA bases

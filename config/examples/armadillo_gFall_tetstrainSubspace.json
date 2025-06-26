@@ -1,0 +1,62 @@
+{
+	"object":
+	{
+		"mesh": "bunny",
+		"experiment": "_gravitationalFall",
+		"experiment_dir": "../redPD_mirror/results/",
+		"snap_format": ".off"
+	},
+	"vertexPos_bases":
+		{
+			"computeState":
+			{
+				"compute": false
+			}
+		},
+	"constraintProj_bases":
+	{
+		"computeState":
+		{
+			"compute": true,
+			"run_main": false,
+			"testingComputations": "_Release"
+		},
+		"constraintType":
+		{
+			"name": "tetstrain",
+			"elements": "_tets",
+			"snaps_folder": "/constraintProjection_snapshots/noPosReduction_noConstraintProjReduction/",
+			"pos_snaps_folder": "/position_snapshots/noPosReduction_noConstraintProjReduction",
+			"deim_pos_snaps_folder": "/position_snapshots/noPosReduction_ConsProjDEIM/",
+			"snaps_pattern_full_p": "/aux_",
+			"rowSize": 3
+		},
+		"snapshots":
+		{
+			"max_numFrames": 200,
+			"numFrames": 200,
+			"frame_increment": 2,
+			"read_all_from_first": true,
+			"processed_snapshots_file": "/processed_snapshots/",
+			"preAlignement": "_noAlignement" ,
+			"processed_snapshots_ready": false,
+			"reduced_snaps_available": true
+		},
+		"type": "deim",
+		"numComponents_verts": 5,
+		"bases_res_tol": 3e-16,
+		"dim": 3,
+		"constraintsDim": 3,
+		"max_element_per_deim_vert": 100000000,
+		"rest_shape": "first",
+		"massWeighted": "_Volkwein",
+		"standarized": "_Standarized",
+		"supported": "_Global",
+		"orthogonalized": "_Orthogonalized",
+		"store_sing_val": false,
+		"store_to_files": false,
+		"run_tests": true,
+		"visualize_elements_at_bases_num": 30,
+		"visualize_deim_elements": 528
+	}
+}

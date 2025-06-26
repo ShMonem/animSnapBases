@@ -36,8 +36,10 @@ import potpourri3d as pp3d
 # # libigl includes
 import igl
 import os
-from utils.utils import  read_mesh_file
+from utils.utils import  read_mesh_file, load_vector_values
 import matplotlib.pyplot as plt
+
+from utils.support import compute_edge_incidence_matrix_on_tets, extract_sub_vertices_and_edges, extract_sub_vertices_and_tet_edges
 
 root_folder = os.getcwd()
 # #root_folder = os.path.join(os.getcwd(), "tutorial")
@@ -57,7 +59,7 @@ def readOriginalMesh(filePath, tri=False):
 	return v0, f0
 
 def compute_accuracy(orig_mesh, snapsFormat, frame_start, frame_end, frame_jump, r,
-					 full_files_path, reduced_files_path, reduced_ext, type, dir, color=(1.0, 0.5, 0.0), case="_test_on_training_set"):
+					 full_files_path, reduced_files_path, reduced_ext, type, dir, color=(1.0, 0.5, 0.0), view=-1,case="_test_on_training_set"):
 
 	"""
 	r : num_reduction_components
@@ -180,9 +182,9 @@ def compute_accuracy(orig_mesh, snapsFormat, frame_start, frame_end, frame_jump,
 
 			if overlap:
 
-				screenshot_file = os.path.join(screenshot_dir, "comp_overlap_" + str(r) + "_fr_" +str(k))
+				screenshot_file = os.path.join(screenshot_dir, "comp_overlap_" + str(r) + "_fr_" +str(k//frame_jump)+".png")
 			else:
-				screenshot_file = os.path.join(screenshot_dir,"comp_nonoverlap_" + str(r) + "_fr_" +str(k))
+				screenshot_file = os.path.join(screenshot_dir,"comp_nonoverlap_" + str(r) + "_fr_" +str(k//frame_jump)+".png")
 
 			f1 =full_files_path + str(k) + snapsFormat
 			f2 = reduced_files_path+ str(r) + reduced_ext + str(k) +snapsFormat
@@ -196,7 +198,7 @@ def compute_accuracy(orig_mesh, snapsFormat, frame_start, frame_end, frame_jump,
 				bounding_box_size = np.linalg.norm(max_corner - min_corner)
 
 				# Set the camera position in front of the object
-				front_camera_position = (center[0], center[1], center[2] + 2 * bounding_box_size)
+				front_camera_position = (center[0], center[1], view*(center[2] + 2 * bounding_box_size))
 
 				# Fix the camera to look at the object's center
 				ps.look_at(front_camera_position, center)
@@ -248,5 +250,106 @@ def compute_accuracy(orig_mesh, snapsFormat, frame_start, frame_end, frame_jump,
 	# write_to_file()
 	visualize(overlap=True, show_angles_norm=True)
 	visualize(overlap=True, show_angles_norm=False)
+	ps.unshow()
 
+
+def visualize_interpolation_elements(param, deim_interpol_verts_file, deim_alpha_file, edges=None,
+									 ele_color=(0.5, 0.8, 0.5), num_frames = 100, file_prefix = "frame"):
+	"""
+	Highlights specific elements (vertices, tetrahedra, faces) in a tetrahedral mesh using Polyscope.
+
+	Parameters:
+	- vertices: np.ndarray, array of vertex positions.
+	- tets: np.ndarray, array of tetrahedral indices.
+	- highlight_verts: list[int], indices of vertices to highlight.
+	- highlight_tets: list[int], indices of tetrahedra to highlight.
+	- highlight_faces: list[tuple], specific faces (triplets of vertex indices) to highlight.
+	"""
+	verts, tets, tris = read_mesh_file(param.tet_mesh_file)
+	deim_verts = load_vector_values(deim_interpol_verts_file).astype(int)
+	highlight_elements = load_vector_values(deim_alpha_file).astype(int)
+	highlight_type = param.constProj_element_type
+
+	# Register the mesh
+	ps.register_surface_mesh("Tet Mesh", verts, tris,
+						transparency=0.18, color=(0.89, 0.807, 0.565))
+	ps.register_point_cloud("deim Vertices", verts[deim_verts], enabled=True,
+						color=(0.9, 0.1, 0.25), radius=0.008)
+
+	# Highlight vertices
+	if highlight_type == "_verts":
+		ps.register_point_cloud("Highlighted Vertices", verts[highlight_elements],
+								enabled=True, color=ele_color)
+
+	# Highlight tetrahedra
+	elif highlight_type == "_tets":
+		ps.register_volume_mesh("Highlighted Tets", verts,
+								tets[highlight_elements], transparency=0.8,
+								color=ele_color)
+
+	# Highlight faces
+	elif highlight_type == "_tris":
+		ps.register_surface_mesh("Highlighted Faces", verts,
+								 tris[highlight_elements], transparency=0.8,
+								color=ele_color)
+
+	# Highlight edges
+	elif highlight_type == "_triEdges":
+		edges = edges[highlight_elements]
+		sub_verts, sub_edges = extract_sub_vertices_and_edges(verts, edges, transparency=0.8,
+								color=ele_color)
+		ps.register_curve_network("Highlighted Tri- Edges", sub_verts, sub_edges)
+
+	elif highlight_type == "_tetEdges":
+		# TODO: check if required!
+		edges = compute_edge_incidence_matrix_on_tets(tets)[highlight_elements]
+		sub_verts, sub_edges = extract_sub_vertices_and_tet_edges(verts, edges)
+		ps.register_curve_network("Highlighted Tet-Edges", sub_verts, sub_edges)
+
+	#ps.show()
+	output_dir = os.path.join(param.constProj_output_directory, "rotation_scene_snapshots")
+
+	if not os.path.exists(output_dir):
+		os.makedirs(output_dir)
+
+	# Compute the bounding box of the vertices
+	min_corner = np.min(verts, axis=0)
+	max_corner = np.max(verts, axis=0)
+	center = (min_corner + max_corner) / 2
+	bounding_box_size = np.linalg.norm(max_corner - min_corner)
+
+	# Determine camera distance (e.g., 2x bounding box size for full view)
+	camera_distance = 1.1 * bounding_box_size
+	ps.set_ground_plane_mode("none")
+
+	global angle, frame
+	angle = 360.0 / num_frames
+	frame = 1
+
+	def callback():
+		# Rotate the view incrementally
+		global angle, frame
+		angle += angle
+		camera_position = (
+			center[0] + camera_distance * np.sin(np.radians(angle)),
+			center[1],
+			(center[2] + camera_distance * np.cos(np.radians(angle))),
+		)
+		target_position = center  # Look at the center of the bounding box
+		ps.look_at(camera_position, target_position)
+
+		if frame <= num_frames:
+			# Capture the screenshot
+			filename = os.path.join(output_dir, param.name + "_" +param.constProj_name + "_" + f"{file_prefix}_{frame:03d}.png")
+			ps.screenshot(filename, transparent_bg=False)
+			frame +=1
+		else:
+			print(f"Reached frame {frame + 1}, closing Polyscope.")
+			ps.unshow()
+		# Update the Polyscope viewer
+	ps.set_user_callback(callback)
+	ps.show()
+
+	print(f"Captured {num_frames} frames in {output_dir}")
+	ps.unshow()
 

@@ -98,6 +98,22 @@ def store_interpol_points_vector(fileName, F, K, points, extension='.bin', colNa
         save(fileName + str(F) + 'K' + str(K)+ "_points" + str(points.shape[0]), points)
 
 
+def load_vector_values(full_filename):
+    """
+    Reads a binary file storing an interpolated points vector.
+
+    :param full_filename: Full path to the .bin file
+    :return: NumPy array of stored points
+    """
+    with open(full_filename, 'rb') as f:
+        num_points = struct.unpack('<i', f.read(4))[0]  # Read number of points
+        _ = struct.unpack('<i', f.read(4))[0]  # Read and discard second int (usually 1)
+        points = []
+        for _ in range(num_points):
+            val = struct.unpack('<d', f.read(8))[0]  # Read a double
+            points.append(val)
+    return np.array(points, dtype=np.float64)
+
 def store_vector(fileName, points, numPoints, extension='.bin'):
 
     assert points.shape[0] == numPoints

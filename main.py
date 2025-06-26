@@ -136,7 +136,7 @@ def main(param: Config_parameters):
         if param.run_deim_tests:
             from generate_figures.nl_reduction_tests import tets_plots_deim
             tets_plots_deim(nonlinearBases, pca_tests= False, postProcess_tests=False,
-                                            deim_tests=False, visualize_deim_elements=True)
+                                            deim_tests=False, visualize_deim_elements=False)
 
 if __name__ == '__main__':
     # -----------------------------------------------------------------------------------------------------------------
@@ -145,7 +145,7 @@ if __name__ == '__main__':
     # subspaces = ["posSubspace", "tetstrainSubspace", "tristrainSubspace","vertstarbendingSubspace"]
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
-    parser.add_argument('--mesh', type=str, default="bunny", help='Give a character mesh (default: sphere)')
+    parser.add_argument('--mesh', type=str, default="armadillo", help='Give a character mesh (default: sphere)')
     parser.add_argument('--subspace', type=str, default="tetstrainSubspace",
                         help='Subspaces for which bases are computed (default: posSubspace)')
 
@@ -203,6 +203,12 @@ if __name__ == '__main__':
                          param.constProj_name ,
                          param.constProj_output_directory,
                          color=(0.4, 2.0, 0.4) ,
+                         view=-1,
                          case="_test_on_unseen_set"
                          )
-    # -----------------------------------------------------------------------------------------------------------------
+
+        from generate_figures.onMesh_accuracyMeasures import visualize_interpolation_elements
+        visualize_interpolation_elements(param,
+                                         deim_interpol_verts_file=param.constProj_output_directory+"corrVerts_F150K33_points33.bin",
+                                         deim_alpha_file=param.constProj_output_directory+"p_nl_interpol_points_F150K33_points778.bin")
+    # # -----------------------------------------------------------------------------------------------------------------

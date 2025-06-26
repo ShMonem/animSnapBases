@@ -415,6 +415,7 @@ class constraintsComponents:  # Components == bases
         numverts = self.nonlinearSnapshots.num_constained_elements * self.nonlinearSnapshots.constraintsSize
         basesFile = os.path.join(constProj_output_directory, self.fileNameBases)
         pointsFile = os.path.join(constProj_output_directory, self.fileName_deim_points)
+        vertsFile = os.path.join(constProj_output_directory, "corrVerts")
         p = self.nonlinearSnapshots.constraintsSize
 
         # store separate .bin for different numbers of components
@@ -422,6 +423,9 @@ class constraintsComponents:  # Components == bases
             store_components(basesFile, numframes, k * p, numverts, 3, self.comps[:k * p, :, :], fileType, 'Kp')
 
             store_interpol_points_vector(pointsFile, self.nonlinearSnapshots.frs, k, self.deim_alpha[:self.deim_alpha_ranges[k - 1]], fileType)
+
+            store_interpol_points_vector(vertsFile, self.nonlinearSnapshots.frs, k,
+                                         self.deim_interpol_verts[:k], fileType)
 
         print('done.')
 
@@ -521,6 +525,7 @@ class constraintsComponents:  # Components == bases
 
         self.deim_alpha = np.array(e_points)
         self.deim_alpha_ranges = np.array(e_range)
+        self.deim_interpol_verts = np.array(self.deim_interpol_verts)
         print("Deim interpolation used", self.deim_alpha.shape[0], "constrained elements")
 
 

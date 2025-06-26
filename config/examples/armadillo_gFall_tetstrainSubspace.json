@@ -1,7 +1,7 @@
 {
 	"object":
 	{
-		"mesh": "bunny",
+		"mesh": "armadillo",
 		"experiment": "_gravitationalFall",
 		"experiment_dir": "../redPD_mirror/results/",
 		"snap_format": ".off"
@@ -33,8 +33,8 @@
 		},
 		"snapshots":
 		{
-			"max_numFrames": 200,
-			"numFrames": 200,
+			"max_numFrames": 150,
+			"numFrames": 150,
 			"frame_increment": 2,
 			"read_all_from_first": true,
 			"processed_snapshots_file": "/processed_snapshots/",
@@ -53,10 +53,10 @@
 		"standarized": "_Standarized",
 		"supported": "_Global",
 		"orthogonalized": "_Orthogonalized",
-		"store_sing_val": false,
-		"store_to_files": false,
+		"store_sing_val": true,
+		"store_to_files": true,
 		"run_tests": true,
-		"visualize_elements_at_bases_num": 30,
-		"visualize_deim_elements": 528
+		"visualize_elements_at_bases_num": 50,
+		"visualize_deim_elements": 1006
 	}
 }

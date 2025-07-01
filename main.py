@@ -122,7 +122,7 @@ def main(param: Config_parameters):
 
         # Compute DEIM Interpolation points
         deim_interpolation_in_pos_space = True
-        nonlinearBases.deim_blocksForm(deim_interpolation_in_pos_space)
+        nonlinearBases.deim_block_form_utilizing_differential_operator(deim_interpolation_in_pos_space)
 
         # copy time log file to correct directory
         copy_and_delete_file("function_timings.txt", os.path.join(param.vertPos_output_directory,"time_logs.txt"))

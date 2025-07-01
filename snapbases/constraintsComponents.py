@@ -43,7 +43,7 @@ class constraintsComponents:  # Components == bases
         self.largeDeforPoints = None  # points/ constraints vertices at which basis are computed
         self.largeDeforBlocks = None  # blocks containing interpolation points
         self.measures_at_largeDeforVerts = None  # singVals & resNorm computed at 'K' largest deformation verts
-        self.res_at_largeDeforVerts = None  # the residual norm during PCA bases computation, all 'Kp' steps
+        # self.res_at_largeDeforVerts = None  # the residual norm during PCA bases computation, all 'Kp' steps
 
         self.fileNameBases = ""
         self.fileName_deim_points = ""
@@ -96,13 +96,19 @@ class constraintsComponents:  # Components == bases
     def indxLargestDeformation_e(r, e, p, d):
         #  R (ep, F, d)
         assert r.shape == (e, p * d)
-        magnitude = r ** 2  # (e, pd)
+        magnitude = r ** 2  # (e, pd_old)
         idx = np.argmax(magnitude.sum(axis=1))
 
         return idx
 
     @log_time(constProj_output_directory)
-    def compute_components_store_singvalues(self):
+    def compute_components_store_singvalues(self, with_differential_operator=True):
+        """
+        
+        Args:
+            with_differential_operator: weither or not the differential operator is utilized for basis computations
+            
+        """
         # compute_geodesic_distance = self.nonlinearSnapshots.compute_geodesic_distance
         headerSing = ['component', 'idx', 'residual_matrix_norm']
         p = self.nonlinearSnapshots.constraintsSize
@@ -114,15 +120,26 @@ class constraintsComponents:  # Components == bases
             with open(file_name + '.csv', 'w', encoding='UTF8') as singFile:
                 writer = csv.writer(singFile)
                 writer.writerow(headerSing)
-
-                self.compute_nonlinearSnap_k_bases(writer)
+                if with_differential_operator:
+                    self.compute_nonlinearity_bases_blocks_utilizing_diffirential_operator(writer)
+                else:
+                    self.compute_nonlinearity_bases_blocks(writer)
             singFile.close()
         else:
-            self.compute_nonlinearSnap_k_bases(None)
+            if with_differential_operator:
+                self.compute_nonlinearity_bases_blocks_utilizing_diffirential_operator(None)
+            else:
+                self.compute_nonlinearity_bases_blocks(None)
 
     @log_time(constProj_output_directory)
-    def compute_nonlinearSnap_k_bases(self, writer=None, headerSize=0):
-
+    def compute_nonlinearity_bases_blocks_utilizing_diffirential_operator(self, writer=None):
+        """
+        Args:
+            writer: if provided, singular values can be written into a .csv
+        Returns:
+            comps: vector basis set
+            weights: corresponding weights
+        """
         # inialized by a copy of the original snapshots tensor (F, ep, d)
         R = copy.deepcopy(self.nonlinearSnapshots.snapTensor)
         #  initialization
@@ -229,6 +246,91 @@ class constraintsComponents:  # Components == bases
         self.measures_at_largeDeforVerts = np.array(self.measures_at_largeDeforVerts)
         print("bases shape",self.comps.shape, "number of components", self.numComp)
 
+    @log_time(constProj_output_directory)
+    def compute_nonlinearity_bases_blocks(self, writer=None):
+
+        # inialized by a copy of the original snapshots tensor (F, ep, d)
+        R = copy.deepcopy(self.nonlinearSnapshots.snapTensor)
+        #  initialization
+        C = []
+        W = []
+        S_idx = []  # stores the indices of constrained vol. verts with the largest deformation (0, e)
+        S_p = []  # stores the indices of the complete blocks in the range (0, ep)
+        add_to_indx = False  # Decide to add index to list or not
+
+        p = self.nonlinearSnapshots.constraintsSize  # p: row size of each constraint
+        e = self.nonlinearSnapshots.num_constained_elements  # numConstraints
+        self.measures_at_largeDeforVerts = []
+        res_norm = []
+        for k in range(self.numComp):
+            #  find the constraint index explaining the most variance across the residual animation
+            idx = self.indxLargestDeformation(np.swapaxes(R, 0, 1), p, e)  # 0 <= idx < e
+
+            #  keep list of the constraints indices verts with largest deformation  0 <= idx < ep
+            if idx not in S_idx:
+                S_idx.append(idx)
+                add_to_indx = True
+            sigma = []
+            ck = None
+
+            # at each largest deformation idx, a bases block of size (ep, p, 3) is computed
+            for i in range(p):
+                #  find linear component explaining the motion of this constraint index
+                U, sing, Vt = svd(R[:, idx * p + i, :].reshape(R.shape[0], -1).T, full_matrices=False)
+                #  R[:,idx*p+i,:].reshape(R.shape[0], -1).T is the (3,F) tensor associated to the vertex==id
+                wk = sing[0] * Vt[0, :]  # weight associated to first mode of the svd
+                # print(" wk", wk.shape)
+                sigma.append(sing[0])
+
+                if self.support == 'local':
+                    # weight according to their projection onto the constraint set
+                    # this fixes problems with negative weights and non-negativity constraints
+                    wk_proj = self.project_weight(wk)
+                    wk_proj_negative = self.project_weight(-wk)
+                    wk = wk_proj \
+                        if norm(wk_proj) > norm(wk_proj_negative) \
+                        else wk_proj_negative
+                    # TODO: support map for volume
+                    # s = 1 - self.compute_support_map(idx, snapshots_compute_geodesic_distance,
+                    #                                 self.smooth_min_dist, self.smooth_max_dist)  # (ep,)?
+
+                # solve for optimal component inside support map
+                # wk is (F,), R is (F, ep, 3), np.tensordot(wk, R, (0, 0)) is (ep, 3),
+                if self.support == 'local':
+                    raise ValueError(' Local support is not yet available for nonlinearity')
+                    # TODO
+                    # ck = (np.tensordot(wk, R, (0, 0)) * s[:, np.newaxis]) \
+                    #      / np.inner(wk, wk)
+                else:
+                    ck = np.tensordot(wk, R, (0, 0)) / np.inner(wk, wk)  # (ep,3)
+
+                #  update residual
+                R -= np.outer(wk, ck).reshape(R.shape)  # project out computed bases block
+                res_norm.append(norm(R))
+
+                #  keep list of the constraints indices of blocks with largest deformation  0 <= idx < ep
+                if add_to_indx:
+                    S_p.append(idx * p + i)
+                    C.append(ck)
+                    W.append(wk)
+                    if i == (p - 1):
+                        add_to_indx = False
+
+            singList = [k, idx, norm(R), sigma[0], sigma[1], sigma[2]]
+            self.measures_at_largeDeforVerts.append(singList)
+            if self.storeSingVal:
+                writer.writerow(singList)
+
+        self.largeDeforPoints = np.array(S_idx)  # (K,)
+        self.largeDeforBlocks = np.array(S_p)  # (Kp,)
+        # self.res_at_largeDeforVerts = np.array(res_norm)
+
+        self.comps = np.array(C)
+        self.numComp = self.comps.shape[0] // p
+        self.weigs = np.array(W).T
+        
+        self.measures_at_largeDeforVerts = np.array(self.measures_at_largeDeforVerts)
+        print("bases shape",self.comps.shape, "number of components", self.numComp)
 
     @log_time(constProj_output_directory)
     def post_process_components(self):
@@ -423,7 +525,7 @@ class constraintsComponents:  # Components == bases
             store_components(basesFile, numframes, k * p, numverts, 3, self.comps[:k * p, :, :], fileType, 'Kp')
 
             store_interpol_points_vector(pointsFile, self.nonlinearSnapshots.frs, k, self.deim_alpha[:self.deim_alpha_ranges[k - 1]], fileType)
-
+            # TODO: check file name storage
             store_interpol_points_vector(vertsFile, self.nonlinearSnapshots.frs, k,
                                          self.deim_interpol_verts[:k], fileType)
 
@@ -433,7 +535,7 @@ class constraintsComponents:  # Components == bases
         --- DEIM/ Q-DEIM ---
     '''
     @log_time(constProj_output_directory)
-    def deim_blocksForm(self, error_in_pos_space=False):
+    def deim_block_form_utilizing_differential_operator(self, error_in_pos_space=False):
         """
         :return:
         """
@@ -526,8 +628,71 @@ class constraintsComponents:  # Components == bases
         self.deim_alpha = np.array(e_points)
         self.deim_alpha_ranges = np.array(e_range)
         self.deim_interpol_verts = np.array(self.deim_interpol_verts)
-        print("Deim interpolation used", self.deim_alpha.shape[0], "constrained elements")
+        print("Deim interpolation utilizing differential operator, used", self.deim_alpha.shape[0], "constrained elements")
 
+    def deim_blocksForm(self):
+        """
+        :return:
+        """
+        bases = np.swapaxes(self.comps, 0, 1)  # (ep, Kp, 3)
+        p = self.nonlinearSnapshots.constraintsSize
+        e = self.nonlinearSnapshots.num_constained_elements
+        d = self.nonlinearSnapshots.dim
+        K = self.numComp
+        assert bases.shape == (e * p, K * p, d)
+
+        # initialization
+        vk = bases[:, :p, :]  # v0
+        # V = bases[:, :p, :]
+        V = np.empty(vk.shape)
+        # initialize selection.T mat
+        Pt = []
+        Pt = np.array(Pt).astype(int)
+        S = []
+        for k in range(K):
+            if k == 0:
+                r = vk
+            else:
+                vk = bases[:, k * p:(k + 1) * p, :]  # (ep, p, d)   kth bases block
+                c = np.zeros(vk.shape)
+                for i in range(d):
+                    # V (Pt V)^{-1} Pt v_k
+                    c[:, :, i] = V[:, :, i] @ npla.solve(V[Pt, :, i], vk[Pt, :, i])
+
+                r = c - vk  # error
+            # find the largest deformation block
+            alpha = self.indxLargestDeformation(r, p, e)
+            # alpha = self.max_raw(r, p)
+            S.append(alpha)
+            # update selection mat with the largest deformation block in the error
+            if alpha in Pt.tolist():
+                print('skip', k)
+                continue
+            else:
+                print(k)
+                for m in range(p):
+                    Pt = np.append(Pt, alpha * p + m)
+
+                # update V and vk
+                if k == 0:
+                    V = vk
+                else:
+                    V = np.concatenate((V, vk), axis=1)
+
+        # test_linear_independency(V, V.shape[1])
+
+        M = np.zeros((V.shape[1], V.shape[1], d))
+        for i in range(d):
+            M[:, :, i] = npla.inv(V[Pt, :, i])
+
+        VM = np.zeros((e * p, V.shape[1], d))
+        for i in range(d):
+            VM[:, :, i] = V[:, :, i] @ M[:, :, i]
+
+        self.deim_alpha = np.array(S)
+        self.deim_alpha_ranges = np.ones(self.deim_alpha.shape[0]-1)
+        self.deim_interpol_verts = None
+        print("Regular Deim interpolation, used", self.deim_alpha.shape[0], "constrained elements")
 
     '''
         --- Results/ Tests ---

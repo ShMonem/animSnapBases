@@ -45,6 +45,7 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, pca_tests= True, postP
 
         # singular values at 'K' largest deformation blocks during PCA bases extarction
         # singVals starts from entry 4 in the measures_at_largeDeforVerts array
+        # header example: ['component', 'idx', 'residual_matrix_norm', 'singVal0', singVal1, singVal2]
         mark=['bo', 'ro', 'go']
         for i in range(p):
             plt.plot(r_values, nlConst_bases.measures_at_largeDeforVerts[:, 3+i] /

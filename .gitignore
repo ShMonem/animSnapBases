@@ -31,5 +31,7 @@ venv_requirements.txt
 /function_timings.txt
 /latex/
 media/
-/pd/*
+/pd_old/*
 
+*/.polyscope.ini
+*/imgui.ini

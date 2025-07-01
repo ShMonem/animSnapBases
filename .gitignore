@@ -35,3 +35,6 @@ media/
 
 */.polyscope.ini
 */imgui.ini
+/data/bar.obj
+/data/create_bar.py
+/data/simple_bar.obj

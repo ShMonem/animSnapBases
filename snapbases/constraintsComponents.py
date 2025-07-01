@@ -187,7 +187,7 @@ class constraintsComponents:  # Components == bases
                     # solve for optimal component inside support map
                     # wk is (F,), R is (F, ep, 3), np.tensordot(wk, R, (0, 0)) is (ep, 3),
                     if self.support == 'local':
-                        dummyindx = 0
+                        raise ValueError("Local support maps are not yet available for nonlinear-term components")
                         # TODO: depends on the support map
                         # ck = (np.tensordot(wk, R, (0, 0)) * s[:, np.newaxis]) \
                         #      / np.inner(wk, wk)

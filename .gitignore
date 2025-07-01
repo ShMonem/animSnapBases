@@ -31,3 +31,6 @@ venv_requirements.txt
 /function_timings.txt
 /latex/
 media/
+/pd/_gravitationalFall/
+/pd/_gravitationalFall/config.json
+

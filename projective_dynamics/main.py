@@ -1,44 +1,51 @@
-# main.py
-
 import polyscope as ps
 import polyscope.imgui as psim
-import tkinter as tk
-from tkinter import filedialog
-import os
 import numpy as np
+import os
 
-# Placeholder imports (these will be implemented later)
-# import geometry.get_simple_bar_model as get_simple_bar_model
-# import geometry.get_simple_cloth_model as get_simple_cloth_model
 from Constraint_projections import DeformableMesh
 from Simulators import Solver
 from geometry import get_simple_bar_model, get_simple_cloth_model
-# import ui.mouse_down_handler as mouse_down_handler
-# import ui.mouse_move_handler as mouse_move_handler
-# import ui.physics_params as physics_params
-# import ui.picking_state as picking_state
-# import ui.pre_draw_handler as pre_draw_handler
+from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler
 
-# UI state variables
-global_ui_state = {
-    "show_wireframe": False,
-    "point_size": 10.0,
-    "bar_width": 12,
-    "bar_height": 4,
-    "bar_depth": 4,
-    "cloth_width": 20,
-    "cloth_height": 20,
-    "positional_constraint_wi": 1.0,
-    "drag_force": 1.0,
+solver = Solver()
+fext = None
+
+bar_width, bar_height, bar_depth = 12, 4, 4
+cloth_width, cloth_height = 20, 20
+window_open = True  # global state
+model = None
+mouse_down_handler, mouse_move_handler, pre_draw_handler = None, None, None
+physics_params = {
+    "is_gravity_active": False,
+    "dt": 0.0166667,
+    "solver_iterations": 10,
+    "mass_per_particle": 10.0,
+    "edge_constraint_wi": 1_000_000.0,
+    "positional_constraint_wi": 1_000_000_000.0,
+    "deformation_gradient_constraint_wi": 10_000_000.0,
+    "strain_limit_constraint_wi": 10_000_000.0,
+    "sigma_min": 0.99,
+    "sigma_max": 1.01,
     "apply_constraints": False,
     "edge_constraint": False,
     "deformation_constraint": False,
     "strain_constraint": False,
+    "is_simulating": False,
+    "fix_left_side": False,
+    "fix_right_side": False,
+    "_fix_left_triggered": False,
+    "_fix_right_triggered": False,
+
 }
 
-model = None
-solver_instance = Solver()
-fext = None
+picking_state = {
+    "is_picking": False,
+    "vertex": 0,
+    "mouse_x": 0,
+    "mouse_y": 0,
+    "force": 400.0,
+}
 
 def rescale(V):
     v_mean = np.mean(V, axis=0)
@@ -55,117 +62,139 @@ def reset_simulation_model(V, F, T, should_rescale=False):
         V = rescale(V)
 
     model = DeformableMesh(V, F, T)
-    solver_instance.set_model(model)
-
-    fext = np.zeros_like(model.positions())
+    solver.set_model(model)
+    fext = np.zeros_like(V)
 
     ps.remove_all_structures()
-    ps.register_surface_mesh("model", model.positions(), model.faces())
+    ps.register_surface_mesh("model", model.positions, model.faces, enabled=True)
+
 
 def callback():
-    psim.PushItemWidth(200)
+    global model, solver, fext, bar_width, bar_height, bar_depth,\
+        mouse_down_handler, mouse_move_handler, pre_draw_handler,\
+        cloth_width, cloth_height, window_open
 
+    psim.PushItemWidth(200)
     psim.TextUnformatted("== Projective Dynamics ==")
     psim.Separator()
 
-    # File I/O section
-    if psim.CollapsingHeader("File I/O", psim.ImGuiTreeNodeFlags_DefaultOpen):
-        if psim.Button("Load triangle mesh"):
-            root = tk.Tk()
-            root.withdraw()
-            filename = filedialog.askopenfilename(filetypes=[("OBJ or OFF", "*.obj *.off")])
-            if filename and os.path.isfile(filename):
-                print(f"[INFO] Load triangle mesh: {filename}")
-                # TODO: Load and reset model here
-        psim.SameLine()
-        if psim.Button("Save triangle mesh"):
-            root = tk.Tk()
-            root.withdraw()
-            filename = filedialog.asksaveasfilename(defaultextension=".obj")
-            if filename:
-                print(f"[INFO] Save triangle mesh to: {filename}")
-                # TODO: Save mesh
 
-        if psim.Button("Load tet mesh"):
-            root = tk.Tk()
-            root.withdraw()
-            filename = filedialog.askopenfilename(filetypes=[(".mesh", "*.mesh")])
-            if filename and os.path.isfile(filename):
-                print(f"[INFO] Load tet mesh: {filename}")
-                # TODO: Load and reset model here
-        psim.SameLine()
-        if psim.Button("Save tet mesh"):
-            root = tk.Tk()
-            root.withdraw()
-            filename = filedialog.asksaveasfilename(defaultextension=".mesh")
-            if filename:
-                print(f"[INFO] Save tet mesh to: {filename}")
-                # TODO: Save tet mesh
-
-    # Geometry section
-    if psim.TreeNode("Geometry"):
-        if psim.Button("Compute Triangle"):
-            print("[INFO] Compute Triangle clicked")
-
-        psim.Separator()
-
+    if psim.CollapsingHeader("Geometry"):
         if psim.TreeNode("Bar"):
-            changed, global_ui_state["bar_width"] = psim.InputInt("width##Bar", global_ui_state["bar_width"])
-            changed, global_ui_state["bar_height"] = psim.InputInt("height##Bar", global_ui_state["bar_height"])
-            changed, global_ui_state["bar_depth"] = psim.InputInt("depth##Bar", global_ui_state["bar_depth"])
+            changed, bar_width = psim.InputInt("width##Bar", bar_width)
+            changed, bar_height = psim.InputInt("height##Bar", bar_height)
+            changed, bar_depth = psim.InputInt("depth##Bar", bar_depth)
 
-            if psim.Button("Compute Bar"):
-                print("[INFO] Compute Bar clicked")
-                V, T, F = get_simple_bar_model(
-                    global_ui_state["bar_width"],
-                    global_ui_state["bar_height"],
-                    global_ui_state["bar_depth"]
-                )
+            if psim.Button("Compute##Bar"):
+                V, T, F = get_simple_bar_model(bar_width, bar_height, bar_depth)
                 reset_simulation_model(V, F, T, should_rescale=True)
-
             psim.TreePop()
         if psim.TreeNode("Cloth"):
-            changed, global_ui_state["cloth_width"] = psim.InputInt("width##Cloth", global_ui_state["cloth_width"])
-            changed, global_ui_state["cloth_height"] = psim.InputInt("height##Cloth", global_ui_state["cloth_height"])
-
-            if psim.Button("Compute Cloth"):
-                print("[INFO] Compute Cloth clicked")
-                V, F = get_simple_cloth_model(
-                    global_ui_state["cloth_width"],
-                    global_ui_state["cloth_height"]
-                )
-                reset_simulation_model(V, F, F, should_rescale=True)
+            changed, cloth_width = psim.InputInt("width##Cloth", cloth_width)
+            changed, cloth_height = psim.InputInt("height##Cloth", cloth_height)
+            if psim.Button("Compute##Cloth"):
+                V, F = get_simple_cloth_model(cloth_width, cloth_height)
+                reset_simulation_model(V, F, np.empty((0,3)), should_rescale=True)
 
             psim.TreePop()
-    # Physics section
-    if psim.TreeNode("Physics"):
+
+        if model is not None:
+            psim.BulletText(f"Vertices: {model.positions.shape[0]}")
+            psim.BulletText(f"Triangles: {model.faces.shape[0]}")
+            psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
+
+        changed, physics_params["fix_left_side"] = psim.Checkbox("Fix Left\nVertices Side",
+                                                                 physics_params["fix_left_side"])
+        changed, physics_params["fix_right_side"] = psim.Checkbox("Fix Right\nVertices Side",
+                                                                  physics_params["fix_right_side"])
+
+        # One-shot execution logic
+        if physics_params["fix_left_side"] and not physics_params["_fix_left_triggered"]:
+            model.fix_surface_side_vertices(physics_params, side="left")
+            physics_params["_fix_left_triggered"] = True
+        elif not physics_params["fix_left_side"]:
+            physics_params["_fix_left_triggered"] = False
+
+        if physics_params["fix_right_side"] and not physics_params["_fix_right_triggered"]:
+            model.fix_surface_side_vertices(physics_params, side="right")
+            physics_params["_fix_right_triggered"] = True
+        elif not physics_params["fix_right_side"]:
+            physics_params["_fix_right_triggered"] = False
+
+
+    if psim.CollapsingHeader("Physics"):
         if psim.TreeNode("Constraints"):
-            changed, global_ui_state["edge_constraint"] = psim.Checkbox("Edge Length Constraint", global_ui_state["edge_constraint"])
-            changed, global_ui_state["deformation_constraint"] = psim.Checkbox("Deformation Gradient Constraint", global_ui_state["deformation_constraint"])
-            changed, global_ui_state["strain_constraint"] = psim.Checkbox("Strain Constraint", global_ui_state["strain_constraint"])
-            changed, global_ui_state["positional_constraint_wi"] = psim.InputFloat("Positional Constraint Weight", global_ui_state["positional_constraint_wi"])
-            if psim.Button("Apply Constraints"):
-                print("[INFO] Apply Constraints clicked")
+            changed, physics_params["edge_constraint_wi"] = psim.InputFloat("wi \nEdgeLength", physics_params["edge_constraint_wi"])
+            changed, physics_params["edge_constraint"] = psim.Checkbox("Active \nEdgeLength", physics_params["edge_constraint"])
+
+            changed, physics_params["deformation_gradient_constraint_wi"] = psim.InputFloat("wi \nDeformationGradient", physics_params["deformation_gradient_constraint_wi"])
+            changed, physics_params["deformation_constraint"] = psim.Checkbox("Active \nDeformationGradient", physics_params["deformation_constraint"])
+
+            changed, physics_params["strain_limit_constraint_wi"] = psim.InputFloat("wi \nStrainLimit", physics_params["strain_limit_constraint_wi"])
+            changed, physics_params["sigma_min"] = psim.InputFloat("Minimum singular \nvalue StrainLimit", physics_params["sigma_min"])
+            changed, physics_params["sigma_max"] = psim.InputFloat("Maximum singular \nvalue StrainLimit", physics_params["sigma_max"])
+            changed, physics_params["strain_constraint"] = psim.Checkbox("Active \nStrainLimit", physics_params["strain_constraint"])
+
+            changed, physics_params["positional_constraint_wi"] = psim.InputFloat("wi \nPositional constraint", physics_params["positional_constraint_wi"])
+
+            if psim.Button("Apply##Constraints"):
+                model.immobilize()
+                model.clear_constraints()
+                solver.set_dirty()
+                if physics_params["edge_constraint"]:
+                    model.constrain_edge_lengths(physics_params["edge_constraint_wi"])
+                if physics_params["deformation_constraint"]:
+                    model.constrain_deformation_gradient(physics_params["deformation_gradient_constraint_wi"])
+                if physics_params["strain_constraint"]:
+                    model.constrain_strain(
+                        physics_params["sigma_min"],
+                        physics_params["sigma_max"],
+                        physics_params["strain_limit_constraint_wi"])
+
+            psim.BulletText(f"no. Constraints: {len(model.constraints)}")
             psim.TreePop()
-        psim.TreePop()
 
-    # Picking
-    if psim.TreeNode("Picking"):
-        changed, global_ui_state["drag_force"] = psim.InputFloat("Dragging Force", global_ui_state["drag_force"])
-        psim.TreePop()
+        changed, physics_params["dt"] = psim.InputFloat("Timestep", physics_params["dt"])
+        changed, physics_params["solver_iterations"] = psim.InputInt("Solver iterations", physics_params["solver_iterations"])
+        changed, physics_params["mass_per_particle"] = psim.InputFloat("mass per particle", physics_params["mass_per_particle"])
+        changed, physics_params["is_gravity_active"] = psim.Checkbox("Gravity", physics_params["is_gravity_active"])
 
-    # Visualization
-    if psim.TreeNode("Visualization"):
-        changed, global_ui_state["show_wireframe"] = psim.Checkbox("Wireframe", global_ui_state["show_wireframe"])
-        changed, global_ui_state["point_size"] = psim.InputFloat("Point Size", global_ui_state["point_size"])
-        psim.TreePop()
+        changed, physics_params["is_simulating"] = psim.Checkbox("Simulate", physics_params["is_simulating"])
 
-    psim.PopItemWidth()
+        if model is not None:
 
-def main():
-    ps.init()
-    ps.set_user_callback(callback)
-    ps.show()
+            # mouse_down_handler = MouseDownHandler(lambda: model.positions.shape[0] > 0, picking_state, solver, physics_params)
+            # mouse_move_handler = MouseMoveHandler(lambda: model.positions.shape[0] > 0, picking_state, model, lambda: fext)
+            pre_draw_handler = PreDrawHandler(lambda: model.positions.shape[0] > 0, physics_params, solver, fext)
 
-if __name__ == "__main__":
-    main()
+        if physics_params["is_simulating"]:
+            pre_draw_handler.set_animating(True)
+            pre_draw_handler.handle()
+
+    if psim.CollapsingHeader("Picking"):
+        changed, picking_state["force"] = psim.InputFloat("Dragging force", picking_state["force"])
+
+        # pick_result = ps.pick()
+        # if pick_result is not None:
+        #     mesh_name, vidx = pick_result
+        #     if mesh_name == "model":
+        #         picking_state["vertex"] = vidx
+        #         picking_state["is_picking"] = True
+        #         psim.BulletText(f"Picked vertex: {vidx}")
+
+    if psim.CollapsingHeader("Visualization"):
+        changed, wire = psim.Checkbox("Wireframe", ps.get_surface_mesh("mesh").get_edge_width() > 0.0)
+        if wire:
+            ps.get_surface_mesh("mesh").set_edge_width(1.0)
+        else:
+            ps.get_surface_mesh("mesh").set_edge_width(0.0)
+        ps.get_surface_mesh("mesh").set_point_radius(psim.InputFloat("Point size", 0.02), relative=True)
+
+    psim.End()
+
+# Register callback
+ps.init()
+ps.set_user_callback(callback)
+
+# Launch viewer
+ps.show()

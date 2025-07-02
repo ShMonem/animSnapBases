@@ -39,15 +39,15 @@ class Solver:
 
     def prepare(self, dt):
         self.dt = dt
-        positions = self.model.positions
+
         mass = self.model.mass
-        N = positions.shape[0]
+        N = self.model.positions.shape[0]
 
         dt2_inv = 1.0 / (dt * dt)
         A_triplets = []
 
         for constraint in self.model.constraints:
-            A_triplets += constraint.get_wi_SiT_AiT_Ai_Si(positions, mass)
+            A_triplets += constraint.get_wi_SiT_AiT_Ai_Si(self.model.positions, mass)
 
         for i in range(N):
             A_triplets.append((3 * i + 0, 3 * i + 0, mass[i] * dt2_inv))
@@ -61,11 +61,10 @@ class Solver:
         self.set_clean()
 
     def step(self, fext, num_iterations=10):
-        positions = self.model.positions
-        velocities = self.model.velocity
+        velocities = self.model.velocities
         mass = self.model.mass
         constraints = self.model.constraints
-        N = positions.shape[0]
+        N = self.model.positions.shape[0]
 
         dt = self.dt
         dt_inv = 1.0 / dt
@@ -73,7 +72,7 @@ class Solver:
         dt2_inv = 1.0 / dt2
 
         a = fext / mass[:, None]  # elementwise divide
-        explicit = positions + dt * velocities + dt2 * a
+        explicit = self.model.positions + dt * velocities + dt2 * a
         sn = flatten(explicit)
 
         masses = np.zeros(3 * N)
@@ -91,5 +90,5 @@ class Solver:
             q = self.cholesky(b)
 
         q_next = unflatten(q)
-        self.model.velocity = (q_next - positions) * dt_inv
+        self.model.velocity = (q_next - self.model.positions) * dt_inv
         self.model.positions = q_next

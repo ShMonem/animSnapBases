@@ -38,3 +38,5 @@ media/
 /data/bar.obj
 /data/create_bar.py
 /data/simple_bar.obj
+projective_dynamics/.polyscope.ini
+projective_dynamics/imgui.ini

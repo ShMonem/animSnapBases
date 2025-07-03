@@ -47,7 +47,7 @@ class Solver:
         A_triplets = []
 
         for constraint in self.model.constraints:
-            A_triplets += constraint.get_wi_SiT_AiT_Ai_Si(self.model.positions, mass)
+            A_triplets += constraint.get_wi_SiT_AiT_Ai_Si()
 
         for i in range(N):
             A_triplets.append((3 * i + 0, 3 * i + 0, mass[i] * dt2_inv))

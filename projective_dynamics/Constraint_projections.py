@@ -35,7 +35,7 @@ class Constraint(ABC):
         pass
 
     @abstractmethod
-    def get_wi_SiT_AiT_Ai_Si(self, positions, masses):
+    def get_wi_SiT_AiT_Ai_Si(self):
         """
         Return list of triplets (i, j, value) to be added to system matrix.
         """
@@ -66,7 +66,7 @@ class EdgeLengthConstraint(Constraint):
         rhs[3 * vi:3 * vi + 3] += self.wi * 0.5 * (pi1 - pi2)
         rhs[3 * vj:3 * vj + 3] += self.wi * 0.5 * (pi2 - pi1)
 
-    def get_wi_SiT_AiT_Ai_Si(self, positions, masses):
+    def get_wi_SiT_AiT_Ai_Si(self):
         vi, vj = self.indices
         triplets = []
         w = self.wi * 0.5
@@ -90,7 +90,7 @@ class PositionalConstraint(Constraint):
         vi = self.indices[0]
         rhs[3 * vi : 3 * vi + 3] += self.wi * self.p0.flatten()
 
-    def get_wi_SiT_AiT_Ai_Si(self, positions, masses):
+    def get_wi_SiT_AiT_Ai_Si(self):
         vi = self.indices[0]
         triplets = [
             (3 * vi + 0, 3 * vi + 0, self.wi),
@@ -100,18 +100,6 @@ class PositionalConstraint(Constraint):
         return triplets
 
 class StrainConstraint(Constraint):
-    # def __init__(self, indices, wi, positions, sigma_min, sigma_max):
-    #     super().__init__(indices, wi)
-    #     assert len(indices) == 4
-    #
-    #     v1, v2, v3, v4 = indices
-    #     p1, p2, p3, p4 = positions[v1], positions[v2], positions[v3], positions[v4]
-    #
-    #     Dm = np.stack([(p1 - p4), (p2 - p4), (p3 - p4)], axis=1)
-    #     self.DmInv = inv(Dm)
-    #     self.V0 = abs(np.linalg.det(Dm)) / 6.0
-    #     self.sigma_min = sigma_min
-    #     self.sigma_max = sigma_max
 
     def __init__(self, indices, wi, positions, sigma_min, sigma_max):
         super().__init__(indices, wi)
@@ -128,19 +116,53 @@ class StrainConstraint(Constraint):
         p4 = positions[v4]
 
         Dm = np.column_stack([p1 - p4, p2 - p4, p3 - p4])  # 3x3 matrix, cols: [p1-p4, p2-p4, p3-p4]
-        self.DmInv = np.linalg.inv(Dm)
-        self.V0 = (1.0 / 6.0) * np.linalg.det(Dm)
+        self.DmInv = np.linalg.inv(Dm)  # inverse of reference shape matrix (helps to detect inverted tets)
+        self.V0 = (1.0 / 6.0) * np.linalg.det(Dm)  # undeformed tetrahedron volume
 
-        print("")
+    def get_wi_SiT_AiT_Ai_Si(self):
+        """
+        Returns: builds the contribution of one constrained tet vertices (self.indices)
+        to the constraints related term in the LHS global matrix
+
+        """
+        # G = Ai Si
+        G = np.zeros((4, 3))
+        G[:3, :] = self.DmInv
+        G[3, :] = -G[:3, :].sum(axis=0)  # grad φ₄
+
+        # Compute Gram matrix: dot products of all gradients
+        K4x4 = G @ G.T  # (Ai Si)^T Ai Si, shape: (4, 4)
+
+        # Kronecker product with 3x3 identity to expand each scalar to 3x3 block
+        K12x12 = np.kron(K4x4, np.eye(3)) * (self.wi * abs(self.V0))
+
+        # Convert to triplet format (i, j, val) for sparse matrix assembly
+        triplets = []
+        for i in range(12):
+            for j in range(12):
+                val = K12x12[i, j]
+                if abs(val) > 1e-12:
+                    triplets.append((3 * self.indices[i // 3] + i % 3, 3 * self.indices[j // 3] + j % 3, val))
+
+        return triplets
 
     def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
+        """
+        Args:
+            q: current positions (from global solve)
+            rhs: constraint projections term Sum_i wi_SiT_AiT_Bi_pi
+
+        Returns: computes and adds the contribution of a single tetrahedral element
+        to the global right-hand side (RHS) vector
+        """
         v1, v2, v3, v4 = self.indices
         q1 = q[3 * v1:3 * v1 + 3]
         q2 = q[3 * v2:3 * v2 + 3]
         q3 = q[3 * v3:3 * v3 + 3]
         q4 = q[3 * v4:3 * v4 + 3]
 
-        Ds = np.column_stack([q1 - q4, q2 - q4, q3 - q4])
+        # Compute Deformation Gradient F
+        Ds = np.column_stack([q1 - q4, q2 - q4, q3 - q4])  # deformation matrix in current configuration
         F = Ds @ self.DmInv
 
         is_tet_inverted = np.linalg.det(F) < 0.0
@@ -149,258 +171,20 @@ class StrainConstraint(Constraint):
         s = np.clip(s, self.sigma_min, self.sigma_max)
         if is_tet_inverted:
             s[2] = -s[2]
-        Fhat = U @ np.diag(s) @ Vt
+        Fhat = U @ np.diag(s) @ Vt   # pi: projection of F onto constraint manifold, shape (3, 3)
 
-        p1, p2, p3 = Fhat[:, 0]
-        p4, p5, p6 = Fhat[:, 1]
-        p7, p8, p9 = Fhat[:, 2]
+        weight = self.wi * abs(self.V0)  # stiffness of the constraint
 
-        d11, d12, d13 = self.DmInv[0]
-        d21, d22, d23 = self.DmInv[1]
-        d31, d32, d33 = self.DmInv[2]
+        grads = self.DmInv  # (3, 3)
+        grads_l = -np.sum(grads, axis=0)  # (3,)
+        G = np.column_stack([grads.T, grads_l])  # A-i S_i, shape (3, 4)
 
-        _d1 = -(d11 + d21 + d31)
-        _d2 = -(d12 + d22 + d32)
-        _d3 = -(d13 + d23 + d33)
+        corrections = Fhat @ G  # SiT AiT Bi pi: applying the projected deformation gradient F to the shape gradient B, shape (3, 4)
 
-        weight = self.wi * abs(self.V0)
+        # Add each correction to rhs
+        for i, idx in enumerate(self.indices):
+            rhs[3 * idx: 3 * idx + 3] += weight * corrections[:, i]
 
-        # For each vertex, compute contribution and add to rhs
-        def add_rhs(idx, coeffs):
-            i0 = 3 * idx
-            rhs[i0 + 0] += weight * coeffs[0]
-            rhs[i0 + 1] += weight * coeffs[1]
-            rhs[i0 + 2] += weight * coeffs[2]
-
-        bi = (
-            d11 * p1 + d12 * p4 + d13 * p7,
-            d11 * p2 + d12 * p5 + d13 * p8,
-            d11 * p3 + d12 * p6 + d13 * p9,
-        )
-        bj = (
-            d21 * p1 + d22 * p4 + d23 * p7,
-            d21 * p2 + d22 * p5 + d23 * p8,
-            d21 * p3 + d22 * p6 + d23 * p9,
-        )
-        bk = (
-            d31 * p1 + d32 * p4 + d33 * p7,
-            d31 * p2 + d32 * p5 + d33 * p8,
-            d31 * p3 + d32 * p6 + d33 * p9,
-        )
-        bl = (
-            _d1 * p1 + _d2 * p4 + _d3 * p7,
-            _d1 * p2 + _d2 * p5 + _d3 * p8,
-            _d1 * p3 + _d2 * p6 + _d3 * p9,
-        )
-
-        add_rhs(v1, bi)
-        add_rhs(v2, bj)
-        add_rhs(v3, bk)
-        add_rhs(v4, bl)
-        print("")
-
-    def get_wi_SiT_AiT_Ai_Si(self, positions, masses):
-        v1, v2, v3, v4 = self.indices
-
-        vi = 3 * v1
-        vj = 3 * v2
-        vk = 3 * v3
-        vl = 3 * v4
-
-        d11, d12, d13 = self.DmInv[0]
-        d21, d22, d23 = self.DmInv[1]
-        d31, d32, d33 = self.DmInv[2]
-
-        _d11_d21_d31 = -d11 - d21 - d31
-        _d12_d22_d32 = -d12 - d22 - d32
-        _d13_d23_d33 = -d13 - d23 - d33
-
-        weight = self.wi * abs(self.V0)
-
-        # col 1
-        s1_1 = d11 * d11 + d12 * d12 + d13 * d13
-        s4_1 = d11 * d21 + d12 * d22 + d13 * d23
-        s7_1 = d11 * d31 + d12 * d32 + d13 * d33
-        s10_1 = d11 * _d11_d21_d31 + d12 * _d12_d22_d32 + d13 * _d13_d23_d33
-        # col 2
-        s2_2 = s1_1
-        s5_2 = s4_1
-        s8_2 = s7_1
-        s11_2 = s10_1
-        # col 3
-        s3_3 = s1_1
-        s6_3 = s4_1
-        s9_3 = s7_1
-        s12_3 = s10_1
-        # col 4
-        s1_4 = d11 * d21 + d12 * d22 + d13 * d23
-        s4_4 = d21 * d21 + d22 * d22 + d23 * d23
-        s7_4 = d31 * d21 + d32 * d22 + d33 * d23
-        s10_4 = d21 * _d11_d21_d31 + d22 * _d12_d22_d32 + d23 * _d13_d23_d33
-        # col 5
-        s2_5 = s1_4
-        s5_5 = s4_4
-        s8_5 = s7_4
-        s11_5 = s10_4
-        # col 6
-        s3_6 = s1_4
-        s6_6 = s4_4
-        s9_6 = s7_4
-        s12_6 = s10_4
-        # col 7
-        s1_7 = d11 * d31 + d12 * d32 + d13 * d33
-        s4_7 = d21 * d31 + d22 * d32 + d23 * d33
-        s7_7 = d31 * d31 + d32 * d32 + d33 * d33
-        s10_7 = _d11_d21_d31 * d31 + _d12_d22_d32 * d32 + _d13_d23_d33 * d33
-        # col 8
-        s2_8 = s1_7
-        s5_8 = s4_7
-        s8_8 = s7_7
-        s11_8 = s10_7
-        # col 9
-        s3_9 = s1_7
-        s6_9 = s4_7
-        s9_9 = s7_7
-        s12_9 = s10_7
-        # col 10
-        s1_10 = _d11_d21_d31 * d11 + _d12_d22_d32 * d12 + _d13_d23_d33 * d13
-        s4_10 = _d11_d21_d31 * d21 + _d12_d22_d32 * d22 + _d13_d23_d33 * d23
-        s7_10 = _d11_d21_d31 * d31 + _d12_d22_d32 * d32 + _d13_d23_d33 * d33
-        s10_10 = (_d11_d21_d31) ** 2 + (_d12_d22_d32) ** 2 + (_d13_d23_d33) ** 2
-        # col 11
-        s2_11 = s1_10
-        s5_11 = s4_10
-        s8_11 = s7_10
-        s11_11 = s10_10
-        # col 12
-        s3_12 = s1_10
-        s6_12 = s4_10
-        s9_12 = s7_10
-        s12_12 = s10_10
-
-        triplets = []
-
-        row1 = vi
-        row2 = vi + 1
-        row3 = vi + 2
-        row4 = vj
-        row5 = vj + 1
-        row6 = vj + 2
-        row7 = vk
-        row8 = vk + 1
-        row9 = vk + 2
-        row10 = vl
-        row11 = vl + 1
-        row12 = vl + 2
-
-        col1 = row1
-        col2 = row2
-        col3 = row3
-        col4 = row4
-        col5 = row5
-        col6 = row6
-        col7 = row7
-        col8 = row8
-        col9 = row9
-        col10 = row10
-        col11 = row11
-        col12 = row12
-
-        # col 1
-        triplets.append((row1, col1, weight * s1_1))
-        triplets.append((row4, col1, weight * s4_1))
-        triplets.append((row7, col1, weight * s7_1))
-        triplets.append((row10, col1, weight * s10_1))
-        # col 2
-        triplets.append((row2, col2, weight * s2_2))
-        triplets.append((row5, col2, weight * s5_2))
-        triplets.append((row8, col2, weight * s8_2))
-        triplets.append((row11, col2, weight * s11_2))
-        # col 3
-        triplets.append((row3, col3, weight * s3_3))
-        triplets.append((row6, col3, weight * s6_3))
-        triplets.append((row9, col3, weight * s9_3))
-        triplets.append((row12, col3, weight * s12_3))
-        # col 4
-        triplets.append((row1, col4, weight * s1_4))
-        triplets.append((row4, col4, weight * s4_4))
-        triplets.append((row7, col4, weight * s7_4))
-        triplets.append((row10, col4, weight * s10_4))
-        # col 5
-        triplets.append((row2, col5, weight * s2_5))
-        triplets.append((row5, col5, weight * s5_5))
-        triplets.append((row8, col5, weight * s8_5))
-        triplets.append((row11, col5, weight * s11_5))
-        # col 6
-        triplets.append((row3, col6, weight * s3_6))
-        triplets.append((row6, col6, weight * s6_6))
-        triplets.append((row9, col6, weight * s9_6))
-        triplets.append((row12, col6, weight * s12_6))
-        # col 7
-        triplets.append((row1, col7, weight * s1_7))
-        triplets.append((row4, col7, weight * s4_7))
-        triplets.append((row7, col7, weight * s7_7))
-        triplets.append((row10, col7, weight * s10_7))
-        # col 8
-        triplets.append((row2, col8, weight * s2_8))
-        triplets.append((row5, col8, weight * s5_8))
-        triplets.append((row8, col8, weight * s8_8))
-        triplets.append((row11, col8, weight * s11_8))
-        # col 9
-        triplets.append((row3, col9, weight * s3_9))
-        triplets.append((row6, col9, weight * s6_9))
-        triplets.append((row9, col9, weight * s9_9))
-        triplets.append((row12, col9, weight * s12_9))
-        # col 10
-        triplets.append((row1, col10, weight * s1_10))
-        triplets.append((row4, col10, weight * s4_10))
-        triplets.append((row7, col10, weight * s7_10))
-        triplets.append((row10, col10, weight * s10_10))
-        # col 11
-        triplets.append((row2, col11, weight * s2_11))
-        triplets.append((row5, col11, weight * s5_11))
-        triplets.append((row8, col11, weight * s8_11))
-        triplets.append((row11, col11, weight * s11_11))
-        # col 12
-        triplets.append((row3, col12, weight * s3_12))
-        triplets.append((row6, col12, weight * s6_12))
-        triplets.append((row9, col12, weight * s9_12))
-        triplets.append((row12, col12, weight * s12_12))
-
-        # def triplet(i, j, val):
-        #     return (i, j, weight * val)
-        #
-        # # Column layout mirrors C++: each variable group (x/y/z for each vertex)
-        # # 12 rows × 12 cols with sparsity
-        #
-        # rows = [
-        #     vi, vi + 1, vi + 2,
-        #     vj, vj + 1, vj + 2,
-        #     vk, vk + 1, vk + 2,
-        #     vl, vl + 1, vl + 2,
-        # ]
-        # cols = rows  # symmetric block layout
-        #
-        # grads = [
-        #     (d11, d12, d13),
-        #     (d21, d22, d23),
-        #     (d31, d32, d33),
-        #     (_d11_d21_d31, _d12_d22_d32, _d13_d23_d33),
-        # ]
-        #
-        # triplets = []
-        # for i in range(4):
-        #     gi = grads[i]
-        #     for j in range(4):
-        #         gj = grads[j]
-        #         for a in range(3):  # x/y/z of i
-        #             for b in range(3):  # x/y/z of j
-        #                 row = rows[3 * i + a]
-        #                 col = cols[3 * j + b]
-        #                 val = gi[a] * gj[b]
-        #                 triplets.append(triplet(row, col, val))
-
-        return triplets
 
 
 class DeformationGradientConstraint(Constraint):
@@ -411,77 +195,162 @@ class DeformationGradientConstraint(Constraint):
         v1, v2, v3, v4 = indices
         p1, p2, p3, p4 = positions[v1], positions[v2], positions[v3], positions[v4]
 
-        Dm = np.stack([(p1 - p4), (p2 - p4), (p3 - p4)], axis=1)
-        self.DmInv = inv(Dm)
-        self.V0 = abs(np.linalg.det(Dm)) / 6.0
+        Dm = np.column_stack([p1 - p4, p2 - p4, p3 - p4])  # 3x3 matrix, cols: [p1-p4, p2-p4, p3-p4]
+        self.DmInv = np.linalg.inv(Dm)
+        self.V0 = (1.0 / 6.0) * np.linalg.det(Dm)
 
     def evaluate(self, positions, masses):
         v1, v2, v3, v4 = self.indices
         p1, p2, p3, p4 = positions[v1], positions[v2], positions[v3], positions[v4]
 
-        Ds = np.stack([p1 - p4, p2 - p4, p3 - p4], axis=1)
+        Ds = np.column_stack([p1 - p4, p2 - p4, p3 - p4])
+        Vsigned = (1. / 6.) * np.linalg.det(Ds)
+
+        # Check tetrahedron inversion
+        is_V_positive = Vsigned >= 0.
+        is_V0_positive = self.V0 >= 0.
+        is_tet_inverted = (is_V_positive and not is_V0_positive) or (not is_V_positive and is_V0_positive)
+
+        # Deformation gradient
         F = Ds @ self.DmInv
+        I = np.identity(3)
 
-        U, s, Vt = svd(F)
-        if det(F) < 0:
-            s[2] = -s[2]
+        # SVD decomposition
+        U, S, Vt = svd(F)
+        Fhat = np.zeros((3, 3))
+        np.fill_diagonal(Fhat, S)   # F_ii = S_i
 
-        F_hat = np.diag(np.maximum(s, 0.577))
-        F_hat = U @ F_hat @ Vt
+        V = Vt.T  # TODO check
 
-        I = np.eye(3)
-        E = 0.5 * (F_hat.T @ F_hat - I)
-        trace_E = np.trace(E)
+        if is_tet_inverted:
+            Fhat[2, 2] *= -1
+            U[:, 2] *= -1
 
-        young_modulus = 1e9
+        # stress reaches maximum at 58% compression
+        # Clamp minimum singular value to avoid instability at high compression
+        min_singular_value = 0.577
+        Fhat[0, 0] = max(Fhat[0, 0], min_singular_value)
+        Fhat[1, 1] = max(Fhat[1, 1], min_singular_value)
+        Fhat[2, 2] = max(Fhat[2, 2], min_singular_value)
+
+        # Material parameters
+        young_modulus = 1_000_000_000.
         poisson_ratio = 0.45
-        mu = young_modulus / (2 * (1 + poisson_ratio))
+        mu = young_modulus / (2. * (1 + poisson_ratio))
         lam = (young_modulus * poisson_ratio) / ((1 + poisson_ratio) * (1 - 2 * poisson_ratio))
 
-        psi = mu * np.sum(E**2) + 0.5 * lam * trace_E**2
-        return self.V0 * psi
+        # Green strain and Piola stress
+        Ehat = 0.5 * (Fhat.T @ Fhat - I)
+        EhatTrace = np.trace(Ehat)
+        Piolahat = Fhat @ ((2. * mu * Ehat) + (lam * EhatTrace * I))
+
+        # Energy
+        E = U @ Ehat @ V.T
+        Etrace = np.trace(E)
+        psi = mu * np.sum(E * E) + 0.5 * lam * Etrace * Etrace
+
+        V0 = abs(self.V0)
+        C = V0 * psi
+
+        return C
 
     def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
+
+        # TODO : change symbolic to compact form
         v1, v2, v3, v4 = self.indices
         q1 = q[3 * v1:3 * v1 + 3]
         q2 = q[3 * v2:3 * v2 + 3]
         q3 = q[3 * v3:3 * v3 + 3]
         q4 = q[3 * v4:3 * v4 + 3]
 
-        Ds = np.stack([q1 - q4, q2 - q4, q3 - q4], axis=1)
+        Ds = np.column_stack([q1 - q4, q2 - q4, q3 - q4])
         F = Ds @ self.DmInv
 
         U, _, Vt = svd(F)
         R = U @ Vt
         if det(R) < 0:
-            U[:, -1] *= -1
-            R = U @ Vt
+            R[:, 2] *=-1
 
-        grads = self.DmInv
-        weight = self.wi * self.V0
+        p1 = R[0, 0]
+        p2 = R[1, 0]
+        p3 = R[2, 0]
+        p4 = R[0, 1]
+        p5 = R[1, 1]
+        p6 = R[2, 1]
+        p7 = R[0, 2]
+        p8 = R[1, 2]
+        p9 = R[2, 2]
 
-        corrections = [R @ grads[:, i] for i in range(3)]
-        corrections.append(-sum(corrections))
+        d11, d12, d13 = self.DmInv[0]
+        d21, d22, d23 = self.DmInv[1]
+        d31, d32, d33 = self.DmInv[2]
 
-        for idx, corr in zip(self.indices, corrections):
-            rhs[3 * idx:3 * idx + 3] += weight * corr
+        _d11_d21_d31 = -d11 - d21 - d31
+        _d12_d22_d32 = -d12 - d22 - d32
+        _d13_d23_d33 = -d13 - d23 - d33
 
-    def get_wi_SiT_AiT_Ai_Si(self, positions, masses):
-        grads = self.DmInv
-        weight = self.wi * self.V0
+        bi0 = (d11 * p1) + (d12 * p4) + (d13 * p7)
+        bi1 = (d11 * p2) + (d12 * p5) + (d13 * p8)
+        bi2 = (d11 * p3) + (d12 * p6) + (d13 * p9)
 
+        bj0 = (d21 * p1) + (d22 * p4) + (d23 * p7)
+        bj1 = (d21 * p2) + (d22 * p5) + (d23 * p8)
+        bj2 = (d21 * p3) + (d22 * p6) + (d23 * p9)
+
+        bk0 = (d31 * p1) + (d32 * p4) + (d33 * p7)
+        bk1 = (d31 * p2) + (d32 * p5) + (d33 * p8)
+        bk2 = (d31 * p3) + (d32 * p6) + (d33 * p9)
+
+        bl0 = p1 * _d11_d21_d31 + p4 * _d12_d22_d32 + p7 * _d13_d23_d33
+        bl1 = p2 * _d11_d21_d31 + p5 * _d12_d22_d32 + p8 * _d13_d23_d33
+        bl2 = p3 * _d11_d21_d31 + p6 * _d12_d22_d32 + p9 * _d13_d23_d33
+
+        weight = self.wi * abs(self.V0)  # stiffness of the constraint
+
+        print([[bi0, bi1, bi2],[bj0, bj1, bj2],[bk0, bk1, bk2], [bl0, bl1, bl2]])
+        rhs[3 * v1 + 0] += weight * bi0
+        rhs[3 * v1 + 1] += weight * bi1
+        rhs[3 * v1 + 2] += weight * bi2
+
+        rhs[3 * v2 + 0] += weight * bj0
+        rhs[3 * v2 + 1] += weight * bj1
+        rhs[3 * v2 + 2] += weight * bj2
+
+        rhs[3 * v3 + 0] += weight * bk0
+        rhs[3 * v3 + 1] += weight * bk1
+        rhs[3 * v3 + 2] += weight * bk2
+
+        rhs[3 * v4 + 0] += weight * bl0
+        rhs[3 * v4 + 1] += weight * bl1
+        rhs[3 * v4 + 2] += weight * bl2
+
+    def get_wi_SiT_AiT_Ai_Si(self):
+        """
+        Returns: builds the contribution of one constrained tet vertices (self.indices)
+        to the constraints related term in the LHS global matrix
+
+        """
+        # G = Ai Si
+        G = np.zeros((4, 3))
+        G[:3, :] = self.DmInv
+        G[3, :] = -G[:3, :].sum(axis=0)  # grad φ₄
+
+        # Compute Gram matrix: dot products of all gradients
+        K4x4 = G @ G.T  # shape: (4, 4)
+
+        # Kronecker product with 3x3 identity to expand each scalar to 3x3 block
+        K12x12 = np.kron(K4x4, np.eye(3)) * (self.wi * abs(self.V0))
+
+        # Convert to triplet format (i, j, val) for sparse matrix assembly
         triplets = []
-        for i in range(4):
-            for j in range(4):
-                grad_i = grads[:, i] if i < 3 else -grads.sum(axis=1)
-                grad_j = grads[:, j] if j < 3 else -grads.sum(axis=1)
-                for a in range(3):
-                    for b in range(3):
-                        row = 3 * self.indices[i] + a
-                        col = 3 * self.indices[j] + b
-                        val = weight * grad_i[a] * grad_j[b]
-                        triplets.append((row, col, val))
+        for i in range(12):
+            for j in range(12):
+                val = K12x12[i, j]
+                if abs(val) > 1e-12:
+                    triplets.append((3 * self.indices[i // 3] + i % 3, 3 * self.indices[j // 3] + j % 3, val))
+
         return triplets
+
 
 class DeformableMesh:
     def __init__(self, positions, faces, elements=None, masses=None):

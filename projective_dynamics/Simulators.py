@@ -65,6 +65,7 @@ class Solver:
         mass = self.model.mass
         constraints = self.model.constraints
         N = self.model.positions.shape[0]
+        self.model.positions_corrections = np.zeros_like(self.model.positions)
 
         dt = self.dt
         dt_inv = 1.0 / dt
@@ -73,6 +74,10 @@ class Solver:
 
         a = fext / mass[:, None]  # elementwise divide
         explicit = self.model.positions + dt * velocities + dt2 * a
+
+        for v in range(self.model.positions.shape[0]):
+            self.model.resolve_collision(v, explicit, self.model.positions_corrections)
+
         sn = flatten(explicit)
 
         masses = np.zeros(3 * N)
@@ -90,5 +95,5 @@ class Solver:
             q = self.cholesky(b)
 
         q_next = unflatten(q)
-        self.model.velocity = (q_next - self.model.positions) * dt_inv
+        self.model.velocities = (q_next - self.model.positions) * dt_inv
         self.model.positions = q_next

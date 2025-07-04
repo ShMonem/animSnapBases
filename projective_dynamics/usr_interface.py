@@ -23,11 +23,11 @@ class PickingState:
         self.mouse_y = 0
 
 class MouseDownHandler:
-    def __init__(self, is_model_ready, picking_state, solver, physics_params):
+    def __init__(self, is_model_ready, picking_state, solver, args):
         self.is_model_ready = is_model_ready
         self.picking_state = picking_state
         self.solver = solver
-        self.physics_params = physics_params
+        self.physics_params = args
 
     def handle_click(self, button: str, modifier: str):
         """
@@ -61,7 +61,7 @@ class MouseDownHandler:
         if modifier == "shift":
             model.toggle_fixed(clicked_v_id, self.physics_params.mass_per_particle)
             model.add_positional_constraint(
-                clicked_v_id, self.physics_params['positional_constraint_wi']
+                clicked_v_id, self.physics_params.positional_constraint_wi
             )
             self.solver.set_dirty()
 
@@ -116,9 +116,9 @@ class MouseMoveHandler:
         return True
 
 class PreDrawHandler:
-    def __init__(self, is_model_ready, physics_params, solver, fext):
+    def __init__(self, is_model_ready, args, solver, fext):
         self.is_model_ready = is_model_ready
-        self.physics_params = physics_params
+        self.physics_params = args
         self.solver = solver
         self.fext = fext
         self._animating = False  # simulate viewer.core().is_animating
@@ -131,7 +131,7 @@ class PreDrawHandler:
             return
 
         model = self.solver.model
-        mass_value = float(self.physics_params["mass_per_particle"])
+        mass_value = float(self.physics_params.mass_per_particle)
 
         # -- 1. Update mass
         for i in range(model.mass.shape[0]):
@@ -143,13 +143,13 @@ class PreDrawHandler:
 
         # -- 2. Apply gravity & simulate if animating
         if self._animating:
-            gravity = 9.81 if self.physics_params['is_gravity_active'] else 0.0
-            self.fext[:, 1] -= gravity * self.physics_params['mass_per_particle']
+            gravity = 9.81 if self.physics_params.is_gravity_active else 0.0
+            self.fext[:, 1] -= gravity * self.physics_params.mass_per_particle
 
             if not self.solver.ready():
-                self.solver.prepare(self.physics_params['dt'])
+                self.solver.prepare(self.physics_params.dt)
 
-            self.solver.step(self.fext, self.physics_params['solver_iterations'])
+            self.solver.step(self.fext, self.physics_params.solver_iterations)
 
             # Reset fext and update mesh
             self.fext[:] = 0.0

@@ -1,0 +1,46 @@
+{
+  "system": {
+    "Bar": {
+      "bar_width": 20,
+      "bar_height": 4,
+      "bar_depth":4
+    },
+    "Cloth": {
+      "cloth_width": 20,
+      "cloth_height": 20
+    }
+  },
+  "visualization_params": {
+    "window_open": true,
+    "is_simulating": false
+  },
+    "solver_params": {
+      "window_open": true,
+      "is_simulating": false,
+      "dt": 0.0166667,
+    "solver_iterations": 10
+    },
+  "physics_params": {
+    "mass_per_particle": 10.0,
+    "positional_constraint_wi": 10000000.0,
+    "edge_constraint_wi": 150000.0,
+    "vert_bending_constraint_wi": 100.0,
+
+    "deformation_gradient_constraint_wi": 100000.0,
+    "strain_limit_constraint_wi": 1000.0,
+    "sigma_min": 0.99,
+    "sigma_max": 1.01,
+
+    "apply_constraints": false,
+    "vert_bending_constraint": false,
+    "edge_constraint": false,
+    "tri_strain_constraint": false,
+    "tet_deformation_constraint": false,
+    "tet_strain_constraint": false,
+    "is_gravity_active": false,
+    "fix_left_side": false,
+    "fix_right_side": false,
+    "_fix_left_triggered": false,
+    "_fix_right_triggered": false
+  }
+}

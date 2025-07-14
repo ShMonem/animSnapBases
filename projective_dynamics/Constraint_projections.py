@@ -6,12 +6,27 @@ from abc import ABC, abstractmethod
 from igl import edges, boundary_facets, barycenter, winding_number, copyleft
 from igl.copyleft import tetgen
 from numpy.linalg import svd, det, inv
+from scipy.sparse import lil_matrix
 
-from scipy.sparse import coo_matrix
+
+from dataclasses import dataclass
+
+# Helper container for an edge and its triangles
+@dataclass
+class Edge:
+    v2: int  # Neighbor vertex
+    vOtherT1: int  # Third vertex in triangle 1
+    t1: int  # Triangle 1 index
+    vOtherT2: int = -1  # Third vertex in triangle 2 (optional)
+    t2: int = -1  # Triangle 2 index (optional)
+
+
 class Constraint(ABC):
     def __init__(self, indices, wi=1.0):
         self._indices = list(indices)  # list of vertex indices (ints)
         self._wi = wi                  # weight (float)
+        self._selection_matrix = None   # differential operator and selection matrix to map from constriants projections to positions
+        self._pi = None  # projection to constraint manifold
 
     @property
     def indices(self):
@@ -21,9 +36,21 @@ class Constraint(ABC):
     def wi(self):
         return self._wi
 
+    @property
+    def selection_matrix(self):
+        return self._selection_matrix
+
     def evaluate(self, positions, masses):
         # Default is zero energy; override in subclass if needed
         return 0.0
+
+    def build_SiT(self, position_dim):
+        "build the differential operator"
+        pass
+
+    def get_pi(self, position_dim):
+        "compute constraint projection for element i"
+        pass
 
     @abstractmethod
     def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
@@ -41,12 +68,243 @@ class Constraint(ABC):
         """
         pass
 
+class PositionalConstraint(Constraint):
+    def __init__(self, indices, wi, positions):
+        super().__init__(indices, wi)
+        assert len(indices) == 1
+        vi = indices[0]
+        self.p0 = positions[vi].reshape(3, 1)  # Column vector
+        # build differential operator SiT
+        self.build_SiT(positions.shape[0])
+
+    def build_SiT(self, position_dim):
+        self._selection_matrix = np.zeros((position_dim, 1))
+        self._selection_matrix[self.indices[0]] = self.wi
+
+    def get_pi(self, q):
+        return self.p0.reshape(-1,3)
+
+    def project_wi_SiT_pi(self, q, rhs):
+        rhs += self.selection_matrix @ self.get_pi(q)
+
+    def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
+        vi = self.indices[0]
+        rhs[3 * vi : 3 * vi + 3] += self.wi * self.p0.flatten()
+
+    def get_wi_SiT_AiT_Ai_Si(self):
+        vi = self.indices[0]
+        triplets = [
+            (3 * vi + 0, 3 * vi + 0, self.wi),
+            (3 * vi + 1, 3 * vi + 1, self.wi),
+            (3 * vi + 2, 3 * vi + 2, self.wi),
+        ]
+        return triplets
+
+class VertBendingConstraint(Constraint):
+    def __init__(self, v_ind, wi, v_star, voronoi_area, positions, triangles,
+                 prevent_bending_flips=True, flat_bending=False):
+        super().__init__([v_ind], wi * voronoi_area)
+
+        self.v_ind = v_ind
+        self.prevent_bending_flips = prevent_bending_flips
+        self.flat_bending = flat_bending
+        self.init_positions = positions
+        self.init_triangles = triangles
+        self.vertex_star = v_star
+        self.voronoi_area = voronoi_area
+
+        # # build differential operator SiT
+        self.build_SiT(positions.shape[0])
+
+    def build_SiT(self, position_dim):
+        # === Compute cotangent weights and local triangle list
+        cotan_weights = []
+        triangles_seen = set()
+        self.triangles = []
+
+        def compute_angle(a, b, c):
+            """Compute angle at vertex b between edges (a-b) and (c-b)."""
+            u = a - b
+            v = c - b
+            dot = np.clip(np.dot(u, v) / (np.linalg.norm(u) * np.linalg.norm(v)), -1, 1)
+            return np.arccos(dot)
+
+        def get_triangle_normal(tris, pos):
+            """Return average normal of tris (for stability)."""
+            normals = []
+            for tri in tris:
+                a, b, c = pos[tri]
+                n = np.cross(b - a, c - a)
+                n_norm = np.linalg.norm(n)
+                if n_norm > 1e-10:
+                    normals.append(n / n_norm)
+            return np.mean(normals, axis=0) if normals else np.array([0, 0, 1])
+
+        for edge in self.vertex_star:
+            p0 = self.init_positions[self.v_ind]
+            p1 = self.init_positions[edge.vOtherT1]
+            p2 = self.init_positions[edge.v2]
+
+            angle1 = compute_angle(p0, p1, p2)
+            cot = 0.5 / np.tan(angle1)
+
+            if edge.t2 >= 0:
+                p1_2 = self.init_positions[edge.vOtherT2]
+                angle2 = compute_angle(p0, p1_2, p2)
+                cot += 0.5 / np.tan(angle2)
+
+            cotan_weights.append(cot / self.voronoi_area)
+
+            for t in [edge.t1, edge.t2]:
+                if t >= 0 and t not in triangles_seen:
+                    self.triangles.append(self.init_triangles[t])
+                    triangles_seen.add(t)
+
+        self.cotan_weights = np.array(cotan_weights)
+
+        # === Compute rest mean curvature vector
+        mean_curvature = np.zeros(3)
+        for edge, w in zip(self.vertex_star, self.cotan_weights):
+            mean_curvature += (self.init_positions[self.v_ind] - self.init_positions[edge.v2]) * w
+
+        self.rest_mean_curvature = 0.0 if self.flat_bending else np.linalg.norm(mean_curvature)
+
+        self.tri_normal = get_triangle_normal(np.array(self.triangles), self.init_positions)
+        self.dot_with_normal = self.tri_normal @ mean_curvature
+
+        # === Sparse selection matrix as triplet format
+        selection_matrix = [(self.v_ind, 0, np.sum(self.cotan_weights))]  # TODO: check implementations
+        for i, edge in enumerate(self.vertex_star):
+            selection_matrix.append((edge.v2, 0, -self.cotan_weights[i]))
+
+        self._selection_matrix = np.zeros((self.init_positions.shape[0], 1))
+        for row, col, value in selection_matrix:
+            self._selection_matrix[row, col] = value * self.wi
+
+    def get_pi(self, q):
+
+        v = self.v_ind
+        star_sum = np.zeros(3)
+        for edge, w in zip(self.vertex_star, self.cotan_weights):
+            star_sum += (q[3 * v:3 * v + 3] - q[3 * edge.v2:3 * edge.v2 + 3]) * w
+
+        norm = np.linalg.norm(star_sum)
+        if norm < 1e-10:
+            correction = self.tri_normal * self.rest_mean_curvature
+        else:
+            correction = star_sum * (self.rest_mean_curvature / norm)
+
+        if self.prevent_bending_flips:
+            dot = self.tri_normal @ correction
+            if norm > 1e-5 and dot * self.dot_with_normal < 0:
+                correction *= -1
+
+        return correction * np.ones((-1, 3))
+
+    def project_wi_SiT_pi(self, q, rhs):
+        if self.rest_mean_curvature < 1e-12:
+            return
+
+        rhs += self.selection_matrix @ self.get_pi(q)
+
+    def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
+        """Applies the projection term to the global RHS."""
+        if self.rest_mean_curvature < 1e-12:
+            return
+
+        v = self.v_ind
+        star_sum = np.zeros(3)
+        for edge, w in zip(self.vertex_star, self.cotan_weights):
+            star_sum += (q[3 * v:3 * v + 3] - q[3 * edge.v2:3 * edge.v2 + 3]) * w
+
+        norm = np.linalg.norm(star_sum)
+        if norm < 1e-10:
+            correction = self.tri_normal * self.rest_mean_curvature
+        else:
+            correction = star_sum * (self.rest_mean_curvature / norm)
+
+        if self.prevent_bending_flips:
+            dot = self.tri_normal @ correction
+            if norm > 1e-5 and dot * self.dot_with_normal < 0:
+                correction *= -1
+
+        val = self.selection_matrix[self.v_ind]
+        rhs[3 * self.v_ind: 3 * self.v_ind + 3] += self.wi * val * correction
+
+    def get_wi_SiT_AiT_Ai_Si(self):
+        """
+        Builds the contribution of the bending constraint to the global LHS matrix.
+        Equivalent to: weight * Sᵢᵗ Aᵢᵗ Aᵢ Sᵢ = weight * Sᵢᵗ Sᵢ (since Ai = I)
+        """
+        # (1 x N) * (N x 1) = scalar
+        S = self.selection_matrix  # shape: (1, num_vertices), sparse or dense
+        ST = self.selection_matrix.T  # shape: (num_vertices, 1)
+
+        # Matrix product: K = Sᵀ S (shape: num_vertices x num_vertices)
+        K = ST @ S  # dense or sparse depending on format
+
+        # Multiply by weight
+        K = self.wi * K
+
+        # Extract triplets: (i, j, val) for sparse matrix assembly
+        triplets = []
+        rows, cols = K.shape
+        for i in range(rows):
+            for j in range(cols):
+                val = K[i, j]
+                if abs(val) > 1e-12:
+                    triplets.append((i * 3 + 0, j * 3 + 0, val))
+                    triplets.append((i * 3 + 1, j * 3 + 1, val))
+                    triplets.append((i * 3 + 2, j * 3 + 2, val))
+
+        return triplets
+
 class EdgeLengthConstraint(Constraint):
     def __init__(self, indices, wi, positions):
         super().__init__(indices, wi)
         assert len(indices) == 2
-        e0, e1 = indices[0], indices[1]
-        self.d = np.linalg.norm(positions[e0] - positions[e1])
+        v0, v1 = indices[0], indices[1]
+        self.d = np.linalg.norm(positions[v0] - positions[v1])
+
+        # build differential operator SiT
+        self.build_SiT(positions.shape[0])
+
+    def build_SiT(self, position_dim):
+        self._selection_matrix = np.zeros((position_dim, 1))
+
+        self._selection_matrix[self.indices[0]] = - self.wi
+        self._selection_matrix[self.indices[1]] =  self.wi
+
+    def get_pi(self, q):
+        """
+        Args:
+            q: np.ndarray of shape (3*N,) – flattened positions
+            rhs: np.ndarray of shape (N, 3) – accumulates constraint projection forces
+        """
+        vi, vj = self.indices
+        p1 = q[3 * vi:3 * vi + 3]
+        p2 = q[3 * vj:3 * vj + 3]
+        spring = p2 - p1
+        length = np.linalg.norm(spring)
+
+        if length == 0:
+            return  # Avoid divide by zero
+
+        normalized_edge = spring / length
+        delta = 0.5 * (length - self.d)
+        pi1 = p1 + delta * normalized_edge
+        pi2 = p2 - delta * normalized_edge
+
+        self._pi = 0.5 * (pi2 - pi1).reshape(-1,3)
+        return self._pi
+
+    def project_wi_SiT_pi(self, q, rhs):
+        """
+        Args:
+            q: np.ndarray of shape (3*N,) – flattened positions
+            rhs: np.ndarray of shape (N, 3) – accumulates constraint projection forces
+        """
+        rhs += self.selection_matrix @ self.get_pi(q)
 
     def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
         vi, vj = self.indices
@@ -58,12 +316,12 @@ class EdgeLengthConstraint(Constraint):
         if length == 0:
             return  # Avoid divide by zero
 
-        n = spring / length
+        normalized_edge = spring / length
         delta = 0.5 * (length - self.d)
-        pi1 = p1 + delta * n
-        pi2 = p2 - delta * n
+        pi1 = p1 + delta * normalized_edge
+        pi2 = p2 - delta * normalized_edge
 
-        rhs[3 * vi:3 * vi + 3] += self.wi * 0.5 * (pi1 - pi2)
+        rhs[3 * vi:3 * vi + 3] += self.wi * 0.5 * (pi1 - pi2)    # with -w
         rhs[3 * vj:3 * vj + 3] += self.wi * 0.5 * (pi2 - pi1)
 
     def get_wi_SiT_AiT_Ai_Si(self):
@@ -79,25 +337,19 @@ class EdgeLengthConstraint(Constraint):
 
         return triplets
 
-class PositionalConstraint(Constraint):
-    def __init__(self, indices, wi, positions):
-        super().__init__(indices, wi)
-        assert len(indices) == 1
-        vi = indices[0]
-        self.p0 = positions[vi].reshape(3, 1)  # Column vector
+    def get_wi_SiT_AiT_Ai_Si_matrixVersion(self, total_dof):
+        """works but much slower than triplets"""
+        vi, vj = self.indices
+        w = self.wi * 0.5
 
-    def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
-        vi = self.indices[0]
-        rhs[3 * vi : 3 * vi + 3] += self.wi * self.p0.flatten()
+        A_local = lil_matrix((total_dof, total_dof))
 
-    def get_wi_SiT_AiT_Ai_Si(self):
-        vi = self.indices[0]
-        triplets = [
-            (3 * vi + 0, 3 * vi + 0, self.wi),
-            (3 * vi + 1, 3 * vi + 1, self.wi),
-            (3 * vi + 2, 3 * vi + 2, self.wi),
-        ]
-        return triplets
+        for i in range(3):
+            A_local[3 * vi + i, 3 * vi + i] += w
+            A_local[3 * vj + i, 3 * vj + i] += w
+            A_local[3 * vi + i, 3 * vj + i] -= w
+            A_local[3 * vj + i, 3 * vi + i] -= w
+        return A_local
 
 class TriStrainConstraint(Constraint):
     def __init__(self, indices, wi, positions, sigma_min, sigma_max):
@@ -129,6 +381,68 @@ class TriStrainConstraint(Constraint):
         self.DmInv = np.linalg.inv(rest_edges_2d)  # inverse of 2D rest matrix
 
         self.A0 = 0.5 * np.linalg.det(rest_edges_2d)  # reference area in local 2D frame
+
+        # build differential operator SiT
+        self.build_SiT(positions.shape[0])
+
+    def build_SiT(self, num_vertices):
+
+        # Compute triangle area and weight
+        weight = self.wi * np.sqrt(abs(self.A0))
+
+        # Build the selection matrix (2 x num_vertices), sparse
+        selection_matrix = lil_matrix((num_vertices, 2))
+
+        for coord in range(2):
+            v1_coeff = -(self.DmInv[0, coord] + self.DmInv[1, coord])
+            v2_coeff = self.DmInv[0, coord]
+            v3_coeff = self.DmInv[1, coord]
+
+            selection_matrix[self.indices[0], coord] = v1_coeff * weight
+            selection_matrix[self.indices[1], coord] = v2_coeff * weight
+            selection_matrix[self.indices[2], coord] = v3_coeff * weight
+
+        self._selection_matrix = selection_matrix
+
+    def get_pi(self, q):
+        """
+        Compute projected deformation gradient for a triangle strain constraint.
+
+        Returns: (2, 3) optimal edge configuration in 3D.
+        """
+
+        v1, v2, v3 = self.indices
+        p1 = q[3 * v1:3 * v1 + 3]
+        p2 = q[3 * v2:3 * v2 + 3]
+        p3 = q[3 * v3:3 * v3 + 3]
+        # Step 1: Compute 3D triangle edges
+        e1 = p2 - p1  # shape (3,)
+        e2 = p3 - p1  # shape (3,)
+        edges = np.stack([e1, e2], axis=1)  # shape (3, 2)
+
+        # Step 2: Project edges to 2D while preserving angle (isometric embedding)
+        P = np.zeros((3, 2))
+        P[:, 0] = e1 / np.linalg.norm(e1)
+        orthogonal_component = e2 - np.dot(e2, P[:, 0]) * P[:, 0]
+        P[:, 1] = orthogonal_component / np.linalg.norm(orthogonal_component)
+
+        # Step 3: Compute 2D deformation gradient
+        F = P.T @ edges @ self.DmInv  # shape (2, 2)
+
+        # Step 4: SVD and clamp
+        U, S_vals, Vt = np.linalg.svd(F)
+        S_clamped = np.minimum(np.maximum(S_vals, self.sigma_min), self.sigma_max)
+
+        # Step 5: Reconstruct clamped deformation gradient
+        F_clamped = U @ np.diag(S_clamped) @ Vt
+
+        # Step 6: Map back to 3D
+        PF = (P @ F_clamped).T  # shape (2, 3), each row is a 3D edge vector
+
+        return PF  # (2, 3)
+
+    def project_wi_SiT_pi(self, q, rhs):
+        rhs += self.selection_matrix @ self.get_pi(q)
 
     def get_wi_SiT_AiT_Ai_Si(self):
         """
@@ -181,7 +495,6 @@ class TriStrainConstraint(Constraint):
 
         for i, idx in enumerate(self.indices):
             rhs[3 * idx:3 * idx + 3] += weight * correction_3d[:, i]
-
 
 class TetStrainConstraint(Constraint):
 
@@ -436,146 +749,7 @@ class TetDeformationGradientConstraint(Constraint):
 
         return triplets
 
-from collections import defaultdict
-from dataclasses import dataclass
 
-# Helper container for an edge and its triangles
-@dataclass
-class Edge:
-    v2: int           # Neighbor vertex
-    vOtherT1: int     # Third vertex in triangle 1
-    t1: int           # Triangle 1 index
-    vOtherT2: int = -1  # Third vertex in triangle 2 (optional)
-    t2: int = -1        # Triangle 2 index (optional)
-
-class VertBendingConstraint(Constraint):
-    def __init__(self, v_ind, wi, v_star, voronoi_area, positions, triangles,
-                 prevent_bending_flips=True, flat_bending=False):
-        super().__init__([v_ind], wi * voronoi_area)
-
-        self.v_ind = v_ind
-        self.prevent_bending_flips = prevent_bending_flips
-        self.flat_bending = flat_bending
-
-        self.vertex_star = v_star
-
-        # === Compute cotangent weights and local triangle list
-        cotan_weights = []
-        triangles_seen = set()
-        self.triangles = []
-
-        for edge in self.vertex_star:
-            p0 = positions[v_ind]
-            p1 = positions[edge.vOtherT1]
-            p2 = positions[edge.v2]
-
-            angle1 = self.compute_angle(p0, p1, p2)
-            cot = 0.5 / np.tan(angle1)
-
-            if edge.t2 >= 0:
-                p1_2 = positions[edge.vOtherT2]
-                angle2 = self.compute_angle(p0, p1_2, p2)
-                cot += 0.5 / np.tan(angle2)
-
-            cotan_weights.append(cot / voronoi_area)
-
-            for t in [edge.t1, edge.t2]:
-                if t >= 0 and t not in triangles_seen:
-                    self.triangles.append(triangles[t])
-                    triangles_seen.add(t)
-
-        self.cotan_weights = np.array(cotan_weights)
-
-        # === Compute rest mean curvature vector
-        mean_curvature = np.zeros(3)
-        for edge, w in zip(self.vertex_star, self.cotan_weights):
-            mean_curvature += (positions[v_ind] - positions[edge.v2]) * w
-
-        self.rest_mean_curvature = 0.0 if flat_bending else np.linalg.norm(mean_curvature)
-
-        self.tri_normal = self.get_triangle_normal(np.array(self.triangles), positions)
-        self.dot_with_normal = self.tri_normal @ mean_curvature
-
-        # === Sparse selection matrix as triplet format
-        selection_matrix = [(0, v_ind, np.sum(self.cotan_weights))] # TODO: check implementations
-        for i, edge in enumerate(self.vertex_star):
-            selection_matrix.append((0, edge.v2, -self.cotan_weights[i]))
-
-        self.selection_matrix = np.zeros((1, positions.shape[0]))
-        for row, col, value in selection_matrix:
-            self.selection_matrix[row, col] = value
-
-    def compute_angle(self, a, b, c):
-        """Compute angle at vertex b between edges (a-b) and (c-b)."""
-        u = a - b
-        v = c - b
-        dot = np.clip(np.dot(u, v) / (np.linalg.norm(u) * np.linalg.norm(v)), -1, 1)
-        return np.arccos(dot)
-
-
-
-    def get_triangle_normal(self, tris, pos):
-        """Return average normal of tris (for stability)."""
-        normals = []
-        for tri in tris:
-            a, b, c = pos[tri]
-            n = np.cross(b - a, c - a)
-            n_norm = np.linalg.norm(n)
-            if n_norm > 1e-10:
-                normals.append(n / n_norm)
-        return np.mean(normals, axis=0) if normals else np.array([0, 0, 1])
-
-    def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
-        """Applies the projection term to the global RHS."""
-        if self.rest_mean_curvature < 1e-12:
-            return
-
-        v = self.v_ind
-        star_sum = np.zeros(3)
-        for edge, w in zip(self.vertex_star, self.cotan_weights):
-            star_sum += (q[3*v:3*v+3] - q[3*edge.v2:3*edge.v2+3]) * w
-
-        norm = np.linalg.norm(star_sum)
-        if norm < 1e-10:
-            correction = self.tri_normal * self.rest_mean_curvature
-        else:
-            correction = star_sum * (self.rest_mean_curvature / norm)
-
-        if self.prevent_bending_flips:
-            dot = self.tri_normal @ correction
-            if norm > 1e-5 and dot * self.dot_with_normal < 0:
-                correction *= -1
-
-        val = self.selection_matrix[self.v_ind]
-        rhs[3 * self.v_ind : 3 * self.v_ind  + 3] += self.wi * val * correction
-
-    def get_wi_SiT_AiT_Ai_Si(self):
-        """
-        Builds the contribution of the bending constraint to the global LHS matrix.
-        Equivalent to: weight * Sᵢᵗ Aᵢᵗ Aᵢ Sᵢ = weight * Sᵢᵗ Sᵢ (since Ai = I)
-        """
-        # (1 x N) * (N x 1) = scalar
-        S = self.selection_matrix  # shape: (1, num_vertices), sparse or dense
-        ST = self.selection_matrix.T # shape: (num_vertices, 1)
-
-        # Matrix product: K = Sᵀ S (shape: num_vertices x num_vertices)
-        K = ST @ S  # dense or sparse depending on format
-
-        # Multiply by weight
-        K = self.wi * K
-
-        # Extract triplets: (i, j, val) for sparse matrix assembly
-        triplets = []
-        rows, cols = K.shape
-        for i in range(rows):
-            for j in range(cols):
-                val = K[i, j]
-                if abs(val) > 1e-12:
-                    triplets.append((i * 3 + 0, j * 3 + 0, val))
-                    triplets.append((i * 3 + 1, j * 3 + 1, val))
-                    triplets.append((i * 3 + 2, j * 3 + 2, val))
-
-        return triplets
 
 class DeformableMesh:
     def __init__(self, positions, faces, elements=None, masses=None):
@@ -723,13 +897,28 @@ class DeformableMesh:
         v_masses[v_masses < 1e-7] = 1e-7
         return v_masses
 
-
     def add_constraint(self, constraint):
         assert isinstance(constraint, Constraint)
         self.constraints.append(constraint)
 
     def clear_constraints(self):
         self.constraints.clear()
+
+    def count_edges(self, F):
+        # Extract all edges (unordered pairs)
+        edges = np.vstack([
+            F[:, [0, 1]],
+            F[:, [1, 2]],
+            F[:, [2, 0]]
+        ])
+
+        # Sort each edge so (i, j) and (j, i) are treated the same
+        edges = np.sort(edges, axis=1)
+
+        # Get unique edges
+        unique_edges = np.unique(edges, axis=0)
+
+        return len(unique_edges)
 
     def vertex_star(self):
         """Build the list of Edge objects forming the 1-ring neighborhood around vertex v."""
@@ -765,9 +954,11 @@ class DeformableMesh:
                         vertex_stars[vInd].append(edge)
 
         return vertex_stars
+
     def add_vertex_bending_constraint(self, wi=1e6):
 
         voronoi_area = self.vertex_masses(self.faces, self.positions)
+        # compute vertices stars for all verts
         vertex_stars = self.vertex_star()
 
         for v in range(self.positions.shape[0]):
@@ -781,6 +972,10 @@ class DeformableMesh:
 
             c = VertBendingConstraint(v, wi, star, voronoi_area[v], self.positions, self.faces)
             self.constraints.append(c)
+
+    def add_positional_constraint(self, vi, wi=1e9):
+        c = PositionalConstraint([vi], wi, self.init_positions)
+        self.constraints.append(c)
 
     def add_edge_lengths_constrain(self, wi=1e6):
 
@@ -799,10 +994,6 @@ class DeformableMesh:
             c = TriStrainConstraint(elem.tolist(), wi, self.init_positions, sigma_min, sigma_max)
             self.constraints.append(c)
 
-    def add_positional_constraint(self, vi, wi=1e9):
-        c = PositionalConstraint([vi], wi, self.init_positions)
-        self.constraints.append(c)
-
     def add_tet_constrain_deformation_gradient(self, wi=1e6):
         for elem in self.elements:
             c = TetDeformationGradientConstraint(elem.tolist(), wi, self.init_positions)
@@ -812,7 +1003,6 @@ class DeformableMesh:
         for elem in self.elements:
             c = TetStrainConstraint(elem.tolist(), wi, self.init_positions, sigma_min, sigma_max)
             self.constraints.append(c)
-
 
     def resolve_collision(self, v, pos, pos_correct):
         # Set initial correction equal to the current position

@@ -3,6 +3,7 @@
 import numpy as np
 import scipy.sparse
 import scipy.sparse.linalg
+from scipy.sparse import lil_matrix
 
 def flatten(p: np.ndarray) -> np.ndarray:
     """
@@ -55,8 +56,22 @@ class Solver:
             A_triplets.append((3 * i + 2, 3 * i + 2, mass[i] * dt2_inv))
 
         rows, cols, data = zip(*A_triplets)
-        A = scipy.sparse.csr_matrix((data, (rows, cols)), shape=(3 * N, 3 * N))
+        A = scipy.sparse.csc_matrix((data, (rows, cols)), shape=(3 * N, 3 * N))
 
+        # A = lil_matrix((3 * N, 3 * N))
+        #
+        # # Accumulate all constraints
+        # for constraint in self.model.constraints:
+        #     A += constraint.get_wi_SiT_AiT_Ai_Si_sparse(total_dof=3 * N)
+        #
+        # # Add mass matrix diagonal terms
+        # for i in range(N):
+        #     A[3 * i + 0, 3 * i + 0] += mass[i] * dt2_inv
+        #     A[3 * i + 1, 3 * i + 1] += mass[i] * dt2_inv
+        #     A[3 * i + 2, 3 * i + 2] += mass[i] * dt2_inv
+        #
+        # # Optionally convert to CSR for solving
+        # A = A.tocsc()
         self.cholesky = scipy.sparse.linalg.factorized(A)
         self.set_clean()
 
@@ -87,12 +102,20 @@ class Solver:
         q = sn.copy()
 
         for _ in range(num_iterations):
-            b = np.zeros(3 * N)
-            for constraint in constraints:
-                constraint.project_wi_SiT_AiT_Bi_pi(q, b)
-            b += masses
 
-            q = self.cholesky(b)
+            ## Triplets version:
+            # b = np.zeros(3 * N)
+            # for constraint in constraints:
+            #     constraint.project_wi_SiT_AiT_Bi_pi(q, b)
+            # b += masses
+
+            # 3d
+            b = np.zeros((N, 3))
+            for constraint in constraints:
+                constraint.project_wi_SiT_pi(q, b)
+            b += unflatten(masses)
+
+            q = self.cholesky(b.flatten())
 
         q_next = unflatten(q)
         self.model.velocities = (q_next - self.model.positions) * dt_inv

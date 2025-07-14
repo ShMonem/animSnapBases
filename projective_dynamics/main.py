@@ -97,6 +97,7 @@ def main():
             if model is not None:
                 psim.BulletText(f"Vertices: {model.positions.shape[0]}")
                 psim.BulletText(f"Triangles: {model.faces.shape[0]}")
+                psim.BulletText(f"Edges: {model.count_edges(model.faces)}")
                 psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
 
             changed, args.fix_left_side = psim.Checkbox("Fix Left\nVertices Side",
@@ -141,7 +142,7 @@ def main():
 
                 if psim.Button("Apply##Constraints"):
                     model.immobilize()
-                    model.clear_constraints()
+                    # model.clear_constraints()
                     solver.set_dirty()
 
                     if args.vert_bending_constraint:
@@ -188,7 +189,7 @@ def main():
 
             # pick_result = ps.pick()
             # if pick_result is not None:
-            #     mesh_name, vidx = pick_result
+            #     meshindices_name, vidx = pick_result
             #     if mesh_name == "model":
             #         picking_state["vertex"] = vidx
             #         picking_state["is_picking"] = True

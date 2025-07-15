@@ -44,22 +44,28 @@ class Constraint(ABC):
         # Default is zero energy; override in subclass if needed
         return 0.0
 
+    @abstractmethod
     def build_SiT(self, position_dim):
         "build the differential operator"
         pass
 
+    @abstractmethod
     def get_pi(self, position_dim):
         "compute constraint projection for element i"
         pass
 
     @abstractmethod
-    def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
-        """
-        Compute projection and update rhs.
-        q: full position vector (flattened)
-        rhs: numpy array to accumulate contributions
-        """
+    def project_wi_SiT_pi(self, q, rhs):
+        """compute element constraint projection and map back to positions dimension"""
         pass
+    # @abstractmethod
+    # def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
+    #     """
+    #     Compute projection and update rhs.
+    #     q: full position vector (flattened)
+    #     rhs: numpy array to accumulate contributions
+    #     """
+    #     pass
 
     @abstractmethod
     def get_wi_SiT_AiT_Ai_Si(self):
@@ -87,9 +93,6 @@ class PositionalConstraint(Constraint):
     def project_wi_SiT_pi(self, q, rhs):
         rhs += self.selection_matrix @ self.get_pi(q)
 
-    def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
-        vi = self.indices[0]
-        rhs[3 * vi : 3 * vi + 3] += self.wi * self.p0.flatten()
 
     def get_wi_SiT_AiT_Ai_Si(self):
         vi = self.indices[0]
@@ -99,6 +102,11 @@ class PositionalConstraint(Constraint):
             (3 * vi + 2, 3 * vi + 2, self.wi),
         ]
         return triplets
+
+    # def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
+    #     vi = self.indices[0]
+    #     rhs[3 * vi : 3 * vi + 3] += self.wi * self.p0.flatten()
+
 
 class VertBendingConstraint(Constraint):
     def __init__(self, v_ind, wi, v_star, voronoi_area, positions, triangles,
@@ -173,7 +181,7 @@ class VertBendingConstraint(Constraint):
         self.dot_with_normal = self.tri_normal @ mean_curvature
 
         # === Sparse selection matrix as triplet format
-        selection_matrix = [(self.v_ind, 0, np.sum(self.cotan_weights))]  # TODO: check implementations
+        selection_matrix = [(self.v_ind, 0, np.sum(self.cotan_weights))]
         for i, edge in enumerate(self.vertex_star):
             selection_matrix.append((edge.v2, 0, -self.cotan_weights[i]))
 
@@ -199,37 +207,13 @@ class VertBendingConstraint(Constraint):
             if norm > 1e-5 and dot * self.dot_with_normal < 0:
                 correction *= -1
 
-        return correction * np.ones((-1, 3))
+        return correction.reshape(-1,3)
 
     def project_wi_SiT_pi(self, q, rhs):
-        if self.rest_mean_curvature < 1e-12:
-            return
+        # if self.rest_mean_curvature < 1e-12:
+        #     return
 
         rhs += self.selection_matrix @ self.get_pi(q)
-
-    def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
-        """Applies the projection term to the global RHS."""
-        if self.rest_mean_curvature < 1e-12:
-            return
-
-        v = self.v_ind
-        star_sum = np.zeros(3)
-        for edge, w in zip(self.vertex_star, self.cotan_weights):
-            star_sum += (q[3 * v:3 * v + 3] - q[3 * edge.v2:3 * edge.v2 + 3]) * w
-
-        norm = np.linalg.norm(star_sum)
-        if norm < 1e-10:
-            correction = self.tri_normal * self.rest_mean_curvature
-        else:
-            correction = star_sum * (self.rest_mean_curvature / norm)
-
-        if self.prevent_bending_flips:
-            dot = self.tri_normal @ correction
-            if norm > 1e-5 and dot * self.dot_with_normal < 0:
-                correction *= -1
-
-        val = self.selection_matrix[self.v_ind]
-        rhs[3 * self.v_ind: 3 * self.v_ind + 3] += self.wi * val * correction
 
     def get_wi_SiT_AiT_Ai_Si(self):
         """
@@ -258,6 +242,30 @@ class VertBendingConstraint(Constraint):
                     triplets.append((i * 3 + 2, j * 3 + 2, val))
 
         return triplets
+    # def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
+    #     """Applies the projection term to the global RHS."""
+    #     if self.rest_mean_curvature < 1e-12:
+    #         return
+    #
+    #     v = self.v_ind
+    #     star_sum = np.zeros(3)
+    #     for edge, w in zip(self.vertex_star, self.cotan_weights):
+    #         star_sum += (q[3 * v:3 * v + 3] - q[3 * edge.v2:3 * edge.v2 + 3]) * w
+    #
+    #     norm = np.linalg.norm(star_sum)
+    #     if norm < 1e-10:
+    #         correction = self.tri_normal * self.rest_mean_curvature
+    #     else:
+    #         correction = star_sum * (self.rest_mean_curvature / norm)
+    #
+    #     if self.prevent_bending_flips:
+    #         dot = self.tri_normal @ correction
+    #         if norm > 1e-5 and dot * self.dot_with_normal < 0:
+    #             correction *= -1
+    #
+    #     val = self.selection_matrix[self.v_ind]
+    #     rhs[3 * self.v_ind: 3 * self.v_ind + 3] += self.wi * val * correction
+
 
 class EdgeLengthConstraint(Constraint):
     def __init__(self, indices, wi, positions):
@@ -306,24 +314,6 @@ class EdgeLengthConstraint(Constraint):
         """
         rhs += self.selection_matrix @ self.get_pi(q)
 
-    def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
-        vi, vj = self.indices
-        p1 = q[3 * vi:3 * vi + 3]
-        p2 = q[3 * vj:3 * vj + 3]
-        spring = p2 - p1
-        length = np.linalg.norm(spring)
-
-        if length == 0:
-            return  # Avoid divide by zero
-
-        normalized_edge = spring / length
-        delta = 0.5 * (length - self.d)
-        pi1 = p1 + delta * normalized_edge
-        pi2 = p2 - delta * normalized_edge
-
-        rhs[3 * vi:3 * vi + 3] += self.wi * 0.5 * (pi1 - pi2)    # with -w
-        rhs[3 * vj:3 * vj + 3] += self.wi * 0.5 * (pi2 - pi1)
-
     def get_wi_SiT_AiT_Ai_Si(self):
         vi, vj = self.indices
         triplets = []
@@ -337,19 +327,24 @@ class EdgeLengthConstraint(Constraint):
 
         return triplets
 
-    def get_wi_SiT_AiT_Ai_Si_matrixVersion(self, total_dof):
-        """works but much slower than triplets"""
-        vi, vj = self.indices
-        w = self.wi * 0.5
+    # def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
+    #     vi, vj = self.indices
+    #     p1 = q[3 * vi:3 * vi + 3]
+    #     p2 = q[3 * vj:3 * vj + 3]
+    #     spring = p2 - p1
+    #     length = np.linalg.norm(spring)
+    #
+    #     if length == 0:
+    #         return  # Avoid divide by zero
+    #
+    #     normalized_edge = spring / length
+    #     delta = 0.5 * (length - self.d)
+    #     pi1 = p1 + delta * normalized_edge
+    #     pi2 = p2 - delta * normalized_edge
+    #
+    #     rhs[3 * vi:3 * vi + 3] += self.wi * 0.5 * (pi1 - pi2)    # with -w
+    #     rhs[3 * vj:3 * vj + 3] += self.wi * 0.5 * (pi2 - pi1)
 
-        A_local = lil_matrix((total_dof, total_dof))
-
-        for i in range(3):
-            A_local[3 * vi + i, 3 * vi + i] += w
-            A_local[3 * vj + i, 3 * vj + i] += w
-            A_local[3 * vi + i, 3 * vj + i] -= w
-            A_local[3 * vj + i, 3 * vi + i] -= w
-        return A_local
 
 class TriStrainConstraint(Constraint):
     def __init__(self, indices, wi, positions, sigma_min, sigma_max):
@@ -386,60 +381,44 @@ class TriStrainConstraint(Constraint):
         self.build_SiT(positions.shape[0])
 
     def build_SiT(self, num_vertices):
+        """
+        Constructs and caches the transposed selection matrix (Si^T) for the triangle.
+        Si^T shape: (num_vertices, 2), sparse
+        """
+        v1, v2, v3 = self.indices
 
-        # Compute triangle area and weight
-        weight = self.wi * np.sqrt(abs(self.A0))
+        G = np.column_stack([self.DmInv.T, -np.sum(self.DmInv.T, axis=1)])  # (2, 3)
 
-        # Build the selection matrix (2 x num_vertices), sparse
-        selection_matrix = lil_matrix((num_vertices, 2))
+        self._selection_matrix = lil_matrix((num_vertices, 2))  # each column corresponds to one of the 2D directions
 
-        for coord in range(2):
-            v1_coeff = -(self.DmInv[0, coord] + self.DmInv[1, coord])
-            v2_coeff = self.DmInv[0, coord]
-            v3_coeff = self.DmInv[1, coord]
+        for j in range(2):
+            self._selection_matrix[v1, j] = G[j, 0]
+            self._selection_matrix[v2, j] = G[j, 1]
+            self._selection_matrix[v3, j] = G[j, 2]
 
-            selection_matrix[self.indices[0], coord] = v1_coeff * weight
-            selection_matrix[self.indices[1], coord] = v2_coeff * weight
-            selection_matrix[self.indices[2], coord] = v3_coeff * weight
 
-        self._selection_matrix = selection_matrix
+        self._selection_matrix = self._selection_matrix.tocsr() * self.wi * abs(self.A0) # Store for reuse
 
     def get_pi(self, q):
         """
-        Compute projected deformation gradient for a triangle strain constraint.
-
-        Returns: (2, 3) optimal edge configuration in 3D.
+        Computes the projection target pi in 2D strain space (shape 2x3).
         """
-
         v1, v2, v3 = self.indices
-        p1 = q[3 * v1:3 * v1 + 3]
-        p2 = q[3 * v2:3 * v2 + 3]
-        p3 = q[3 * v3:3 * v3 + 3]
-        # Step 1: Compute 3D triangle edges
-        e1 = p2 - p1  # shape (3,)
-        e2 = p3 - p1  # shape (3,)
-        edges = np.stack([e1, e2], axis=1)  # shape (3, 2)
+        q1 = q[3 * v1:3 * v1 + 3]
+        q2 = q[3 * v2:3 * v2 + 3]
+        q3 = q[3 * v3:3 * v3 + 3]
 
-        # Step 2: Project edges to 2D while preserving angle (isometric embedding)
-        P = np.zeros((3, 2))
-        P[:, 0] = e1 / np.linalg.norm(e1)
-        orthogonal_component = e2 - np.dot(e2, P[:, 0]) * P[:, 0]
-        P[:, 1] = orthogonal_component / np.linalg.norm(orthogonal_component)
+        Ds = np.column_stack([q2 - q1, q3 - q1])  # shape (3, 2)
+        Ds_2d = self.P.T @ Ds  # project to 2D: shape (2, 2)
 
-        # Step 3: Compute 2D deformation gradient
-        F = P.T @ edges @ self.DmInv  # shape (2, 2)
+        U, s, Vt = svd(Ds_2d @ self.DmInv)
+        s = np.clip(s, self.sigma_min, self.sigma_max)
+        Fhat = U @ np.diag(s) @ Vt  # shape (2, 2)
 
-        # Step 4: SVD and clamp
-        U, S_vals, Vt = np.linalg.svd(F)
-        S_clamped = np.minimum(np.maximum(S_vals, self.sigma_min), self.sigma_max)
+        # G = np.column_stack([self.DmInv.T, -np.sum(self.DmInv.T, axis=1)])  # shape (2, 3)
 
-        # Step 5: Reconstruct clamped deformation gradient
-        F_clamped = U @ np.diag(S_clamped) @ Vt
-
-        # Step 6: Map back to 3D
-        PF = (P @ F_clamped).T  # shape (2, 3), each row is a 3D edge vector
-
-        return PF  # (2, 3)
+        pi = (self.P @ Fhat).T  # shape (2, 3)
+        return pi
 
     def project_wi_SiT_pi(self, q, rhs):
         rhs += self.selection_matrix @ self.get_pi(q)
@@ -470,34 +449,35 @@ class TriStrainConstraint(Constraint):
 
         return triplets
 
-    def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
-        """
-        Adds constraint projection term to the global RHS vector (in 3D).
-        """
-        v1, v2, v3 = self.indices
-        q1 = q[3 * v1:3 * v1 + 3]
-        q2 = q[3 * v2:3 * v2 + 3]
-        q3 = q[3 * v3:3 * v3 + 3]
-
-        Ds = np.column_stack([q2 - q1, q3 - q1])  # 3x2
-        Ds_2d = self.P.T @ Ds  # Projected deformation matrix (2x2)
-
-        U, s, Vt = svd(Ds_2d @ self.DmInv)
-        s = np.clip(s, self.sigma_min, self.sigma_max)
-        Fhat = U @ np.diag(s) @ Vt  # Projected strain (2x2)
-
-        G = np.column_stack([self.DmInv.T, -np.sum(self.DmInv.T, axis=1)])  # (2, 3)
-
-        correction_2d = Fhat @ G  # (2, 3)
-        correction_3d = self.P @ correction_2d  # (3, 3)
-
-        weight = self.wi * abs(self.A0)
-
-        for i, idx in enumerate(self.indices):
-            rhs[3 * idx:3 * idx + 3] += weight * correction_3d[:, i]
+    # def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
+    #     """
+    #     Adds constraint projection term to the global RHS vector (in 3D).
+    #     """
+    #     v1, v2, v3 = self.indices
+    #     q1 = q[3 * v1:3 * v1 + 3]
+    #     q2 = q[3 * v2:3 * v2 + 3]
+    #     q3 = q[3 * v3:3 * v3 + 3]
+    #
+    #     Ds = np.column_stack([q2 - q1, q3 - q1])  # 3x2
+    #     Ds_2d = self.P.T @ Ds  # Projected deformation matrix (2x2)
+    #
+    #     U, s, Vt = svd(Ds_2d @ self.DmInv)
+    #     s = np.clip(s, self.sigma_min, self.sigma_max)
+    #     Fhat = U @ np.diag(s) @ Vt  # Projected strain (2x2)
+    #
+    #     G = np.column_stack([self.DmInv.T, -np.sum(self.DmInv.T, axis=1)])  # (2, 3)
+    #
+    #     correction_2d = Fhat @ G  # (2, 3)
+    #     correction_3d = self.P @ correction_2d  # (3, 3)
+    #
+    #     weight = self.wi * abs(self.A0)
+    #
+    #     for i, idx in enumerate(self.indices):
+    #         rhs[3 * idx:3 * idx + 3] += weight * correction_3d[:, i]
 
 class TetStrainConstraint(Constraint):
-
+    """Constrains only the stretch components of the deformation — that is, the singular values σ₁, σ₂, σ₃ of F
+    Allows arbitrary rotation but limits stretching and compression (by clamping σ). """
     def __init__(self, indices, wi, positions, sigma_min, sigma_max):
         super().__init__(indices, wi)
         assert len(indices) == 4
@@ -516,6 +496,58 @@ class TetStrainConstraint(Constraint):
 
         self.DmInv = np.linalg.inv(Dm)  # inverse of reference shape matrix (helps to detect inverted tets)
         self.V0 = (1.0 / 6.0) * np.linalg.det(Dm)  # undeformed tetrahedron volume
+
+        # build differential operator SiT
+        self.build_SiT(positions.shape[0])
+
+    def build_SiT(self, num_vertices):
+        """
+        Precomputes S_i^T: selection matrix transposed for this tet.
+        SiT: shape (num_vertices, 4), each column corresponds to one tet vertex.
+        We build a 3D gradient matrix of shape (num_vertices, 3), per-vertex.
+        """
+        grads = self.DmInv  # shape (3, 3)
+        grads_l = -np.sum(grads, axis=0)  # shape (3,)
+
+        G = np.column_stack([grads.T, grads_l])  # shape (3, 4)
+
+        self._selection_matrix = lil_matrix((num_vertices, 3))
+
+        v1, v2, v3, v4 = self.indices
+
+        for j in range(3):
+            self._selection_matrix[v1, j] = G[j, 0]
+            self._selection_matrix[v2, j] = G[j, 1]
+            self._selection_matrix[v3, j] = G[j, 2]
+            self._selection_matrix[v4, j] = G[j, 3]
+
+        # self.wi * abs(self.V0) # stiffness of the constraint, resists extreme stretch/
+        self._selection_matrix = self._selection_matrix.tocsr() * self.wi * abs(self.V0)
+
+    def get_pi(self, q):
+        """
+        Computes the projected deformation gradient Fhat (3x3).
+        """
+        v1, v2, v3, v4 = self.indices
+        q1 = q[3 * v1:3 * v1 + 3]
+        q2 = q[3 * v2:3 * v2 + 3]
+        q3 = q[3 * v3:3 * v3 + 3]
+        q4 = q[3 * v4:3 * v4 + 3]
+
+        Ds = np.column_stack([q1 - q4, q2 - q4, q3 - q4])  # (3, 3)
+        F = Ds @ self.DmInv  # (3, 3)
+
+        U, s, Vt = np.linalg.svd(F)
+        s = np.clip(s, self.sigma_min, self.sigma_max)
+
+        if np.linalg.det(F) < 0.0:
+            s[2] = -s[2]
+
+        Fhat = U @ np.diag(s) @ Vt  # shape (3, 3)
+        return Fhat
+
+    def project_wi_SiT_pi(self, q, rhs):
+        rhs += self.selection_matrix @ self.get_pi(q)
 
     def get_wi_SiT_AiT_Ai_Si(self):
         """
@@ -544,48 +576,50 @@ class TetStrainConstraint(Constraint):
 
         return triplets
 
-    def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
-        """
-        Args:
-            q: current positions (from global solve)
-            rhs: constraint projections term Sum_i wi_SiT_AiT_Bi_pi
-
-        Returns: computes and adds the contribution of a single tetrahedral element
-        to the global right-hand side (RHS) vector
-        """
-
-        # find the edges of the current tet position
-        v1, v2, v3, v4 = self.indices
-        q1 = q[3 * v1:3 * v1 + 3]
-        q2 = q[3 * v2:3 * v2 + 3]
-        q3 = q[3 * v3:3 * v3 + 3]
-        q4 = q[3 * v4:3 * v4 + 3]
-
-        # Compute Deformation Gradient F
-        Ds = np.column_stack([q1 - q4, q2 - q4, q3 - q4])  # deformation matrix in current configuration
-        F = Ds @ self.DmInv
-
-        is_tet_inverted = np.linalg.det(F) < 0.0
-
-        U, s, Vt = np.linalg.svd(F)
-        s = np.clip(s, self.sigma_min, self.sigma_max)
-        if is_tet_inverted:
-            s[2] = -s[2]
-        Fhat = U @ np.diag(s) @ Vt   # pi: projection of F onto constraint manifold, shape (3, 3)
-
-        weight = self.wi * abs(self.V0)  # stiffness of the constraint
-
-        grads = self.DmInv  # (3, 3)
-        grads_l = -np.sum(grads, axis=0)  # (3,)
-        G = np.column_stack([grads.T, grads_l])  # A-i S_i, shape (3, 4)
-
-        corrections = Fhat @ G  # SiT AiT Bi pi: applying the projected deformation gradient F to the shape gradient B, shape (3, 4)
-
-        # Add each correction to rhs
-        for i, idx in enumerate(self.indices):
-            rhs[3 * idx: 3 * idx + 3] += weight * corrections[:, i]
+    # def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
+    #     """
+    #     Args:
+    #         q: current positions (from global solve)
+    #         rhs: constraint projections term Sum_i wi_SiT_AiT_Bi_pi
+    #
+    #     Returns: computes and adds the contribution of a single tetrahedral element
+    #     to the global right-hand side (RHS) vector
+    #     """
+    #
+    #     # find the edges of the current tet position
+    #     v1, v2, v3, v4 = self.indices
+    #     q1 = q[3 * v1:3 * v1 + 3]
+    #     q2 = q[3 * v2:3 * v2 + 3]
+    #     q3 = q[3 * v3:3 * v3 + 3]
+    #     q4 = q[3 * v4:3 * v4 + 3]
+    #
+    #     # Compute Deformation Gradient F
+    #     Ds = np.column_stack([q1 - q4, q2 - q4, q3 - q4])  # deformation matrix in current configuration
+    #     F = Ds @ self.DmInv
+    #
+    #     is_tet_inverted = np.linalg.det(F) < 0.0
+    #
+    #     U, s, Vt = np.linalg.svd(F)
+    #     s = np.clip(s, self.sigma_min, self.sigma_max)
+    #     if is_tet_inverted:
+    #         s[2] = -s[2]
+    #     Fhat = U @ np.diag(s) @ Vt   # pi: projection of F onto constraint manifold, shape (3, 3)
+    #
+    #     weight = self.wi * abs(self.V0)  # stiffness of the constraint
+    #
+    #     grads = self.DmInv  # (3, 3)
+    #     grads_l = -np.sum(grads, axis=0)  # (3,)
+    #     G = np.column_stack([grads.T, grads_l])  # A-i S_i, shape (3, 4)
+    #
+    #     corrections = Fhat @ G  # SiT AiT Bi pi: applying the projected deformation gradient F to the shape gradient B, shape (3, 4)
+    #
+    #     # Add each correction to rhs
+    #     for i, idx in enumerate(self.indices):
+    #         rhs[3 * idx: 3 * idx + 3] += weight * corrections[:, i]
 
 class TetDeformationGradientConstraint(Constraint):
+    """Purpose: Keeps the whole affine transformation (rotation, scaling, shearing) close to identity (rest shape)."""
+
     def __init__(self, indices, wi, positions):
         super().__init__(indices, wi)
         assert len(indices) == 4
@@ -597,130 +631,142 @@ class TetDeformationGradientConstraint(Constraint):
         self.DmInv = np.linalg.inv(Dm)
         self.V0 = (1.0 / 6.0) * np.linalg.det(Dm)
 
-    def evaluate(self, positions, masses):
+        # build differential operator SiT
+        self.build_SiT(positions.shape[0])
+
+    def build_SiT(self, num_vertices):
+        """
+        Precomputes S_i^T: selection matrix transposed for this tet.
+        SiT: shape (num_vertices, 4), each column corresponds to one tet vertex.
+        We build a 3D gradient matrix of shape (num_vertices, 3), per-vertex.
+        """
+        grads = self.DmInv  # shape (3, 3)
+        grads_l = -np.sum(grads, axis=0)  # shape (3,)
+
+        G = np.column_stack([grads.T, grads_l])  # shape (3, 4)
+
+        self._selection_matrix = lil_matrix((num_vertices, 3))
+
         v1, v2, v3, v4 = self.indices
-        p1, p2, p3, p4 = positions[v1], positions[v2], positions[v3], positions[v4]
 
-        Ds = np.column_stack([p1 - p4, p2 - p4, p3 - p4])
-        Vsigned = (1. / 6.) * np.linalg.det(Ds)
+        for j in range(3):
+            self._selection_matrix[v1, j] = G[j, 0]
+            self._selection_matrix[v2, j] = G[j, 1]
+            self._selection_matrix[v3, j] = G[j, 2]
+            self._selection_matrix[v4, j] = G[j, 3]
 
-        # Check tetrahedron inversion
-        is_V_positive = Vsigned >= 0.
-        is_V0_positive = self.V0 >= 0.
-        is_tet_inverted = (is_V_positive and not is_V0_positive) or (not is_V_positive and is_V0_positive)
+        # self.wi * abs(self.V0) # stiffness of the constraint, resists extreme stretch/
+        self._selection_matrix = self._selection_matrix.tocsr() * self.wi * abs(self.V0)
 
-        # Deformation gradient
-        F = Ds @ self.DmInv
-        I = np.identity(3)
-
-        # SVD decomposition
-        U, S, Vt = svd(F)
-        Fhat = np.zeros((3, 3))
-        np.fill_diagonal(Fhat, S)   # F_ii = S_i
-
-        V = Vt.T  # TODO check
-
-        if is_tet_inverted:
-            Fhat[2, 2] *= -1
-            U[:, 2] *= -1
-
-        # stress reaches maximum at 58% compression
-        # Clamp minimum singular value to avoid instability at high compression
-        min_singular_value = 0.577
-        Fhat[0, 0] = max(Fhat[0, 0], min_singular_value)
-        Fhat[1, 1] = max(Fhat[1, 1], min_singular_value)
-        Fhat[2, 2] = max(Fhat[2, 2], min_singular_value)
-
-        # Material parameters
-        young_modulus = 1_000_000_000.
-        poisson_ratio = 0.45
-        mu = young_modulus / (2. * (1 + poisson_ratio))
-        lam = (young_modulus * poisson_ratio) / ((1 + poisson_ratio) * (1 - 2 * poisson_ratio))
-
-        # Green strain and Piola stress
-        Ehat = 0.5 * (Fhat.T @ Fhat - I)
-        EhatTrace = np.trace(Ehat)
-        Piolahat = Fhat @ ((2. * mu * Ehat) + (lam * EhatTrace * I))
-
-        # Energy
-        E = U @ Ehat @ V.T
-        Etrace = np.trace(E)
-        psi = mu * np.sum(E * E) + 0.5 * lam * Etrace * Etrace
-
-        V0 = abs(self.V0)
-        C = V0 * psi
-
-        return C
-
-    def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
-
-        # TODO : change symbolic to compact form
+    def get_pi(self, q):
+        """
+        Computes pi = Rᵀ Gᵀ ∈ ℝ^{4×3}
+        """
         v1, v2, v3, v4 = self.indices
         q1 = q[3 * v1:3 * v1 + 3]
         q2 = q[3 * v2:3 * v2 + 3]
         q3 = q[3 * v3:3 * v3 + 3]
         q4 = q[3 * v4:3 * v4 + 3]
 
-        Ds = np.column_stack([q1 - q4, q2 - q4, q3 - q4])
-        F = Ds @ self.DmInv
+        Ds = np.column_stack([q1 - q4, q2 - q4, q3 - q4])  # 3×3
+        F = Ds @ self.DmInv  # 3×3
 
         U, _, Vt = svd(F)
         R = U @ Vt
-        if det(R) < 0:
-            R[:, 2] *=-1
+        if np.linalg.det(R) < 0:
+            R[:, 2] *= -1
 
-        p1 = R[0, 0]
-        p2 = R[1, 0]
-        p3 = R[2, 0]
-        p4 = R[0, 1]
-        p5 = R[1, 1]
-        p6 = R[2, 1]
-        p7 = R[0, 2]
-        p8 = R[1, 2]
-        p9 = R[2, 2]
+        return  R.T  # shape (4×3)
 
-        d11, d12, d13 = self.DmInv[0]
-        d21, d22, d23 = self.DmInv[1]
-        d31, d32, d33 = self.DmInv[2]
+    def project_wi_SiT_pi(self, q, rhs):
+        rhs += self.selection_matrix @ self.get_pi(q)
 
-        _d11_d21_d31 = -d11 - d21 - d31
-        _d12_d22_d32 = -d12 - d22 - d32
-        _d13_d23_d33 = -d13 - d23 - d33
-
-        bi0 = (d11 * p1) + (d12 * p4) + (d13 * p7)
-        bi1 = (d11 * p2) + (d12 * p5) + (d13 * p8)
-        bi2 = (d11 * p3) + (d12 * p6) + (d13 * p9)
-
-        bj0 = (d21 * p1) + (d22 * p4) + (d23 * p7)
-        bj1 = (d21 * p2) + (d22 * p5) + (d23 * p8)
-        bj2 = (d21 * p3) + (d22 * p6) + (d23 * p9)
-
-        bk0 = (d31 * p1) + (d32 * p4) + (d33 * p7)
-        bk1 = (d31 * p2) + (d32 * p5) + (d33 * p8)
-        bk2 = (d31 * p3) + (d32 * p6) + (d33 * p9)
-
-        bl0 = p1 * _d11_d21_d31 + p4 * _d12_d22_d32 + p7 * _d13_d23_d33
-        bl1 = p2 * _d11_d21_d31 + p5 * _d12_d22_d32 + p8 * _d13_d23_d33
-        bl2 = p3 * _d11_d21_d31 + p6 * _d12_d22_d32 + p9 * _d13_d23_d33
-
-        weight = self.wi * abs(self.V0)  # stiffness of the constraint
-
-        # print([[bi0, bi1, bi2],[bj0, bj1, bj2],[bk0, bk1, bk2], [bl0, bl1, bl2]])
-        rhs[3 * v1 + 0] += weight * bi0
-        rhs[3 * v1 + 1] += weight * bi1
-        rhs[3 * v1 + 2] += weight * bi2
-
-        rhs[3 * v2 + 0] += weight * bj0
-        rhs[3 * v2 + 1] += weight * bj1
-        rhs[3 * v2 + 2] += weight * bj2
-
-        rhs[3 * v3 + 0] += weight * bk0
-        rhs[3 * v3 + 1] += weight * bk1
-        rhs[3 * v3 + 2] += weight * bk2
-
-        rhs[3 * v4 + 0] += weight * bl0
-        rhs[3 * v4 + 1] += weight * bl1
-        rhs[3 * v4 + 2] += weight * bl2
+    # def evaluate(self, positions, masses):
+    #     v1, v2, v3, v4 = self.indices
+    #     p1, p2, p3, p4 = positions[v1], positions[v2], positions[v3], positions[v4]
+    #
+    #     Ds = np.column_stack([p1 - p4, p2 - p4, p3 - p4])
+    #     Vsigned = (1. / 6.) * np.linalg.det(Ds)
+    #
+    #     # Check tetrahedron inversion
+    #     is_V_positive = Vsigned >= 0.
+    #     is_V0_positive = self.V0 >= 0.
+    #     is_tet_inverted = (is_V_positive and not is_V0_positive) or (not is_V_positive and is_V0_positive)
+    #
+    #     # Deformation gradient
+    #     F = Ds @ self.DmInv
+    #     I = np.identity(3)
+    #
+    #     # SVD decomposition
+    #     U, S, Vt = svd(F)
+    #     Fhat = np.zeros((3, 3))
+    #     np.fill_diagonal(Fhat, S)   # F_ii = S_i
+    #
+    #     V = Vt.T  # TODO check
+    #
+    #     if is_tet_inverted:
+    #         Fhat[2, 2] *= -1
+    #         U[:, 2] *= -1
+    #
+    #     # stress reaches maximum at 58% compression
+    #     # Clamp minimum singular value to avoid instability at high compression
+    #     min_singular_value = 0.577
+    #     Fhat[0, 0] = max(Fhat[0, 0], min_singular_value)
+    #     Fhat[1, 1] = max(Fhat[1, 1], min_singular_value)
+    #     Fhat[2, 2] = max(Fhat[2, 2], min_singular_value)
+    #
+    #     # Material parameters
+    #     young_modulus = 1_000_000_000.
+    #     poisson_ratio = 0.45
+    #     mu = young_modulus / (2. * (1 + poisson_ratio))
+    #     lam = (young_modulus * poisson_ratio) / ((1 + poisson_ratio) * (1 - 2 * poisson_ratio))
+    #
+    #     # Green strain and Piola stress
+    #     Ehat = 0.5 * (Fhat.T @ Fhat - I)
+    #     EhatTrace = np.trace(Ehat)
+    #     Piolahat = Fhat @ ((2. * mu * Ehat) + (lam * EhatTrace * I))
+    #
+    #     # Energy
+    #     E = U @ Ehat @ V.T
+    #     Etrace = np.trace(E)
+    #     psi = mu * np.sum(E * E) + 0.5 * lam * Etrace * Etrace
+    #
+    #     V0 = abs(self.V0)
+    #     C = V0 * psi
+    #
+    #     return C
+    #
+    # def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
+    #
+    #     v1, v2, v3, v4 = self.indices
+    #     q1 = q[3 * v1:3 * v1 + 3]
+    #     q2 = q[3 * v2:3 * v2 + 3]
+    #     q3 = q[3 * v3:3 * v3 + 3]
+    #     q4 = q[3 * v4:3 * v4 + 3]
+    #
+    #     Ds = np.column_stack([q1 - q4, q2 - q4, q3 - q4])
+    #     F = Ds @ self.DmInv
+    #
+    #     U, _, Vt = svd(F)
+    #     R = U @ Vt
+    #     if det(R) < 0:
+    #         R[:, 2] *=-1
+    #
+    #
+    #     # Build G (∇φ_i)
+    #     G = np.zeros((4, 3))
+    #     G[:3, :] = self.DmInv
+    #     G[3, :] = -G[:3, :].sum(axis=0)
+    #
+    #
+    #     # Compute each projected correction vector
+    #     # result is shape (4, 3): one 3D vector per vertex
+    #     corrections = G @ R.T  # shape (4, 3)
+    #
+    #     # Apply weighted correction to RHS
+    #     weight = self.wi * abs(self.V0)
+    #     for i, idx in enumerate([v1, v2, v3, v4]):
+    #         rhs[3 * idx: 3 * idx + 3] += weight * corrections[i]
 
     def get_wi_SiT_AiT_Ai_Si(self):
         """

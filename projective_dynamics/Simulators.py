@@ -102,14 +102,14 @@ class Solver:
         q = sn.copy()
 
         for _ in range(num_iterations):
-
-            ## Triplets version:
+            #
+            # # Triplets version:
             # b = np.zeros(3 * N)
             # for constraint in constraints:
             #     constraint.project_wi_SiT_AiT_Bi_pi(q, b)
             # b += masses
 
-            # 3d
+            #3d
             b = np.zeros((N, 3))
             for constraint in constraints:
                 constraint.project_wi_SiT_pi(q, b)

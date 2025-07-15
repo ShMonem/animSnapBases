@@ -26,8 +26,8 @@
     "edge_constraint_wi": 150000.0,
     "vert_bending_constraint_wi": 100.0,
 
-    "deformation_gradient_constraint_wi": 100000.0,
-    "strain_limit_constraint_wi": 1000.0,
+    "deformation_gradient_constraint_wi": 10000000.0,
+    "strain_limit_constraint_wi": 1500000.0,
     "sigma_min": 0.99,
     "sigma_max": 1.01,
 

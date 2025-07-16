@@ -11,6 +11,7 @@ from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler
 solver = Solver()
 fext = None
 model = None
+output_path = ""
 
 mouse_down_handler, mouse_move_handler, pre_draw_handler = None, None, None
 
@@ -64,11 +65,15 @@ def main():
 
     args = parser.parse_args()
 
+    record_fom_info = True
+    global output_path
+    output_path = "output"
+    object_name = ""
 
     def callback():
         global model, solver, fext, bar_width, bar_height, bar_depth,\
             mouse_down_handler, mouse_move_handler, pre_draw_handler,\
-            cloth_width, cloth_height, window_open
+            cloth_width, cloth_height, window_open, object_name, output_path
 
         psim.PushItemWidth(200)
         psim.TextUnformatted("== Projective Dynamics ==")
@@ -83,6 +88,7 @@ def main():
                 if psim.Button("Compute##Bar"):
                     V, T, F = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
                     reset_simulation_model(V, F, T, should_rescale=True)
+                    object_name = "Bar"
                 psim.TreePop()
             if psim.TreeNode("Cloth"):
 
@@ -91,6 +97,7 @@ def main():
                 if psim.Button("Compute##Cloth"):
                     V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
                     reset_simulation_model(V, F, np.empty((0,3)), should_rescale=True)
+                    object_name = "Cloth"
 
                 psim.TreePop()
 
@@ -100,33 +107,17 @@ def main():
                 psim.BulletText(f"Edges: {model.count_edges(model.faces)}")
                 psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
 
-            changed, args.fix_left_side = psim.Checkbox("Fix Left\nVertices Side",
-                                                                     args.fix_left_side)
-            changed, args.fix_right_side= psim.Checkbox("Fix Right\nVertices Side",
-                                                                      args.fix_right_side)
-
-            # One-shot execution logic
-            if args.fix_left_side and not args._fix_left_triggered:
-                model.fix_surface_side_vertices(args, side="left")
-                args._fix_left_triggered = True
-            elif not args.fix_left_side:
-                args._fix_left_triggered = False
-
-            if args.fix_right_side and not args._fix_right_triggered:
-                model.fix_surface_side_vertices(args, side="right")
-                args._fix_right_triggered = True
-            elif not args.fix_right_side:
-                args._fix_right_triggered = False
-
-
         if psim.CollapsingHeader("Physics"):
             if psim.TreeNode("Constraints"):
+
+                changed, args.fix_left_side = psim.Checkbox("Fix Left\nVertices Side", args.fix_left_side)
+                changed, args.fix_right_side = psim.Checkbox("Fix Right\nVertices Side", args.fix_right_side)
 
                 changed, args.vert_bending_constraint_wi = psim.InputFloat("wi \nVertBend", args.vert_bending_constraint_wi)
                 changed, args.vert_bending_constraint = psim.Checkbox("Active \nVertBend", args.vert_bending_constraint)
 
-                changed, args.edge_constraint_wi = psim.InputFloat("wi \nEdgeLength", args.edge_constraint_wi)
-                changed, args.edge_constraint = psim.Checkbox("Active \nEdgeLength", args.edge_constraint)
+                changed, args.edge_constraint_wi = psim.InputFloat("wi \nEdgeSpring", args.edge_constraint_wi)
+                changed, args.edge_constraint = psim.Checkbox("Active \nEdgeSpring", args.edge_constraint)
 
                 changed, args.deformation_gradient_constraint_wi = psim.InputFloat("wi \nDeformationGradient", args.deformation_gradient_constraint_wi)
                 changed, args.tet_deformation_constraint = psim.Checkbox("Active \nDeformationGradient", args.tet_deformation_constraint)
@@ -142,27 +133,66 @@ def main():
 
                 if psim.Button("Apply##Constraints"):
                     model.immobilize()
-                    # model.clear_constraints()
+                    model.clear_constraints()
+                    model.reset_constraints_attributes()
                     solver.set_dirty()
+                    output_path = "output"
+
+                    # One-shot execution logic
+                    if args.fix_left_side and not args._fix_left_triggered:
+                        model.fix_surface_side_vertices(args, side="left")
+                        args._fix_left_triggered = True
+                    elif not args.fix_left_side:
+                        args._fix_left_triggered = False
+
+                    if args.fix_right_side and not args._fix_right_triggered:
+                        model.fix_surface_side_vertices(args, side="right")
+                        args._fix_right_triggered = True
+                    elif not args.fix_right_side:
+                        args._fix_right_triggered = False
 
                     if args.vert_bending_constraint:
-                        model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
+                        model.add_vertex_bending_constraint(args.vert_bending_constraint_wi, build_assembly=record_fom_info)
                     if args.edge_constraint:
-                        model.add_edge_lengths_constrain(args.edge_constraint_wi)
+                        model.add_edge_spring_constrain(args.edge_constraint_wi, build_assembly=record_fom_info)
 
                     if args.tri_strain_constraint:
                         model.add_tri_constrain_strain(
                             args.sigma_min,
                             args.sigma_max,
-                            args.strain_limit_constraint_wi)
+                            args.strain_limit_constraint_wi, build_assembly=record_fom_info)
 
                     if args.tet_deformation_constraint:
-                        model.add_tet_constrain_deformation_gradient(args.deformation_gradient_constraint_wi)
+                        model.add_tet_constrain_deformation_gradient(args.deformation_gradient_constraint_wi,
+                                                                     build_assembly=record_fom_info)
                     if args.tet_strain_constraint:
                         model.add_tet_constrain_strain(
                             args.sigma_min,
                             args.sigma_max,
-                            args.strain_limit_constraint_wi)
+                            args.strain_limit_constraint_wi, build_assembly=record_fom_info)
+
+                    # if recording snapshots build output file name/ path
+                    if record_fom_info:
+
+                        specify_path = ""
+                        if model.has_verts_bending_constraints:
+                            specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi)
+
+                        if model.has_edge_spring_constraints:
+                            specify_path = specify_path + "edge_spring_wi" + str(args.edge_spring_constraint_wi)
+
+                        if model.has_tris_strain_constraints:
+                            specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi)
+
+                        if model.has_tets_strain_constraints:
+                            specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi)
+
+                        if model.has_tets_deformation_gradient_constraints:
+                            specify_path = specify_path + "tets_deformation_gradient_wi" + str(
+                                args.deformation_gradient_constraint_wi)
+
+                        output_path += "/" + object_name + "/" + specify_path
+
 
                 psim.BulletText(f"no. Constraints: {len(model.constraints)}")
                 psim.TreePop()
@@ -174,11 +204,11 @@ def main():
 
             changed, args.is_simulating = psim.Checkbox("Simulate", args.is_simulating)
 
-            if model is not None:
 
+            if model is not None:
                 # mouse_down_handler = MouseDownHandler(lambda: model.positions.shape[0] > 0, picking_state, solver, physics_params)
                 # mouse_move_handler = MouseMoveHandler(lambda: model.positions.shape[0] > 0, picking_state, model, lambda: fext)
-                pre_draw_handler = PreDrawHandler(lambda: model.positions.shape[0] > 0, args, solver, fext)
+                pre_draw_handler = PreDrawHandler(lambda: model.positions.shape[0] > 0, args, solver, fext, record_info=record_fom_info, record_path= output_path)
 
             if args.is_simulating:
                 pre_draw_handler.set_animating(True)

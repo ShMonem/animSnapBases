@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from igl import edges, boundary_facets, barycenter, winding_number, copyleft
 from igl.copyleft import tetgen
 from numpy.linalg import svd, det, inv
-from scipy.sparse import lil_matrix
+from scipy.sparse import lil_matrix, save_npz
 
 
 from dataclasses import dataclass
@@ -84,7 +84,7 @@ class PositionalConstraint(Constraint):
         self.build_SiT(positions.shape[0])
 
     def build_SiT(self, position_dim):
-        self._selection_matrix = np.zeros((position_dim, 1))
+        self._selection_matrix = lil_matrix((position_dim, 1))
         self._selection_matrix[self.indices[0]] = self.wi
 
     def get_pi(self, q):
@@ -106,7 +106,6 @@ class PositionalConstraint(Constraint):
     # def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
     #     vi = self.indices[0]
     #     rhs[3 * vi : 3 * vi + 3] += self.wi * self.p0.flatten()
-
 
 class VertBendingConstraint(Constraint):
     def __init__(self, v_ind, wi, v_star, voronoi_area, positions, triangles,
@@ -185,7 +184,7 @@ class VertBendingConstraint(Constraint):
         for i, edge in enumerate(self.vertex_star):
             selection_matrix.append((edge.v2, 0, -self.cotan_weights[i]))
 
-        self._selection_matrix = np.zeros((self.init_positions.shape[0], 1))
+        self._selection_matrix = lil_matrix((self.init_positions.shape[0], 1))
         for row, col, value in selection_matrix:
             self._selection_matrix[row, col] = value * self.wi
 
@@ -266,7 +265,6 @@ class VertBendingConstraint(Constraint):
     #     val = self.selection_matrix[self.v_ind]
     #     rhs[3 * self.v_ind: 3 * self.v_ind + 3] += self.wi * val * correction
 
-
 class EdgeLengthConstraint(Constraint):
     def __init__(self, indices, wi, positions):
         super().__init__(indices, wi)
@@ -344,7 +342,6 @@ class EdgeLengthConstraint(Constraint):
     #
     #     rhs[3 * vi:3 * vi + 3] += self.wi * 0.5 * (pi1 - pi2)    # with -w
     #     rhs[3 * vj:3 * vj + 3] += self.wi * 0.5 * (pi2 - pi1)
-
 
 class TriStrainConstraint(Constraint):
     def __init__(self, indices, wi, positions, sigma_min, sigma_max):
@@ -816,8 +813,56 @@ class DeformableMesh:
         n = self.positions.shape[0]
         self.mass = np.ones(n) if masses is None else np.array(masses)
         self.velocities = np.zeros_like(self.positions)
-        self.constraints = []
+
         self.fixed_flags = [False] * n
+
+        # constraints attributes
+        self.constraints = []   # list of all constrained elements each as Constraint class-instance
+        # self.has_verts_positional_constraints = False
+        # self.positional_constraints_assembly_ST = None
+
+        self.has_verts_bending_constraints = False
+        self.verts_bending_constraints = []
+        self.verts_bending_assembly_ST = None
+        self.verts_bending_stacked_p = None
+
+        self.has_edge_spring_constraints = False
+        self.edge_spring_constraints = []
+        self.edges_spring_assembly_ST = None
+
+        self.has_tris_strain_constraints = False
+        self.tris_strain_constraints = []
+        self.tris_strain_assembly_ST = None
+
+        self.has_tets_strain_constraints = False
+        self.tets_strain_constraints = []
+        self.tets_strain_assembly_ST = None
+
+        self.has_tets_deformation_gradient_constraints = False
+        self.tets_deformation_gradient_constraints = []
+        self.tets_deformation_gradient_assembly_ST = None
+
+    def reset_constraints_attributes(self):
+        self.has_verts_bending_constraints = False
+        self.verts_bending_constraints = []
+        self.verts_bending_assembly_ST = None
+
+        self.has_edge_spring_constraints = False
+        self.edge_spring_constraints = []
+        self.edges_spring_assembly_ST = None
+
+        self.has_tris_strain_constraints = False
+        self.tris_strain_constraints = []
+        self.tris_strain_assembly_ST = None
+
+        self.has_tets_strain_constraints = False
+        self.tets_strain_constraints = []
+        self.tets_strain_assembly_ST = None
+
+        self.has_tets_deformation_gradient_constraints = False
+        self.tets_deformation_gradient_constraints = []
+        self.tets_deformation_gradient_assembly_ST = None
+
 
     def get_fixed_indices(self):
         return self.fixed_flags
@@ -1001,7 +1046,13 @@ class DeformableMesh:
 
         return vertex_stars
 
-    def add_vertex_bending_constraint(self, wi=1e6):
+    def add_positional_constraint(self, vi, wi=1e9):
+        c = PositionalConstraint([vi], wi, self.init_positions)
+        self.constraints.append(c)
+
+    def add_vertex_bending_constraint(self, wi=1e6, build_assembly=False):
+
+        self.has_verts_bending_constraints = True
 
         voronoi_area = self.vertex_masses(self.faces, self.positions)
         # compute vertices stars for all verts
@@ -1017,38 +1068,87 @@ class DeformableMesh:
                 continue
 
             c = VertBendingConstraint(v, wi, star, voronoi_area[v], self.positions, self.faces)
+
             self.constraints.append(c)
 
-    def add_positional_constraint(self, vi, wi=1e9):
-        c = PositionalConstraint([vi], wi, self.init_positions)
-        self.constraints.append(c)
+            if build_assembly:
+                self.verts_bending_constraints.append(c)
 
-    def add_edge_lengths_constrain(self, wi=1e6):
+        # not all verts with be constrained, hence after collecting constraints an assembly mat size is known
+        if build_assembly:
+            self.verts_bending_assembly_ST = lil_matrix((self.positions.shape[0], len(self.verts_bending_constraints)))  # (|V|,|verts with stars|)
+            for v, c in enumerate(self.verts_bending_constraints):
+                self.verts_bending_assembly_ST[:,v] = c._selection_matrix   # each (|V|, 1)
+
+        if build_assembly:
+            assert self.verts_bending_assembly_ST.shape[1] == len(self.verts_bending_constraints)
+
+
+    def add_edge_spring_constrain(self, wi=1e6, build_assembly=False):
 
         if not self.elements.shape[0]==0:
             E = edges(self.elements)
         else:
             E = edges(self.faces)
 
+        self.has_edges_spring_constraints = True
+        self.edges_spring_assembly_ST = lil_matrix((self.positions.shape[0], E.shape[0]))  # (|V|,|E|)
+
         for e in E:
             e0, e1 = e[0], e[1]
             c = EdgeLengthConstraint([e0, e1], wi, self.init_positions)
             self.constraints.append(c)
 
-    def add_tri_constrain_strain(self, sigma_min, sigma_max, wi=1e6):
-        for elem in self.faces:
+            if build_assembly:
+                self.edge_spring_constraints.append(c)
+                self.edges_spring_assembly_ST[:,e] = c._selection_matrix  # each (|V|, 1)
+
+        if build_assembly:
+            assert self.edges_spring_assembly_ST.shape[1] == len(self.edge_spring_constraints)
+
+    def add_tri_constrain_strain(self, sigma_min, sigma_max, wi=1e6, build_assembly=False):
+
+        self.has_tris_strain_constraints = True
+        self.tris_strain_assembly_ST = lil_matrix((self.positions.shape[0], 2 * self.faces.shape[0]))  # (|V|,2|F|)
+
+        for e, elem in  enumerate(self.faces):
             c = TriStrainConstraint(elem.tolist(), wi, self.init_positions, sigma_min, sigma_max)
             self.constraints.append(c)
 
-    def add_tet_constrain_deformation_gradient(self, wi=1e6):
-        for elem in self.elements:
+            if build_assembly:
+                self.tris_strain_constraints.append(c)
+                self.tris_strain_assembly_ST[:,2 * e:2 * e+2] = c._selection_matrix  # each (|V|, 1)
+
+        assert self.tris_strain_assembly_ST.shape[1] == 2*len(self.tris_strain_constraints)
+
+    def add_tet_constrain_strain(self, sigma_min, sigma_max, wi=1e6, build_assembly=False):
+        self.has_tets_strain_constraints = True
+        self.tets_strain_assembly_ST = lil_matrix((self.positions.shape[0], 3 * self.elements.shape[0]))  # (|V|,3|T|)
+
+        for e, elem in  enumerate(self.elements):
+            c = TetStrainConstraint(elem.tolist(), wi, self.init_positions, sigma_min, sigma_max)
+            self.constraints.append(c)
+
+            if build_assembly:
+                self.tets_strain_constraints.append(c)
+                self.tets_strain_assembly_ST[:, 3 * e: 3 * e + 3] = c._selection_matrix  # each (|V|, 1)
+
+        assert self.tets_strain_assembly_ST.shape[1] == 3* len(self.tets_strain_constraints)
+
+    def add_tet_constrain_deformation_gradient(self, wi=1e6, build_assembly=False):
+        self.has_tets_deformation_gradient_constraints = True
+        self.tets_deformation_gradient_assembly_ST = lil_matrix((self.positions.shape[0], 3 * self.elements.shape[0]))  # (|V|,3|T|)
+
+        for e, elem in  enumerate(self.elements):
             c = TetDeformationGradientConstraint(elem.tolist(), wi, self.init_positions)
             self.constraints.append(c)
 
-    def add_tet_constrain_strain(self, sigma_min, sigma_max, wi=1e6):
-        for elem in self.elements:
-            c = TetStrainConstraint(elem.tolist(), wi, self.init_positions, sigma_min, sigma_max)
-            self.constraints.append(c)
+            if build_assembly:
+                self.tets_deformation_gradient_constraints.append(c)
+                self.tets_deformation_gradient_assembly_ST[:, 3 * e: 3 * e + 3] = c._selection_matrix  # each (|V|, 1)
+
+        assert self.tets_deformation_gradient_assembly_ST.shape[1] == 3* len(self.tets_deformation_gradient_constraints)
+
 
     def resolve_collision(self, v, pos, pos_correct):
         # Set initial correction equal to the current position

@@ -116,12 +116,14 @@ class MouseMoveHandler:
         return True
 
 class PreDrawHandler:
-    def __init__(self, is_model_ready, args, solver, fext):
+    def __init__(self, is_model_ready, args, solver, fext, record_info=False, record_path=None):
         self.is_model_ready = is_model_ready
         self.physics_params = args
         self.solver = solver
         self.fext = fext
         self._animating = False  # simulate viewer.core().is_animating
+        self.record_info = record_info
+        self.record_path = record_path
 
     def set_animating(self, flag: bool):
         self._animating = flag
@@ -147,7 +149,7 @@ class PreDrawHandler:
             self.fext[:, 1] -= gravity * self.physics_params.mass_per_particle
 
             if not self.solver.ready():
-                self.solver.prepare(self.physics_params.dt)
+                self.solver.prepare(self.physics_params, store_fom_info=self.record_info, record_path=self.record_path)
 
             self.solver.step(self.fext, self.physics_params.solver_iterations)
 

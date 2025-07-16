@@ -40,3 +40,4 @@ media/
 /data/simple_bar.obj
 projective_dynamics/.polyscope.ini
 projective_dynamics/imgui.ini
+projective_dynamics/output/

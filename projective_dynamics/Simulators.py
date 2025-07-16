@@ -4,6 +4,8 @@ import numpy as np
 import scipy.sparse
 import scipy.sparse.linalg
 from scipy.sparse import lil_matrix
+from utils import check_dir_exists
+import os
 
 def flatten(p: np.ndarray) -> np.ndarray:
     """
@@ -38,13 +40,46 @@ class Solver:
     def ready(self):
         return not self.dirty
 
-    def prepare(self, dt):
-        self.dt = dt
+    def prepare(self, args, store_fom_info=False, record_path=None):
+
+        def store_assembly_matrices():
+            """store a .npz contains assembly matrices for all used constraint types"""
+            assert record_path is not None
+            check_dir_exists(record_path)
+
+            matrices = {}
+            file_name = "assembly_ST"
+            if self.model.has_verts_bending_constraints :
+                matrices["verts_bending" ] = self.model.verts_bending_assembly_ST
+                # file_name = file_name + "verts_bending_"
+
+            if self.model.has_edge_spring_constraints :
+                matrices["edge_spring" ] = self.model.edge_spring_assembly_ST
+                # file_name = file_name + "edge_spring_"
+
+            if self.model.has_tris_strain_constraints :
+                matrices["tris_strain" ] = self.model.tris_strain_assembly_ST
+                # file_name = file_name + "tris_strain_"
+
+            if self.model.has_tets_strain_constraints:
+                matrices["tets_strain"] = self.model.tets_strain_assembly_ST
+                # file_name = file_name + "tets_strain_"
+
+            if self.model.has_tets_deformation_gradient_constraints :
+                matrices["tets_deformation_gradient" ] = self.model.tets_deformation_gradient_assembly_ST
+                # file_name = file_name + "tets_deformation_gradient_"
+
+            np.savez(os.path.join(record_path , file_name+".npz") , **matrices)
+
+        if store_fom_info:
+            store_assembly_matrices()
+
+        self.dt = args.dt
 
         mass = self.model.mass
         N = self.model.positions.shape[0]
 
-        dt2_inv = 1.0 / (dt * dt)
+        dt2_inv = 1.0 / (self.dt * self.dt)
         A_triplets = []
 
         for constraint in self.model.constraints:
@@ -58,21 +93,8 @@ class Solver:
         rows, cols, data = zip(*A_triplets)
         A = scipy.sparse.csc_matrix((data, (rows, cols)), shape=(3 * N, 3 * N))
 
-        # A = lil_matrix((3 * N, 3 * N))
-        #
-        # # Accumulate all constraints
-        # for constraint in self.model.constraints:
-        #     A += constraint.get_wi_SiT_AiT_Ai_Si_sparse(total_dof=3 * N)
-        #
-        # # Add mass matrix diagonal terms
-        # for i in range(N):
-        #     A[3 * i + 0, 3 * i + 0] += mass[i] * dt2_inv
-        #     A[3 * i + 1, 3 * i + 1] += mass[i] * dt2_inv
-        #     A[3 * i + 2, 3 * i + 2] += mass[i] * dt2_inv
-        #
-        # # Optionally convert to CSR for solving
-        # A = A.tocsc()
         self.cholesky = scipy.sparse.linalg.factorized(A)
+
         self.set_clean()
 
     def step(self, fext, num_iterations=10):

@@ -828,19 +828,23 @@ class DeformableMesh:
 
         self.has_edge_spring_constraints = False
         self.edge_spring_constraints = []
-        self.edges_spring_assembly_ST = None
+        self.edge_spring_assembly_ST = None
+        self.edge_spring_stacked_p  = None
 
         self.has_tris_strain_constraints = False
         self.tris_strain_constraints = []
         self.tris_strain_assembly_ST = None
+        self.tris_strain_stacked_p = None
 
         self.has_tets_strain_constraints = False
         self.tets_strain_constraints = []
         self.tets_strain_assembly_ST = None
+        self.tets_strain_stacked_p = None
 
         self.has_tets_deformation_gradient_constraints = False
         self.tets_deformation_gradient_constraints = []
         self.tets_deformation_gradient_assembly_ST = None
+        self.tets_deformation_gradient_stacked_p = None
 
     def reset_constraints_attributes(self):
         self.has_verts_bending_constraints = False
@@ -849,7 +853,7 @@ class DeformableMesh:
 
         self.has_edge_spring_constraints = False
         self.edge_spring_constraints = []
-        self.edges_spring_assembly_ST = None
+        self.edge_spring_assembly_ST = None
 
         self.has_tris_strain_constraints = False
         self.tris_strain_constraints = []
@@ -1091,8 +1095,8 @@ class DeformableMesh:
         else:
             E = edges(self.faces)
 
-        self.has_edges_spring_constraints = True
-        self.edges_spring_assembly_ST = lil_matrix((self.positions.shape[0], E.shape[0]))  # (|V|,|E|)
+        self.has_edge_spring_constraints = True
+        self.edge_spring_assembly_ST = lil_matrix((self.positions.shape[0], E.shape[0]))  # (|V|,|E|)
 
         for e in E:
             e0, e1 = e[0], e[1]
@@ -1101,10 +1105,10 @@ class DeformableMesh:
 
             if build_assembly:
                 self.edge_spring_constraints.append(c)
-                self.edges_spring_assembly_ST[:,e] = c._selection_matrix  # each (|V|, 1)
+                self.edge_spring_assembly_ST[:,e] = c._selection_matrix  # each (|V|, 1)
 
         if build_assembly:
-            assert self.edges_spring_assembly_ST.shape[1] == len(self.edge_spring_constraints)
+            assert self.edge_spring_assembly_ST.shape[1] == len(self.edge_spring_constraints)
 
     def add_tri_constrain_strain(self, sigma_min, sigma_max, wi=1e6, build_assembly=False):
 

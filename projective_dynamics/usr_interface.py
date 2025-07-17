@@ -151,7 +151,8 @@ class PreDrawHandler:
             if not self.solver.ready():
                 self.solver.prepare(self.physics_params, store_fom_info=self.record_info, record_path=self.record_path)
 
-            self.solver.step(self.fext, self.physics_params.solver_iterations)
+            self.solver.step(self.fext, self.physics_params.solver_iterations,
+                             store_stacked_projections=self.record_info, record_path=self.record_path)
 
             # Reset fext and update mesh
             self.fext[:] = 0.0

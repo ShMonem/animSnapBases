@@ -276,7 +276,7 @@ class EdgeLengthConstraint(Constraint):
         self.build_SiT(positions.shape[0])
 
     def build_SiT(self, position_dim):
-        self._selection_matrix = np.zeros((position_dim, 1))
+        self._selection_matrix = lil_matrix((position_dim, 1))
 
         self._selection_matrix[self.indices[0]] = - self.wi
         self._selection_matrix[self.indices[1]] =  self.wi
@@ -394,7 +394,7 @@ class TriStrainConstraint(Constraint):
             self._selection_matrix[v3, j] = G[j, 2]
 
 
-        self._selection_matrix = self._selection_matrix.tocsr() * self.wi * abs(self.A0) # Store for reuse
+        self._selection_matrix = self._selection_matrix * self.wi * abs(self.A0) # Store for reuse
 
     def get_pi(self, q):
         """
@@ -519,7 +519,7 @@ class TetStrainConstraint(Constraint):
             self._selection_matrix[v4, j] = G[j, 3]
 
         # self.wi * abs(self.V0) # stiffness of the constraint, resists extreme stretch/
-        self._selection_matrix = self._selection_matrix.tocsr() * self.wi * abs(self.V0)
+        self._selection_matrix = self._selection_matrix * self.wi * abs(self.V0)
 
     def get_pi(self, q):
         """
@@ -653,7 +653,7 @@ class TetDeformationGradientConstraint(Constraint):
             self._selection_matrix[v4, j] = G[j, 3]
 
         # self.wi * abs(self.V0) # stiffness of the constraint, resists extreme stretch/
-        self._selection_matrix = self._selection_matrix.tocsr() * self.wi * abs(self.V0)
+        self._selection_matrix = self._selection_matrix * self.wi * abs(self.V0)
 
     def get_pi(self, q):
         """
@@ -1098,8 +1098,8 @@ class DeformableMesh:
         self.has_edge_spring_constraints = True
         self.edge_spring_assembly_ST = lil_matrix((self.positions.shape[0], E.shape[0]))  # (|V|,|E|)
 
-        for e in E:
-            e0, e1 = e[0], e[1]
+        for e, elem in enumerate(E):
+            e0, e1 = elem[0], elem[1]
             c = EdgeLengthConstraint([e0, e1], wi, self.init_positions)
             self.constraints.append(c)
 
@@ -1121,7 +1121,7 @@ class DeformableMesh:
 
             if build_assembly:
                 self.tris_strain_constraints.append(c)
-                self.tris_strain_assembly_ST[:,2 * e:2 * e+2] = c._selection_matrix  # each (|V|, 1)
+                self.tris_strain_assembly_ST[:,2 * e:2 * e+2] = c._selection_matrix  # each (|V|, 2)
 
         assert self.tris_strain_assembly_ST.shape[1] == 2*len(self.tris_strain_constraints)
 

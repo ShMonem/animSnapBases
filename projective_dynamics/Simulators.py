@@ -26,6 +26,7 @@ class Solver:
         self.A = None
         self.cholesky = None
         self.dt = None
+        self.frame = 0
 
     def set_model(self, model):
         self.model = model
@@ -97,7 +98,7 @@ class Solver:
 
         self.set_clean()
 
-    def step(self, fext, num_iterations=10):
+    def step(self, fext, num_iterations=10, store_stacked_projections=False, record_path=None):
         velocities = self.model.velocities
         mass = self.model.mass
         constraints = self.model.constraints
@@ -123,6 +124,50 @@ class Solver:
 
         q = sn.copy()
 
+        if store_stacked_projections:
+            if self.model.has_verts_bending_constraints:
+                assert self.model.verts_bending_assembly_ST is not None
+                self.model.verts_bending_stacked_p = np.zeros((self.model.verts_bending_assembly_ST.shape[1], 3))
+
+                for i, c in enumerate(self.model.verts_bending_constraints):
+                    self.model.verts_bending_stacked_p[i,:] = c.get_pi(q)
+
+                np.savez(os.path.join(record_path ,"verts_bending_p_"+str(self.frame)+".npz") , self.model.verts_bending_stacked_p)
+
+            if self.model.has_edge_spring_constraints :
+                assert self.model.edge_spring_assembly_ST is not None
+                self.model.edge_spring_stacked_p = np.zeros((self.model.edge_spring_assembly_ST.shape[1], 3))
+                for i, c in enumerate(self.model.edge_spring_constraints):
+                    self.model.edge_spring_stacked_p[i, :] = c.get_pi(q)
+
+                np.savez(os.path.join(record_path ,"edge_spring_p_"+str(self.frame)+".npz") , self.model.edge_spring_stacked_p)
+
+            if self.model.has_tris_strain_constraints :
+                assert self.model.tris_strain_assembly_ST is not None
+                self.model.tris_strain_stacked_p = np.zeros((self.model.tris_strain_assembly_ST.shape[1], 3))
+                for i, c in enumerate(self.model.tris_strain_constraints):
+                    self.model.tris_strain_stacked_p[i, :] = c.get_pi(q)
+
+                np.savez(os.path.join(record_path ,"tris_strain_p_"+str(self.frame)+".npz") , self.model.tris_strain_stacked_p)
+
+            if self.model.has_tets_strain_constraints:
+                assert self.model.tets_strain_assembly_ST is not None
+                self.model.tets_strain_stacked_p = np.zeros((self.model.tets_strain_assembly_ST.shape[1], 3))
+                for i, c in enumerate(self.model.tets_strain_constraints):
+                    self.model.tets_strain_stacked_p[i, :] = c.get_pi(q)
+
+                np.savez(os.path.join(record_path ,"tets_strain_p_"+str(self.frame)+".npz") , self.model.tets_strain_stacked_p)
+
+            if self.model.has_tets_deformation_gradient_constraints :
+                assert self.model.tets_deformation_gradient_assembly_ST is not None
+                self.model.tets_deformation_gradient_stacked_p = np.zeros((self.model.tets_deformation_gradient_assembly_ST.shape[1], 3))
+                for i, c in enumerate(self.model.tets_deformation_gradient_constraints):
+                    self.model.tets_deformation_gradient_stacked_p[i, :] = c.get_pi(q)
+
+                np.savez(os.path.join(record_path ,"tet_deformation_gradient_p_"+str(self.frame)+".npz") , self.model.tets_deformation_gradient_stacked_p)
+
+
+
         for _ in range(num_iterations):
             #
             # # Triplets version:
@@ -142,3 +187,5 @@ class Solver:
         q_next = unflatten(q)
         self.model.velocities = (q_next - self.model.positions) * dt_inv
         self.model.positions = q_next
+        print(self.frame)
+        self.frame +=1

@@ -65,7 +65,7 @@ def main():
 
     args = parser.parse_args()
 
-    record_fom_info = True
+    record_fom_info = False
     global output_path
     output_path = "output"
     object_name = ""
@@ -179,7 +179,7 @@ def main():
                             specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi)
 
                         if model.has_edge_spring_constraints:
-                            specify_path = specify_path + "edge_spring_wi" + str(args.edge_spring_constraint_wi)
+                            specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi)
 
                         if model.has_tris_strain_constraints:
                             specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi)

@@ -66,6 +66,7 @@ def main():
     args = parser.parse_args()
 
     record_fom_info = False
+    use_3d_rhs = True
     global output_path
     output_path = "output"
     object_name = ""
@@ -152,24 +153,24 @@ def main():
                         args._fix_right_triggered = False
 
                     if args.vert_bending_constraint:
-                        model.add_vertex_bending_constraint(args.vert_bending_constraint_wi, build_assembly=record_fom_info)
+                        model.add_vertex_bending_constraint(args.vert_bending_constraint_wi, build_assembly=use_3d_rhs)
                     if args.edge_constraint:
-                        model.add_edge_spring_constrain(args.edge_constraint_wi, build_assembly=record_fom_info)
+                        model.add_edge_spring_constrain(args.edge_constraint_wi, build_assembly=use_3d_rhs)
 
                     if args.tri_strain_constraint:
                         model.add_tri_constrain_strain(
                             args.sigma_min,
                             args.sigma_max,
-                            args.strain_limit_constraint_wi, build_assembly=record_fom_info)
+                            args.strain_limit_constraint_wi, build_assembly=use_3d_rhs)
 
                     if args.tet_deformation_constraint:
                         model.add_tet_constrain_deformation_gradient(args.deformation_gradient_constraint_wi,
-                                                                     build_assembly=record_fom_info)
+                                                                     build_assembly=use_3d_rhs)
                     if args.tet_strain_constraint:
                         model.add_tet_constrain_strain(
                             args.sigma_min,
                             args.sigma_max,
-                            args.strain_limit_constraint_wi, build_assembly=record_fom_info)
+                            args.strain_limit_constraint_wi, build_assembly=use_3d_rhs)
 
                     # if recording snapshots build output file name/ path
                     if record_fom_info:

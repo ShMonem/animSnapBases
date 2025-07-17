@@ -52,23 +52,18 @@ class Solver:
             file_name = "assembly_ST"
             if self.model.has_verts_bending_constraints :
                 matrices["verts_bending" ] = self.model.verts_bending_assembly_ST
-                # file_name = file_name + "verts_bending_"
 
             if self.model.has_edge_spring_constraints :
                 matrices["edge_spring" ] = self.model.edge_spring_assembly_ST
-                # file_name = file_name + "edge_spring_"
 
             if self.model.has_tris_strain_constraints :
                 matrices["tris_strain" ] = self.model.tris_strain_assembly_ST
-                # file_name = file_name + "tris_strain_"
 
             if self.model.has_tets_strain_constraints:
                 matrices["tets_strain"] = self.model.tets_strain_assembly_ST
-                # file_name = file_name + "tets_strain_"
 
             if self.model.has_tets_deformation_gradient_constraints :
                 matrices["tets_deformation_gradient" ] = self.model.tets_deformation_gradient_assembly_ST
-                # file_name = file_name + "tets_deformation_gradient_"
 
             np.savez(os.path.join(record_path , file_name+".npz") , **matrices)
 
@@ -98,7 +93,8 @@ class Solver:
 
         self.set_clean()
 
-    def step(self, fext, num_iterations=10, store_stacked_projections=False, record_path=None):
+
+    def step(self, fext, num_iterations=10, use_3d_rhs_form=True, store_stacked_projections=False, record_path=None):
         velocities = self.model.velocities
         mass = self.model.mass
         constraints = self.model.constraints
@@ -124,62 +120,68 @@ class Solver:
 
         q = sn.copy()
 
-        if store_stacked_projections:
+        def get_sum_ST_p(q_t, rhs):
             if self.model.has_verts_bending_constraints:
                 assert self.model.verts_bending_assembly_ST is not None
                 self.model.verts_bending_stacked_p = np.zeros((self.model.verts_bending_assembly_ST.shape[1], 3))
 
                 for i, c in enumerate(self.model.verts_bending_constraints):
-                    self.model.verts_bending_stacked_p[i,:] = c.get_pi(q)
-
-                np.savez(os.path.join(record_path ,"verts_bending_p_"+str(self.frame)+".npz") , self.model.verts_bending_stacked_p)
+                    self.model.verts_bending_stacked_p[i,:] = c.get_pi(q_t)
+                if store_stacked_projections:
+                    np.savez(os.path.join(record_path ,"verts_bending_p_"+str(self.frame)+".npz") , self.model.verts_bending_stacked_p)
+                # update constraints projection term
+                rhs += self.model.verts_bending_assembly_ST @ self.model.verts_bending_stacked_p
 
             if self.model.has_edge_spring_constraints :
                 assert self.model.edge_spring_assembly_ST is not None
                 self.model.edge_spring_stacked_p = np.zeros((self.model.edge_spring_assembly_ST.shape[1], 3))
                 for i, c in enumerate(self.model.edge_spring_constraints):
-                    self.model.edge_spring_stacked_p[i, :] = c.get_pi(q)
-
-                np.savez(os.path.join(record_path ,"edge_spring_p_"+str(self.frame)+".npz") , self.model.edge_spring_stacked_p)
+                    self.model.edge_spring_stacked_p[i, :] = c.get_pi(q_t)
+                if store_stacked_projections:
+                    np.savez(os.path.join(record_path ,"edge_spring_p_"+str(self.frame)+".npz") , self.model.edge_spring_stacked_p)
+                # update constraints projection term
+                rhs += self.model.edge_spring_assembly_ST @ self.model.edge_spring_stacked_p
 
             if self.model.has_tris_strain_constraints :
                 assert self.model.tris_strain_assembly_ST is not None
                 self.model.tris_strain_stacked_p = np.zeros((self.model.tris_strain_assembly_ST.shape[1], 3))
                 for i, c in enumerate(self.model.tris_strain_constraints):
-                    self.model.tris_strain_stacked_p[i, :] = c.get_pi(q)
-
-                np.savez(os.path.join(record_path ,"tris_strain_p_"+str(self.frame)+".npz") , self.model.tris_strain_stacked_p)
+                    self.model.tris_strain_stacked_p[2*i:2*i+2, :] = c.get_pi(q_t)
+                if store_stacked_projections:
+                    np.savez(os.path.join(record_path ,"tris_strain_p_"+str(self.frame)+".npz") , self.model.tris_strain_stacked_p)
+                # update constraints projection term
+                rhs += self.model.tris_strain_assembly_ST @ self.model.tris_strain_stacked_p
 
             if self.model.has_tets_strain_constraints:
                 assert self.model.tets_strain_assembly_ST is not None
                 self.model.tets_strain_stacked_p = np.zeros((self.model.tets_strain_assembly_ST.shape[1], 3))
                 for i, c in enumerate(self.model.tets_strain_constraints):
-                    self.model.tets_strain_stacked_p[i, :] = c.get_pi(q)
-
-                np.savez(os.path.join(record_path ,"tets_strain_p_"+str(self.frame)+".npz") , self.model.tets_strain_stacked_p)
+                    self.model.tets_strain_stacked_p[3*i:3*i+3, :] = c.get_pi(q_t)
+                if store_stacked_projections:
+                    np.savez(os.path.join(record_path ,"tets_strain_p_"+str(self.frame)+".npz") , self.model.tets_strain_stacked_p)
+                # update constraints projection term
+                rhs += self.model.tets_strain_assembly_ST @ self.model.tets_strain_stacked_p
 
             if self.model.has_tets_deformation_gradient_constraints :
                 assert self.model.tets_deformation_gradient_assembly_ST is not None
                 self.model.tets_deformation_gradient_stacked_p = np.zeros((self.model.tets_deformation_gradient_assembly_ST.shape[1], 3))
                 for i, c in enumerate(self.model.tets_deformation_gradient_constraints):
-                    self.model.tets_deformation_gradient_stacked_p[i, :] = c.get_pi(q)
-
-                np.savez(os.path.join(record_path ,"tet_deformation_gradient_p_"+str(self.frame)+".npz") , self.model.tets_deformation_gradient_stacked_p)
-
-
+                    self.model.tets_deformation_gradient_stacked_p[3*i:3*i+3, :] = c.get_pi(q_t)
+                if store_stacked_projections:
+                    np.savez(os.path.join(record_path ,"tet_deformation_gradient_p_"+str(self.frame)+".npz") , self.model.tets_deformation_gradient_stacked_p)
+                # update constraints projection term
+                rhs += self.model.tets_deformation_gradient_assembly_ST @ self.model.tets_deformation_gradient_stacked_p
 
         for _ in range(num_iterations):
-            #
-            # # Triplets version:
-            # b = np.zeros(3 * N)
-            # for constraint in constraints:
-            #     constraint.project_wi_SiT_AiT_Bi_pi(q, b)
-            # b += masses
 
-            #3d
+
             b = np.zeros((N, 3))
-            for constraint in constraints:
-                constraint.project_wi_SiT_pi(q, b)
+
+            if use_3d_rhs_form:
+                get_sum_ST_p(q, b)  # much faster and more efficient
+            else:
+                for constraint in constraints:
+                    constraint.project_wi_SiT_pi(q, b)
             b += unflatten(masses)
 
             q = self.cholesky(b.flatten())

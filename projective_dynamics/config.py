@@ -75,6 +75,15 @@ def add_physics_args(parser):
     parser.add_argument("--_fix_left_triggered", type=bool, default=physics["_fix_left_triggered"])
     parser.add_argument("--_fix_right_triggered", type=bool, default=physics["_fix_right_triggered"])
 
+    parser.add_argument("--fix_left_corners", type=bool, default=False)
+    parser.add_argument("--fix_right_corners", type=bool, default=False)
+    parser.add_argument("--_fix_left_corners_triggered", type=bool, default=False)
+    parser.add_argument("--_fix_right_corners_triggered", type=bool, default=False)
+
+    parser.add_argument("--fix_top_corners", type=bool, default=False)
+    parser.add_argument("--fix_bottom_corners", type=bool, default=False)
+    parser.add_argument("--_fix_top_corners_triggered", type=bool, default=False)
+    parser.add_argument("--_fix_bottom_corners_triggered", type=bool, default=False)
 
 
         

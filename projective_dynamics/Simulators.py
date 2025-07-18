@@ -50,6 +50,9 @@ class Solver:
 
             matrices = {}
             file_name = "assembly_ST"
+            if self.model.has_positional_constraints :
+                matrices["positional" ] = self.model.positional_assembly_ST
+
             if self.model.has_verts_bending_constraints :
                 matrices["verts_bending" ] = self.model.verts_bending_assembly_ST
 
@@ -121,6 +124,17 @@ class Solver:
         q = sn.copy()
 
         def get_sum_ST_p(q_t, rhs):
+            if self.model.has_positional_constraints:
+                assert self.model.positional_assembly_ST is not None
+                self.model.positional_stacked_p = np.zeros((self.model.positional_assembly_ST.shape[1], 3))
+
+                for i, c in enumerate(self.model.positional_constraints):
+                    self.model.positional_stacked_p[i,:] = c.get_pi(q_t)
+                if store_stacked_projections:
+                    np.savez(os.path.join(record_path ,"positional_p_"+str(self.frame)+".npz") , self.model.positional_stacked_p)
+                # update constraints projection term
+                rhs += self.model.positional_assembly_ST @ self.model.positional_stacked_p
+
             if self.model.has_verts_bending_constraints:
                 assert self.model.verts_bending_assembly_ST is not None
                 self.model.verts_bending_stacked_p = np.zeros((self.model.verts_bending_assembly_ST.shape[1], 3))
@@ -173,8 +187,6 @@ class Solver:
                 rhs += self.model.tets_deformation_gradient_assembly_ST @ self.model.tets_deformation_gradient_stacked_p
 
         for _ in range(num_iterations):
-
-
             b = np.zeros((N, 3))
 
             if use_3d_rhs_form:

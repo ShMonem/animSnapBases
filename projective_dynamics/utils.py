@@ -36,3 +36,35 @@ def fast_dense_plus_sparse_times_dense(a, A, b, d, weight):
         for idx in range(row_start, row_end):
             j = A.indices[idx]
             a[i, d] += A.data[idx] * col_d[j] * weight
+
+
+
+
+def delete_matching_column(matrix_lil, target_col_vector):
+    """
+    Deletes the first column from matrix_lil that matches target_col_vector.
+    If the only matching column is the last column, return None.
+    """
+    matrix = matrix_lil.tocsc()
+    target_col = target_col_vector.tocsr()
+
+    cols_to_keep = []
+    matched_indices = []
+
+    for col in range(matrix.shape[1]):
+        col_vector = matrix[:, col].tocsr()
+        if (col_vector != target_col).nnz == 0:
+            matched_indices.append(col)
+        else:
+            cols_to_keep.append(col)
+
+    if not matched_indices:
+        # No match found, return original
+        return matrix_lil
+
+    if matched_indices == [matrix.shape[1] - 1] and len(cols_to_keep) == matrix.shape[1] - 1:
+        # The only match is the last column
+        return None
+
+    matrix_new = matrix[:, cols_to_keep].tolil()
+    return matrix_new

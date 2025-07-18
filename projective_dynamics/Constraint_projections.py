@@ -8,7 +8,7 @@ from igl.copyleft import tetgen
 from numpy.linalg import svd, det, inv
 from scipy.sparse import lil_matrix, save_npz
 
-
+from utils import delete_matching_column
 from dataclasses import dataclass
 
 # Helper container for an edge and its triangles
@@ -77,11 +77,13 @@ class Constraint(ABC):
 class PositionalConstraint(Constraint):
     def __init__(self, indices, wi, positions):
         super().__init__(indices, wi)
+        self.name = "positional"
         assert len(indices) == 1
         vi = indices[0]
         self.p0 = positions[vi].reshape(3, 1)  # Column vector
         # build differential operator SiT
         self.build_SiT(positions.shape[0])
+        
 
     def build_SiT(self, position_dim):
         self._selection_matrix = lil_matrix((position_dim, 1))
@@ -103,15 +105,12 @@ class PositionalConstraint(Constraint):
         ]
         return triplets
 
-    # def project_wi_SiT_AiT_Bi_pi(self, q, rhs):
-    #     vi = self.indices[0]
-    #     rhs[3 * vi : 3 * vi + 3] += self.wi * self.p0.flatten()
 
 class VertBendingConstraint(Constraint):
     def __init__(self, v_ind, wi, v_star, voronoi_area, positions, triangles,
                  prevent_bending_flips=True, flat_bending=False):
         super().__init__([v_ind], wi * voronoi_area)
-
+        self.name = "verts_bending"
         self.v_ind = v_ind
         self.prevent_bending_flips = prevent_bending_flips
         self.flat_bending = flat_bending
@@ -265,9 +264,10 @@ class VertBendingConstraint(Constraint):
     #     val = self.selection_matrix[self.v_ind]
     #     rhs[3 * self.v_ind: 3 * self.v_ind + 3] += self.wi * val * correction
 
-class EdgeLengthConstraint(Constraint):
+class EdgeSpringConstraint(Constraint):
     def __init__(self, indices, wi, positions):
         super().__init__(indices, wi)
+        self.name = "edge_spring"
         assert len(indices) == 2
         v0, v1 = indices[0], indices[1]
         self.d = np.linalg.norm(positions[v0] - positions[v1])
@@ -347,6 +347,7 @@ class TriStrainConstraint(Constraint):
     def __init__(self, indices, wi, positions, sigma_min, sigma_max):
         super().__init__(indices, wi)
         assert len(indices) == 3
+        self.name = "tris_strain"
 
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
@@ -478,6 +479,8 @@ class TetStrainConstraint(Constraint):
     def __init__(self, indices, wi, positions, sigma_min, sigma_max):
         super().__init__(indices, wi)
         assert len(indices) == 4
+        self.name = "tets_strain"
+
         # self.indices =  list(indices)
         # self.wi = wi
         self.sigma_min = sigma_min
@@ -620,6 +623,7 @@ class TetDeformationGradientConstraint(Constraint):
     def __init__(self, indices, wi, positions):
         super().__init__(indices, wi)
         assert len(indices) == 4
+        self.name = "tets_deformation_gradient"
 
         v1, v2, v3, v4 = indices
         p1, p2, p3, p4 = positions[v1], positions[v2], positions[v3], positions[v4]
@@ -799,7 +803,7 @@ class DeformableMesh:
 
         self.floor_height = 0
         self.foolr_collision = True
-        self.init_hight_shift = 1
+        self.init_hight_shift = 3
 
         self.init_positions = np.array(positions)  # rest positions
         if self.foolr_collision:
@@ -812,14 +816,20 @@ class DeformableMesh:
 
         n = self.positions.shape[0]
         self.mass = np.ones(n) if masses is None else np.array(masses)
+        self.mass_init = self.mass
         self.velocities = np.zeros_like(self.positions)
 
         self.fixed_flags = [False] * n
 
         # constraints attributes
         self.constraints = []   # list of all constrained elements each as Constraint class-instance
-        # self.has_verts_positional_constraints = False
-        # self.positional_constraints_assembly_ST = None
+        
+        # self.build_assembly = build_assembly
+
+        self.has_positional_constraints = False
+        self.positional_constraints = []
+        self.positional_assembly_ST = None
+        self.positional_stacked_p = None
 
         self.has_verts_bending_constraints = False
         self.verts_bending_constraints = []
@@ -847,26 +857,95 @@ class DeformableMesh:
         self.tets_deformation_gradient_stacked_p = None
 
     def reset_constraints_attributes(self):
+        self.constraints = []  # list of all constrained elements each as Constraint class-instance
+        # self.has_verts_positional_constraints = False
+        # self.positional_constraints_assembly_ST = None
+
+        self.has_positional_constraints = False
+        self.positional_constraints = []
+        self.positional_assembly_ST = None
+        self.positional_stacked_p = None
+
         self.has_verts_bending_constraints = False
         self.verts_bending_constraints = []
         self.verts_bending_assembly_ST = None
+        self.verts_bending_stacked_p = None
 
         self.has_edge_spring_constraints = False
         self.edge_spring_constraints = []
         self.edge_spring_assembly_ST = None
+        self.edge_spring_stacked_p = None
 
         self.has_tris_strain_constraints = False
         self.tris_strain_constraints = []
         self.tris_strain_assembly_ST = None
+        self.tris_strain_stacked_p = None
 
         self.has_tets_strain_constraints = False
         self.tets_strain_constraints = []
         self.tets_strain_assembly_ST = None
+        self.tets_strain_stacked_p = None
 
         self.has_tets_deformation_gradient_constraints = False
         self.tets_deformation_gradient_constraints = []
         self.tets_deformation_gradient_assembly_ST = None
+        self.tets_deformation_gradient_stacked_p = None
 
+    def compute_cloth_corner_indices(self, threshold_ratio=0.1):
+        """
+        Compute and cache the vertex indices of corners and side surfaces for each cloth side.
+        """
+        if self.positions is None:
+            return
+
+        if not hasattr(self, "_cloth_corner_indices"):
+            self._cloth_corner_indices = {}
+
+        positions = self.positions[:, :2] if self.positions.shape[1] == 3 else self.positions
+        x = positions[:, 0]
+        y = positions[:, 1]
+
+        min_x, max_x = x.min(), x.max()
+        min_y, max_y = y.min(), y.max()
+        width = max_x - min_x
+        height = max_y - min_y
+
+        x_thresh = threshold_ratio * width
+        y_thresh = threshold_ratio * height
+
+        # Save corner indices
+        for side in ["left", "right", "top", "bottom"]:
+            if side in ["left", "right"]:
+                is_side = x <= min_x + 1e-6 if side == "left" else x >= max_x - 1e-6
+                bottom = y <= min_y + y_thresh
+                top = y >= max_y - y_thresh
+            else:  # top or bottom
+                is_side = y <= min_y + 1e-6 if side == "bottom" else y >= max_y - 1e-6
+                left = x <= min_x + x_thresh
+                right = x >= max_x - x_thresh
+
+            candidates = np.where(is_side)[0]
+
+            if side in ["left", "right"]:
+                indices = np.unique(np.concatenate([
+                    candidates[bottom[candidates]],
+                    candidates[top[candidates]]
+                ]))
+            else:
+                indices = np.unique(np.concatenate([
+                    candidates[left[candidates]],
+                    candidates[right[candidates]]
+                ]))
+
+            self._cloth_corner_indices[side] = indices
+
+        # Save full left/right surface vertices (not just corners)
+        if self.faces is not None:
+            surface_verts = np.unique(self.faces.flatten())
+            left_mask = x <= min_x + x_thresh
+            right_mask = x >= max_x - x_thresh
+            self._left_surface_verts = np.intersect1d(np.where(left_mask)[0], surface_verts)
+            self._right_surface_verts = np.intersect1d(np.where(right_mask)[0], surface_verts)
 
     def get_fixed_indices(self):
         return self.fixed_flags
@@ -881,9 +960,9 @@ class DeformableMesh:
         self.fixed_flags[i] = True
         self.mass[i] = 1e10
 
-    def unfix(self, i, mass):
+    def unfix(self, i):
         self.fixed_flags[i] = False
-        self.mass[i] = mass
+        self.mass[i] = self.mass_init[i]
 
     def toggle_fixed(self, i, mass_when_unfixed=1.0):
         self.fixed_flags[i] = not self.fixed_flags[i]
@@ -908,30 +987,62 @@ class DeformableMesh:
         for i in range(V.shape[0]):
             if (side == "left" and V[i, axis] < threshold) or (side == "right" and V[i, axis] > threshold):
                 self.fix(i)
-                self.add_positional_constraint(i, args.positional_constraint_wi)
+                #self.add_positional_constraint(i, args.positional_constraint_wi)
 
-    def fix_surface_side_vertices(self, args, side="left"):
+    def fix_surface_side_vertices(self, side="left"):
         if self.positions is None or self.faces is None:
             return
 
-        coords = self.positions[:, 0]  # x-coordinates
-        min_x, max_x = coords.min(), coords.max()
-        threshold = (max_x - min_x) * 0.1
+        if not hasattr(self, "_left_surface_verts") or not hasattr(self, "_right_surface_verts"):
+            self.compute_cloth_corner_indices()
 
         if side == "left":
-            target_indices = np.where(coords <= min_x + threshold)[0]
+            surface_targets = self._left_surface_verts
         elif side == "right":
-            target_indices = np.where(coords >= max_x - threshold)[0]
+            surface_targets = self._right_surface_verts
         else:
             return
 
-        surface_verts = np.unique(self.faces.flatten())
-        surface_targets = np.intersect1d(target_indices, surface_verts)
-
         for vi in surface_targets:
-            # self.fixed_flags[vi] = True
             self.fix(vi)
-            self.add_positional_constraint(vi, args.positional_constraint_wi)
+
+    def release_surface_side_vertices(self, side="left"):
+
+        if not hasattr(self, "_left_surface_verts") or not hasattr(self, "_right_surface_verts"):
+            print("[Warning] Surface side vertices not cached. Run compute_cloth_corner_indices() first.")
+            return
+
+        if side == "left":
+            verts = getattr(self, "_left_surface_verts", None)
+        elif side == "right":
+            verts = getattr(self, "_right_surface_verts", None)
+        else:
+            raise ValueError("Side must be either 'left' or 'right'.")
+
+        if verts is None:
+            print(f"[Warning] No cached vertices for side: {side}")
+            return
+
+        for vi in verts:
+            self.unfix(vi)
+
+
+    def fix_cloth_corners(self, side="left", threshold_ratio=0.1):
+        if not hasattr(self, "_cloth_corner_indices") or side not in self._cloth_corner_indices:
+            self.compute_cloth_corner_indices(threshold_ratio)
+
+        indices = self._cloth_corner_indices.get(side, [])
+        for vi in indices:
+            self.fix(vi)
+
+
+    def release_cloth_corners(self, side="left", threshold_ratio=0.1):
+        if not hasattr(self, "_cloth_corner_indices") or side not in self._cloth_corner_indices:
+            self.compute_cloth_corner_indices(threshold_ratio)
+
+        indices = self._cloth_corner_indices.get(side, [])
+        for vi in indices:
+            self.unfix(vi)
 
     def immobilize(self):
         self.velocities[:] = 0
@@ -1051,10 +1162,38 @@ class DeformableMesh:
         return vertex_stars
 
     def add_positional_constraint(self, vi, wi=1e9):
-        c = PositionalConstraint([vi], wi, self.init_positions)
+        self.has_positional_constraints = True
+        c = PositionalConstraint([vi], wi, self.positions)
         self.constraints.append(c)
 
-    def add_vertex_bending_constraint(self, wi=1e6, build_assembly=False):
+        # build assembly
+        self.positional_constraints.append(c)
+        if self.positional_assembly_ST is None:
+            self.positional_assembly_ST= c._selection_matrix  # each (|V|, 2)
+        else:
+            col = self.positional_assembly_ST.shape[1]
+            self.positional_assembly_ST.resize((self.positional_assembly_ST.shape[0], col+1))
+            self.positional_assembly_ST[:, -1] = c._selection_matrix  # each (|V|, 2)
+
+
+    def remove_positional_constraint(self, vi):
+
+        instance = [c for c in self.positional_constraints if c.indices[0] == vi]
+        self.positional_constraints = [
+            c for c in self.positional_constraints if c._indices[0] != vi
+        ]
+        self.constraints = [c for c in self.constraints if not (isinstance(c, PositionalConstraint) and c.indices[0] == vi)]
+        if len(self.positional_constraints) == 0:
+            self.has_positional_constraints = False
+
+            self.positional_assembly_ST = delete_matching_column(
+                self.positional_assembly_ST,
+                instance[0]._selection_matrix
+            )
+
+
+
+    def add_vertex_bending_constraint(self, wi=1e6):
 
         self.has_verts_bending_constraints = True
 
@@ -1075,20 +1214,15 @@ class DeformableMesh:
 
             self.constraints.append(c)
 
-            if build_assembly:
-                self.verts_bending_constraints.append(c)
+            # build assembly
+            self.verts_bending_constraints.append(c)
 
         # not all verts with be constrained, hence after collecting constraints an assembly mat size is known
-        if build_assembly:
-            self.verts_bending_assembly_ST = lil_matrix((self.positions.shape[0], len(self.verts_bending_constraints)))  # (|V|,|verts with stars|)
-            for v, c in enumerate(self.verts_bending_constraints):
-                self.verts_bending_assembly_ST[:,v] = c._selection_matrix   # each (|V|, 1)
+        self.verts_bending_assembly_ST = lil_matrix((self.positions.shape[0], len(self.verts_bending_constraints)))  # (|V|,|verts with stars|)
+        for v, c in enumerate(self.verts_bending_constraints):
+            self.verts_bending_assembly_ST[:,v] = c._selection_matrix   # each (|V|, 1)
 
-        if build_assembly:
-            assert self.verts_bending_assembly_ST.shape[1] == len(self.verts_bending_constraints)
-
-
-    def add_edge_spring_constrain(self, wi=1e6, build_assembly=False):
+    def add_edge_spring_constrain(self, wi=1e6):
 
         if not self.elements.shape[0]==0:
             E = edges(self.elements)
@@ -1100,56 +1234,52 @@ class DeformableMesh:
 
         for e, elem in enumerate(E):
             e0, e1 = elem[0], elem[1]
-            c = EdgeLengthConstraint([e0, e1], wi, self.init_positions)
+            c = EdgeSpringConstraint([e0, e1], wi, self.positions)
             self.constraints.append(c)
 
-            if build_assembly:
-                self.edge_spring_constraints.append(c)
-                self.edge_spring_assembly_ST[:,e] = c._selection_matrix  # each (|V|, 1)
 
-        if build_assembly:
-            assert self.edge_spring_assembly_ST.shape[1] == len(self.edge_spring_constraints)
+            self.edge_spring_constraints.append(c)
+            self.edge_spring_assembly_ST[:,e] = c._selection_matrix  # each (|V|, 1)
 
-    def add_tri_constrain_strain(self, sigma_min, sigma_max, wi=1e6, build_assembly=False):
+        assert self.edge_spring_assembly_ST.shape[1] == len(self.edge_spring_constraints)
+
+    def add_tri_constrain_strain(self, sigma_min, sigma_max, wi=1e6):
 
         self.has_tris_strain_constraints = True
         self.tris_strain_assembly_ST = lil_matrix((self.positions.shape[0], 2 * self.faces.shape[0]))  # (|V|,2|F|)
 
         for e, elem in  enumerate(self.faces):
-            c = TriStrainConstraint(elem.tolist(), wi, self.init_positions, sigma_min, sigma_max)
+            c = TriStrainConstraint(elem.tolist(), wi, self.positions, sigma_min, sigma_max)
             self.constraints.append(c)
 
-            if build_assembly:
-                self.tris_strain_constraints.append(c)
-                self.tris_strain_assembly_ST[:,2 * e:2 * e+2] = c._selection_matrix  # each (|V|, 2)
+            self.tris_strain_constraints.append(c)
+            self.tris_strain_assembly_ST[:,2 * e:2 * e+2] = c._selection_matrix  # each (|V|, 2)
 
         assert self.tris_strain_assembly_ST.shape[1] == 2*len(self.tris_strain_constraints)
 
-    def add_tet_constrain_strain(self, sigma_min, sigma_max, wi=1e6, build_assembly=False):
+    def add_tet_constrain_strain(self, sigma_min, sigma_max, wi=1e6):
         self.has_tets_strain_constraints = True
         self.tets_strain_assembly_ST = lil_matrix((self.positions.shape[0], 3 * self.elements.shape[0]))  # (|V|,3|T|)
 
         for e, elem in  enumerate(self.elements):
-            c = TetStrainConstraint(elem.tolist(), wi, self.init_positions, sigma_min, sigma_max)
+            c = TetStrainConstraint(elem.tolist(), wi, self.positions, sigma_min, sigma_max)
             self.constraints.append(c)
 
-            if build_assembly:
-                self.tets_strain_constraints.append(c)
-                self.tets_strain_assembly_ST[:, 3 * e: 3 * e + 3] = c._selection_matrix  # each (|V|, 1)
+            self.tets_strain_constraints.append(c)
+            self.tets_strain_assembly_ST[:, 3 * e: 3 * e + 3] = c._selection_matrix  # each (|V|, 1)
 
         assert self.tets_strain_assembly_ST.shape[1] == 3* len(self.tets_strain_constraints)
 
-    def add_tet_constrain_deformation_gradient(self, wi=1e6, build_assembly=False):
+    def add_tet_constrain_deformation_gradient(self, wi=1e6):
         self.has_tets_deformation_gradient_constraints = True
         self.tets_deformation_gradient_assembly_ST = lil_matrix((self.positions.shape[0], 3 * self.elements.shape[0]))  # (|V|,3|T|)
 
         for e, elem in  enumerate(self.elements):
-            c = TetDeformationGradientConstraint(elem.tolist(), wi, self.init_positions)
+            c = TetDeformationGradientConstraint(elem.tolist(), wi, self.positions)
             self.constraints.append(c)
 
-            if build_assembly:
-                self.tets_deformation_gradient_constraints.append(c)
-                self.tets_deformation_gradient_assembly_ST[:, 3 * e: 3 * e + 3] = c._selection_matrix  # each (|V|, 1)
+            self.tets_deformation_gradient_constraints.append(c)
+            self.tets_deformation_gradient_assembly_ST[:, 3 * e: 3 * e + 3] = c._selection_matrix  # each (|V|, 1)
 
         assert self.tets_deformation_gradient_assembly_ST.shape[1] == 3* len(self.tets_deformation_gradient_constraints)
 

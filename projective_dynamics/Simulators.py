@@ -50,8 +50,8 @@ class Solver:
 
             matrices = {}
             file_name = "assembly_ST"
-            if self.model.has_positional_constraints :
-                matrices["positional" ] = self.model.positional_assembly_ST
+            # if self.model.has_positional_constraints :
+            #     matrices["positional" ] = self.model.positional_assembly_ST
 
             if self.model.has_verts_bending_constraints :
                 matrices["verts_bending" ] = self.model.verts_bending_assembly_ST
@@ -199,6 +199,8 @@ class Solver:
             q = self.cholesky(b.flatten())
 
         q_next = unflatten(q)
+        q_next = self.model.resolve_self_collision_fast(q_next)
+        q_next= self.model.resolve_triangle_self_collisions(q_next)
         self.model.velocities = (q_next - self.model.positions) * dt_inv
         self.model.positions = q_next
         print(self.frame)

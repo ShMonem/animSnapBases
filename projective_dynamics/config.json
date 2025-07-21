@@ -23,8 +23,8 @@
   "physics_params": {
     "mass_per_particle": 10.0,
     "positional_constraint_wi": 10000000.0,
-    "edge_constraint_wi": 150000.0,
-    "vert_bending_constraint_wi": 100.0,
+    "edge_constraint_wi": 1000000.0,
+    "vert_bending_constraint_wi": 0.1,
 
     "deformation_gradient_constraint_wi": 10000000.0,
     "strain_limit_constraint_wi": 1500000.0,

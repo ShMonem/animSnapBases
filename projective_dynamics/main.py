@@ -12,7 +12,7 @@ solver = Solver()
 fext = None
 model = None
 output_path = ""
-
+frame= 0
 mouse_down_handler, mouse_move_handler, pre_draw_handler = None, None, None
 
 import config
@@ -74,7 +74,7 @@ def main():
     def callback():
         global model, solver, fext, bar_width, bar_height, bar_depth,\
             mouse_down_handler, mouse_move_handler, pre_draw_handler,\
-            cloth_width, cloth_height, window_open, object_name, output_path
+            cloth_width, cloth_height, window_open, object_name, output_path, frame
 
         psim.PushItemWidth(200)
         psim.TextUnformatted("== Projective Dynamics ==")
@@ -110,39 +110,6 @@ def main():
                 psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
 
 
-
-
-             # One-shot execution logic
-                    # if args.fix_left_side and not args._fix_left_triggered:
-                    #
-                    #
-                    # if args.fix_right_corners and not args._fix_right_corners_triggered:
-                    #     model.fix_cloth_corners( side="right")
-                    #     args._fix_right_corners_triggered = True
-                    # elif args._fix_right_corners_triggered and not args.fix_right_corners:
-                    #     model.release_cloth_corners(side="right")
-                    #     args._fix_right_corners_triggered = False
-                    #
-                    # if args.fix_left_corners and not args._fix_left_corners_triggered:
-                    #     model.fix_cloth_corners( side="left")
-                    #     args._fix_left_corners_triggered = True
-                    # elif args._fix_left_corners_triggered and not args.fix_left_corners:
-                    #     model.release_cloth_corners(side="left")
-                    #     args._fix_left_corners_triggered = False
-                    #
-                    # if args.fix_top_corners and not args._fix_top_corners_triggered:
-                    #     model.fix_cloth_corners( side="top")
-                    #     args._fix_top_corners_triggered = True
-                    # elif args._fix_top_corners_triggered and not args.fix_top_corners:
-                    #     model.release_cloth_corners(side="top")
-                    #     args._fix_top_corners_triggered = False
-                    #
-                    # if args.fix_bottom_corners and not args._fix_bottom_corners_triggered:
-                    #     model.fix_cloth_corners( side="bottom")
-                    #     args._fix_bottom_corners_triggered = True
-                    # elif args._fix_bottom_corners_triggered and not args.fix_bottom_corners:
-                    #     model.release_cloth_corners(side="bottom")
-                    #     args._fix_bottom_corners_triggered = False
         if psim.CollapsingHeader("Physics"):
             if psim.TreeNode("Constraints"):
 
@@ -151,8 +118,8 @@ def main():
                     changed, args.fix_right_side = psim.Checkbox("Fix Right\nVertices Side", args.fix_right_side)
 
                 if object_name == "Cloth":
-                    # changed, args.fix_left_corners = psim.Checkbox("Fix Left\nCorners Side", args.fix_left_corners)
-                    # changed, args.fix_right_corners = psim.Checkbox("Fix Right\nCorners Side", args.fix_right_corners)
+                    changed, args.fix_left_corners = psim.Checkbox("Fix Left\nCorners Side", args.fix_left_corners)
+                    changed, args.fix_right_corners = psim.Checkbox("Fix Right\nCorners Side", args.fix_right_corners)
 
                     changed, args.fix_top_corners = psim.Checkbox("Fix Top\nCorners Side", args.fix_top_corners)
                     changed, args.fix_bottom_corners = psim.Checkbox("Fix Bottom\nCorners Side", args.fix_bottom_corners)
@@ -176,13 +143,13 @@ def main():
                 changed, args.positional_constraint_wi = psim.InputFloat("wi \nPositional constraint", args.positional_constraint_wi)
 
 
-
                 if psim.Button("Apply##Constraints"):
                     model.immobilize()
                     model.clear_constraints()
                     model.reset_constraints_attributes()
                     solver.set_dirty()
                     output_path = "output"
+                    #---------------------------------------------------------------------------------------------------
 
                     # used for Bar
                     if args.fix_left_side and not args._fix_left_triggered:
@@ -198,6 +165,7 @@ def main():
                     elif args._fix_right_triggered and not args.fix_right_side:
                         model.release_surface_side_vertices(side="right")
                         args._fix_right_triggered = False
+                    #---------------------------------------------------------------------------------------------------
 
                     # used for cloth
                     if args.fix_top_corners and not args._fix_top_corners_triggered:
@@ -214,6 +182,20 @@ def main():
                         model.release_cloth_corners(side="bottom")
                         args._fix_bottom_corners_triggered = False
 
+                    if args.fix_right_corners and not args._fix_right_corners_triggered:
+                        model.fix_cloth_corners( side="right")
+                        args._fix_right_corners_triggered = True
+                    elif args._fix_right_corners_triggered and not args.fix_right_corners:
+                        model.release_cloth_corners(side="right")
+                        args._fix_right_corners_triggered = False
+
+                    if args.fix_left_corners and not args._fix_left_corners_triggered:
+                        model.fix_cloth_corners( side="left")
+                        args._fix_left_corners_triggered = True
+                    elif args._fix_left_corners_triggered and not args.fix_left_corners:
+                        model.release_cloth_corners(side="left")
+                        args._fix_left_corners_triggered = False
+                    #---------------------------------------------------------------------------------------------------
                     if args.vert_bending_constraint:
                         model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
                     if args.edge_constraint:
@@ -266,12 +248,11 @@ def main():
 
             changed, args.is_simulating = psim.Checkbox("Simulate", args.is_simulating)
 
-
             if model is not None:
                 # mouse_down_handler = MouseDownHandler(lambda: model.positions.shape[0] > 0, picking_state, solver, physics_params)
                 # mouse_move_handler = MouseMoveHandler(lambda: model.positions.shape[0] > 0, picking_state, model, lambda: fext)
                 pre_draw_handler = PreDrawHandler(lambda: model.positions.shape[0] > 0, args, solver, fext, record_info=record_fom_info, record_path= output_path)
-
+                # print(solver.frame)
             if args.is_simulating:
                 pre_draw_handler.set_animating(True)
                 pre_draw_handler.handle()
@@ -294,6 +275,7 @@ def main():
             else:
                 ps.get_surface_mesh("mesh").set_edge_width(0.0)
             ps.get_surface_mesh("mesh").set_point_radius(psim.InputFloat("Point size", 0.02), relative=True)
+
 
         psim.End()
 

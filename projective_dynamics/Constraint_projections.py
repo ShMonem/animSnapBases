@@ -1,5 +1,5 @@
 # pd/constraint.py
-
+import trimesh
 import numpy as np
 from scipy.sparse import coo_matrix
 from abc import ABC, abstractmethod
@@ -803,12 +803,12 @@ class DeformableMesh:
 
         self.floor_height = 0
         self.foolr_collision = True
-        self.init_hight_shift = 3
+        self.init_hight_shift = 1
 
         self.init_positions = np.array(positions)  # rest positions
         if self.foolr_collision:
             self.init_positions[:, 1] += self.init_hight_shift
-        self.positions = self.init_positions   # current positions
+        self.positions = self.init_positions.copy()   # current positions
 
         self.positions_corrections = np.zeros_like(self.positions)
         self.faces = np.array(faces)
@@ -816,11 +816,11 @@ class DeformableMesh:
 
         n = self.positions.shape[0]
         self.mass = np.ones(n) if masses is None else np.array(masses)
-        self.mass_init = self.mass
+        self.mass_init = self.mass.copy()
         self.velocities = np.zeros_like(self.positions)
 
         self.fixed_flags = [False] * n
-
+        self.threshold_fixing_ration = 0.01
         # constraints attributes
         self.constraints = []   # list of all constrained elements each as Constraint class-instance
         
@@ -891,10 +891,11 @@ class DeformableMesh:
         self.tets_deformation_gradient_assembly_ST = None
         self.tets_deformation_gradient_stacked_p = None
 
-    def compute_cloth_corner_indices(self, threshold_ratio=0.1):
+    def compute_cloth_corner_indices(self):
         """
         Compute and cache the vertex indices of corners and side surfaces for each cloth side.
         """
+        threshold_ratio = self.threshold_fixing_ration
         if self.positions is None:
             return
 
@@ -964,7 +965,7 @@ class DeformableMesh:
         self.fixed_flags[i] = False
         self.mass[i] = self.mass_init[i]
 
-    def toggle_fixed(self, i, mass_when_unfixed=1.0):
+    def toggle_fixed(self, i, mass_when_unfixed=1.0): #todo, mass when not fixed wie init
         self.fixed_flags[i] = not self.fixed_flags[i]
         self.mass[i] = 1e10 if self.fixed_flags[i] else mass_when_unfixed
 
@@ -980,7 +981,7 @@ class DeformableMesh:
         if self.positions is None or self.positions.shape[0] == 0:
             return
 
-        V = self.positions
+        V = self.positions.copy()
         if threshold is None:
             threshold = V[:, axis].mean()
 
@@ -1027,18 +1028,18 @@ class DeformableMesh:
             self.unfix(vi)
 
 
-    def fix_cloth_corners(self, side="left", threshold_ratio=0.1):
+    def fix_cloth_corners(self, side="left"):
         if not hasattr(self, "_cloth_corner_indices") or side not in self._cloth_corner_indices:
-            self.compute_cloth_corner_indices(threshold_ratio)
+            self.compute_cloth_corner_indices()
 
         indices = self._cloth_corner_indices.get(side, [])
         for vi in indices:
             self.fix(vi)
 
 
-    def release_cloth_corners(self, side="left", threshold_ratio=0.1):
+    def release_cloth_corners(self, side="left"):
         if not hasattr(self, "_cloth_corner_indices") or side not in self._cloth_corner_indices:
-            self.compute_cloth_corner_indices(threshold_ratio)
+            self.compute_cloth_corner_indices()
 
         indices = self._cloth_corner_indices.get(side, [])
         for vi in indices:
@@ -1308,4 +1309,270 @@ class DeformableMesh:
                 tangential_velocity += correction * self.repulsion_coeff
                 self.velocities[v] = tangential_velocity
 
+    def resolve_self_collision(self, vertices, min_dist=0.001, stiffness=1.0):
+        """
+        Resolve self-collision using a penalty-based vertex-face repulsion.
+        Args:
+            vertices: (N, 3) ndarray of vertex positions
+            faces: (M, 3) ndarray of triangle indices
+            min_dist: minimum allowed vertex-face distance
+            stiffness: repulsion strength
+        Returns:
+            updated_vertices: corrected vertex positions
+        """
 
+        faces = self.faces
+        def point_to_triangle_distance(p, tri):
+            """
+            Compute the closest point on triangle `tri` to point `p`.
+            Returns: distance, closest point
+            """
+            a, b, c = tri
+            ab = b - a
+            ac = c - a
+            ap = p - a
+
+            d1, d2 = np.dot(ab, ap), np.dot(ac, ap)
+            if d1 <= 0 and d2 <= 0:
+                return np.linalg.norm(p - a), a
+
+            bp = p - b
+            d3, d4 = np.dot(ab, bp), np.dot(ac, bp)
+            if d3 >= 0 and d4 <= d3:
+                return np.linalg.norm(p - b), b
+
+            vc = d1 * d4 - d3 * d2
+            if vc <= 0 and d1 >= 0 and d3 <= 0:
+                v = d1 / (d1 - d3)
+                closest = a + v * ab
+                return np.linalg.norm(p - closest), closest
+
+            cp = p - c
+            d5, d6 = np.dot(ab, cp), np.dot(ac, cp)
+            if d6 >= 0 and d5 <= d6:
+                return np.linalg.norm(p - c), c
+
+            vb = d5 * d2 - d1 * d6
+            if vb <= 0 and d2 >= 0 and d6 <= 0:
+                w = d2 / (d2 - d6)
+                closest = a + w * ac
+                return np.linalg.norm(p - closest), closest
+
+            va = d3 * d6 - d5 * d4
+            if va <= 0 and (d4 - d3) >= 0 and (d5 - d6) >= 0:
+                u = (d4 - d3) / ((d4 - d3) + (d5 - d6))
+                closest = b + u * (c - b)
+                return np.linalg.norm(p - closest), closest
+
+            # Inside face
+            denom = 1.0 / (va + vb + vc)
+            v = vb * denom
+            w = vc * denom
+            closest = a + ab * v + ac * w
+            return np.linalg.norm(p - closest), closest
+
+        vertices = vertices.copy()
+        for vi, p in enumerate(vertices):
+            for f in faces:
+                if vi in f:
+                    continue  # Skip self-face
+
+                tri = vertices[f]
+                dist, closest = point_to_triangle_distance(p, tri)
+
+                if dist < min_dist and dist > 1e-8:
+                    direction = (p - closest) / dist
+                    correction = stiffness * (min_dist - dist) * direction
+                    vertices[vi] += correction
+
+        return vertices
+
+
+    def resolve_self_collision_fast(self, vertices, min_dist=0.001, stiffness=1.0):
+
+        faces = self.faces
+        mesh = trimesh.Trimesh(vertices, faces, process=False)
+        tree = mesh.kdtree  # fast nearest-neighbor acceleration
+
+        def point_to_triangle_distance(p, tri):
+            """
+            Compute the closest point on triangle `tri` to point `p`.
+            Returns: distance, closest point
+            """
+            a, b, c = tri
+            ab = b - a
+            ac = c - a
+            ap = p - a
+
+            d1, d2 = np.dot(ab, ap), np.dot(ac, ap)
+            if d1 <= 0 and d2 <= 0:
+                return np.linalg.norm(p - a), a
+
+            bp = p - b
+            d3, d4 = np.dot(ab, bp), np.dot(ac, bp)
+            if d3 >= 0 and d4 <= d3:
+                return np.linalg.norm(p - b), b
+
+            vc = d1 * d4 - d3 * d2
+            if vc <= 0 and d1 >= 0 and d3 <= 0:
+                v = d1 / (d1 - d3)
+                closest = a + v * ab
+                return np.linalg.norm(p - closest), closest
+
+            cp = p - c
+            d5, d6 = np.dot(ab, cp), np.dot(ac, cp)
+            if d6 >= 0 and d5 <= d6:
+                return np.linalg.norm(p - c), c
+
+            vb = d5 * d2 - d1 * d6
+            if vb <= 0 and d2 >= 0 and d6 <= 0:
+                w = d2 / (d2 - d6)
+                closest = a + w * ac
+                return np.linalg.norm(p - closest), closest
+
+            va = d3 * d6 - d5 * d4
+            if va <= 0 and (d4 - d3) >= 0 and (d5 - d6) >= 0:
+                u = (d4 - d3) / ((d4 - d3) + (d5 - d6))
+                closest = b + u * (c - b)
+                return np.linalg.norm(p - closest), closest
+
+            # Inside face
+            denom = 1.0 / (va + vb + vc)
+            v = vb * denom
+            w = vc * denom
+            closest = a + ab * v + ac * w
+            return np.linalg.norm(p - closest), closest
+
+        new_vertices = vertices.copy()
+        for vi, p in enumerate(vertices):
+            d, face_id = tree.query(p, k=5)  # only check k closest faces
+            for fi in np.atleast_1d(face_id):
+                f = faces[fi]
+                if vi in f:
+                    continue
+                tri = vertices[f]
+                dist, closest = point_to_triangle_distance(p, tri)
+                if dist < min_dist and dist > 1e-8:
+                    dir = (p - closest) / dist
+                    new_vertices[vi] += stiffness * (min_dist - dist) * dir
+        return new_vertices
+
+
+
+    def resolve_triangle_self_collisions(self, vertices, min_dist=0.001, stiffness=0.5):
+        faces = self.faces
+
+        mesh = trimesh.Trimesh(vertices, faces, process=False)
+
+        # Compute AABBs (min and max corners for each triangle)
+        aabb_min = faces.min(axis=1)  # (n, 3)
+        aabb_max = faces.max(axis=1)  # (n, 3)
+
+        # Optionally, you can stack them as a single array
+        aabbs = np.stack([aabb_min, aabb_max], axis=1)  # (n, 2, 3)        centroids = mesh.triangles_center
+        updated_vertices = vertices.copy()
+
+        # Use KDTree for fast spatial queries over triangle centroids
+        from scipy.spatial import cKDTree
+        centroids = mesh.triangles_center
+        tree = cKDTree(centroids)
+
+        for i, (tri_i, aabb_i) in enumerate(zip(mesh.triangles, aabbs)):
+            # Find triangles with centroids nearby (within a loose radius)
+            nearby = tree.query_ball_point(centroids[i], r=3 * min_dist)
+            for j in nearby:
+                if j <= i:
+                    continue  # avoid double check
+                tri_j = mesh.triangles[j]
+
+                # Skip if triangles share any vertex (adjacent or same face)
+                if len(set(faces[i]) & set(faces[j])) > 0:
+                    continue
+
+                # AABB quick rejection
+                aabb_j = aabbs[j]
+                if not aabbs_overlap(aabb_i, aabb_j, pad=min_dist):
+                    continue
+
+                # Check actual triangle-triangle collision
+                if triangles_too_close(tri_i, tri_j, min_dist):
+                    resolve_overlap(tri_i, tri_j, faces[i], faces[j], updated_vertices, stiffness, min_dist)
+
+        return updated_vertices
+
+def aabbs_overlap(aabb1, aabb2, pad=0.0):
+    """Check if two AABBs overlap (with optional padding)."""
+    return np.all(aabb1[1] + pad >= aabb2[0]) and np.all(aabb2[1] + pad >= aabb1[0])
+
+def triangles_too_close(tri1, tri2, threshold):
+    """Brute force check: any vertex of one tri is too close to the other tri."""
+    for p in tri1:
+        if point_triangle_distance(p, tri2)[0] < threshold:
+            return True
+    for p in tri2:
+        if point_triangle_distance(p, tri1)[0] < threshold:
+            return True
+    return False
+
+def resolve_overlap(tri1, tri2, face1, face2, vertices, stiffness, min_dist):
+    """Push triangles apart based on closest points."""
+    for i, pi in enumerate(tri1):
+        d, closest = point_triangle_distance(pi, tri2)
+        if d < min_dist and d > 1e-8:
+            dir = (pi - closest) / d
+            vi = face1[i]
+            vertices[vi] += stiffness * (min_dist - d) * dir
+    for j, pj in enumerate(tri2):
+        d, closest = point_triangle_distance(pj, tri1)
+        if d < min_dist and d > 1e-8:
+            dir = (pj - closest) / d
+            vj = face2[j]
+            vertices[vj] += stiffness * (min_dist - d) * dir
+
+def point_triangle_distance(p, tri):
+    """Compute closest point and distance from point p to triangle tri."""
+    a, b, c = tri
+    ab = b - a
+    ac = c - a
+    ap = p - a
+
+    d1 = ab @ ap
+    d2 = ac @ ap
+    if d1 <= 0.0 and d2 <= 0.0:
+        return np.linalg.norm(ap), a
+
+    bp = p - b
+    d3 = ab @ bp
+    d4 = ac @ bp
+    if d3 >= 0.0 and d4 <= d3:
+        return np.linalg.norm(bp), b
+
+    cp = p - c
+    d5 = ab @ cp
+    d6 = ac @ cp
+    if d6 >= 0.0 and d5 <= d6:
+        return np.linalg.norm(cp), c
+
+    vc = d1 * d4 - d3 * d2
+    if vc <= 0.0 and d1 >= 0.0 and d3 <= 0.0:
+        v = d1 / (d1 - d3)
+        proj = a + v * ab
+        return np.linalg.norm(p - proj), proj
+
+    vb = d5 * d2 - d1 * d6
+    if vb <= 0.0 and d2 >= 0.0 and d6 <= 0.0:
+        w = d2 / (d2 - d6)
+        proj = a + w * ac
+        return np.linalg.norm(p - proj), proj
+
+    va = d3 * d6 - d5 * d4
+    if va <= 0.0 and (d4 - d3) >= 0.0 and (d5 - d6) >= 0.0:
+        w = (d4 - d3) / ((d4 - d3) + (d5 - d6))
+        proj = b + w * (c - b)
+        return np.linalg.norm(p - proj), proj
+
+    denom = 1.0 / (va + vb + vc)
+    v = vb * denom
+    w = vc * denom
+    proj = a + ab * v + ac * w
+    return np.linalg.norm(p - proj), proj

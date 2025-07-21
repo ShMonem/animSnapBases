@@ -167,4 +167,6 @@ class PreDrawHandler:
             #ps.remove_point_cloud("fixed_points")
             fixed_positions = model.positions[fixed_indices]
             ps.register_point_cloud("fixed_points", fixed_positions, color=(1.0, 0.0, 0.0))
+            # ps.register_point_cloud("fixed_points", model.positions[0:2], color=(1.0, 1.0, 0.0))
+
             ps.get_point_cloud("fixed_points").set_radius(0.01, relative=True)

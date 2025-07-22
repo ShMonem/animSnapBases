@@ -803,7 +803,7 @@ class DeformableMesh:
 
         self.floor_height = 0
         self.foolr_collision = True
-        self.init_hight_shift = 1
+        self.init_hight_shift = 4
 
         self.init_positions = np.array(positions)  # rest positions
         if self.foolr_collision:

@@ -8,7 +8,7 @@ import numpy as np
 import struct
 from numpy.linalg import matrix_rank
 from numpy import save, count_nonzero
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, load_npz
 import shutil
 import os
 def store_components(fileName, F, K, N, dim, basesTensor, extension='.bin',  colName='K'):
@@ -311,6 +311,16 @@ def read_sparse_matrix_from_bin(filename):
     sparse_matrix = csr_matrix((values, (row_indices, col_indices)), shape=(rows, cols))
     return sparse_matrix
 
+def read_sparse_matrix(file_name, type, key=None):
+    if type == ".bin":
+        return read_sparse_matrix_from_bin(file_name)
+    elif type == ".npz":
+        if key is None:
+            raise ValueError("Empty file or wrong key:", type)
+        else:
+            return np.load(file_name, allow_pickle=True)[key]
+    else:
+        raise ValueError("unknown sparse matrix file_type:" , type)
 
 def read_mesh_file(file_path):
     """

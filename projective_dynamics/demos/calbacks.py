@@ -10,7 +10,7 @@ from geometry import get_simple_bar_model, get_simple_cloth_model
 from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler
 
 from Simulators import Solver
-
+import trimesh
 solver = Solver()
 fext = None
 model = None
@@ -264,7 +264,7 @@ def interacrive_testing_callback(args, record_fom_info = False, params=None):
 
     return callback
 
-def automated_cloth_bend_edge_callback(args, record_fom_info = False, params=None,case="cloth_automated_bend_spring"):
+def cloth_automated_bend_spring_strain_callback(args, record_fom_info = False, params=None,experiment="cloth_automated_bend_spring_strain", reduction="constraint_projection/FOM"):
     global model, solver, fext, is_simulating
     is_simulating = True
     def callback():
@@ -280,7 +280,11 @@ def automated_cloth_bend_edge_callback(args, record_fom_info = False, params=Non
 
             V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
             reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
-            object_name = "Cloth"
+            object_name = "cloth"
+
+            mesh = trimesh.Trimesh(vertices=V, faces=F)
+            mesh.export(os.path.join(output_path, object_name+".obj"))
+
             psim.PushItemWidth(200)
             psim.TextUnformatted("== Projective Dynamics ==")
             psim.Separator()
@@ -304,15 +308,16 @@ def automated_cloth_bend_edge_callback(args, record_fom_info = False, params=Non
             if record_fom_info:
                 specify_path = ""
                 if model.has_verts_bending_constraints:
-                    specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi)
+                    specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
 
                 if model.has_edge_spring_constraints:
-                    specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi)
+                    specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
 
                 if model.has_tris_strain_constraints:
-                    specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi)
+                    specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
 
-                output_path += "/" + object_name + "/" + case + "/" + specify_path
+                mesh.export(os.path.join(output_path+"/" + object_name + "/", object_name + ".obj"))
+                output_path += "/" + object_name + "/" + experiment + "/" + "/" + reduction + "/" + specify_path
 
             solver.set_dirty()
 
@@ -329,9 +334,10 @@ def automated_cloth_bend_edge_callback(args, record_fom_info = False, params=Non
             print("Frame 30: Releasing all corners")
             model.release_cloth_corners(side="top")
             model.release_cloth_corners(side="bottom")
+            model.fix_cloth_corners(side="right")
 
 
-        elif solver.frame == 200:
+        elif solver.frame == 240:
             print("Stopping simulation.")
             is_simulating = False
             ps.unshow()
@@ -352,6 +358,19 @@ def automated_cloth_bend_edge_callback(args, record_fom_info = False, params=Non
             psim.BulletText(f"Triangles: {model.faces.shape[0]}")
             psim.BulletText(f"Edges: {model.count_edges(model.faces)}")
             psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
+
+            if model.has_verts_bending_constraints:
+                psim.BulletText(f"Vertices bending constraint: {len(model.verts_bending_constraints)}")
+                psim.BulletText(f"wi: { str(args.vert_bending_constraint_wi) }")
+
+            if model.has_edge_spring_constraints:
+                psim.BulletText(f"Edge pring constraint: {len(model.edge_spring_constraints)}")
+                psim.BulletText(f"wi: { str(args.edge_constraint_wi) }")
+
+            if model.has_tris_strain_constraints:
+                psim.BulletText(f"Triangles strain constraint: {len(model.tris_strain_constraints)}")
+                psim.BulletText(f"wi: { str(args.strain_limit_constraint_wi) }")
+
 
         psim.End()
 

@@ -27,11 +27,11 @@ def main(args, record_fom_info = False, case=None, params=None):
     if case == "testing":
         callback = demos.calbacks.interacrive_testing_callback(args, record_fom_info, params)
 
-    elif case == "cloth_automated_bend_spring":
-        callback = demos.calbacks.automated_cloth_bend_edge_callback(args, record_fom_info, params)
+    elif case == "cloth_automated_bend_spring_strain":
+        callback = demos.calbacks.cloth_automated_bend_spring_strain_callback(args, record_fom_info, params)
 
     available_demos = {"testing": demos.calbacks.interacrive_testing_callback,
-                       "cloth_automated_bend_spring": demos.calbacks.automated_cloth_bend_edge_callback}
+                       "cloth_automated_bend_spring_strain": demos.calbacks.cloth_automated_bend_spring_strain_callback}
     assert case in available_demos
 
     # Register callback
@@ -45,7 +45,7 @@ def main(args, record_fom_info = False, case=None, params=None):
 if __name__ == '__main__':
     # -----------------------------------------------------------------------------------------------------------------
     # available demos:
-    #["cloth_automated_bend_spring.json"]
+    #["cloth_automated_bend_spring_strain.json"]
 
     # # ---------------- build parser argument ----------------
     parser = argparse.ArgumentParser()
@@ -55,7 +55,7 @@ if __name__ == '__main__':
     from config import Config_parameters
 
     param = Config_parameters()
-    param.reset_parameters("demos/cloth_automated_bend_spring.json")
+    param.reset_parameters("demos/cloth_automated_bend_spring_strain.json")
     # Add visualization params
     param.add_visualization_args(parser)
 
@@ -68,7 +68,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     record_fom_info = True
-    example = "cloth_automated_bend_spring"
+    example = "cloth_automated_bend_spring_strain"
     main(args,
          record_fom_info = record_fom_info,
          case = example,

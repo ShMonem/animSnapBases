@@ -803,7 +803,7 @@ class DeformableMesh:
 
         self.floor_height = 0
         self.foolr_collision = True
-        self.init_hight_shift = 4
+        self.init_hight_shift = 3
 
         self.init_positions = np.array(positions)  # rest positions
         if self.foolr_collision:
@@ -835,6 +835,7 @@ class DeformableMesh:
         self.verts_bending_constraints = []
         self.verts_bending_assembly_ST = None
         self.verts_bending_stacked_p = None
+        self.verts_bending_indicies = []
 
         self.has_edge_spring_constraints = False
         self.edge_spring_constraints = []
@@ -870,6 +871,7 @@ class DeformableMesh:
         self.verts_bending_constraints = []
         self.verts_bending_assembly_ST = None
         self.verts_bending_stacked_p = None
+        self.verts_bending_indicies = []
 
         self.has_edge_spring_constraints = False
         self.edge_spring_constraints = []
@@ -1214,7 +1216,7 @@ class DeformableMesh:
             c = VertBendingConstraint(v, wi, star, voronoi_area[v], self.positions, self.faces)
 
             self.constraints.append(c)
-
+            self.verts_bending_indicies.append(v)
             # build assembly
             self.verts_bending_constraints.append(c)
 
@@ -1387,7 +1389,6 @@ class DeformableMesh:
 
         return vertices
 
-
     def resolve_self_collision_fast(self, vertices, min_dist=0.001, stiffness=1.0):
 
         faces = self.faces
@@ -1456,8 +1457,6 @@ class DeformableMesh:
                     dir = (p - closest) / dist
                     new_vertices[vi] += stiffness * (min_dist - dist) * dir
         return new_vertices
-
-
 
     def resolve_triangle_self_collisions(self, vertices, min_dist=0.001, stiffness=0.5):
         faces = self.faces

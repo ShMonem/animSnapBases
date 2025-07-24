@@ -128,32 +128,42 @@ def main(param: Config_parameters):
         copy_and_delete_file("function_timings.txt", os.path.join(param.vertPos_output_directory,"time_logs.txt"))
 
         if param.store_nonlinear_bases:
-            start = 1
-            end = nonlinearBases.numComp
-            step = 1
-            nonlinearBases.store_components_to_files(start, end, step, '.bin')
+            ## uncomment to store .bin files gradually (better when read by the c++ implementation)
+            # start = 1
+            # end = nonlinearBases.numComp
+            # step = 1
+            # nonlinearBases.store_components_gradually_to_files(start, end, step, '.bin')
+
+            nonlinearBases.store_components_n_interpol_points()
 
         if param.run_deim_tests:
             from generate_figures.nl_reduction_tests import tets_plots_deim
-            tets_plots_deim(nonlinearBases, pca_tests= False, postProcess_tests=False,
-                                            deim_tests=False, visualize_deim_elements=False)
+            tets_plots_deim(nonlinearBases, pca_tests= True, postProcess_tests=True,
+                                            deim_tests=True, visualize_deim_elements=True)
 
 if __name__ == '__main__':
     # -----------------------------------------------------------------------------------------------------------------
     # current available examples:
     # meshes = ["sphere", "armadillo", "bunny", "elephant", "octopus"]
-    # subspaces = ["posSubspace", "tetstrainSubspace", "tristrainSubspace","vertstarbendingSubspace"]
+    # subspaces = ["posSubspace",
+    #               "vertbendSubspace", "edgespringSubspace", "tristrainSubspace",
+    #               "tetstrainSubspace", "vertstarbendingSubspace"]
+
+    mesh = "cloth"
+    subspace = "vertbendSubspace"
+    json_file = "config/examples/cloth_automated_vertbendSubspace.json"
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
-    parser.add_argument('--mesh', type=str, default="armadillo", help='Give a character mesh (default: sphere)')
-    parser.add_argument('--subspace', type=str, default="tetstrainSubspace",
-                        help='Subspaces for which bases are computed (default: posSubspace)')
+    parser.add_argument('--mesh', type=str, default=mesh, help='Give a character mesh')
+    parser.add_argument('--subspace', type=str, default=subspace,
+                        help='Subspaces for which bases are computed')
+    parser.add_argument('--config_file', type=str, default=json_file,
+                        help='Provide .json path')
 
     args = parser.parse_args()
     param = Config_parameters()
     #
-    jason_file = "config/examples/"+ args.mesh +"_gFall_"+ args.subspace+".json"
-    param.reset(jason_file)
+    param.reset(json_file)
     if param.run_main_constProj_bases:
         main(param)
     # -----------------------------------------------------------------------------------------------------------------

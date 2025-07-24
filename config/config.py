@@ -137,7 +137,7 @@ class Config_parameters:
 
         # where snapshots are stored
         self.constProj_snapshots_type = ""
-        self.constProj_snapshots_folder = ""
+        self.constProj_full_p_snapshots_folder = ""
         self.snaps_pattern_full_p = ""
         # where snapshots can be stored after pre-processing # TODO
         self.constProj_preprocessed_snapshots_folder = ""
@@ -440,9 +440,11 @@ class Config_parameters:
 
             # where snapshots are stored
             self.constProj_snapshots_type = config["constraintProj_bases"]["constraintType"]["name"]
-            self.constProj_snapshots_folder = config["constraintProj_bases"]["constraintType"]["snaps_folder"]
+            self.constProj_full_p_snapshots_folder = config["constraintProj_bases"]["constraintType"]["p_snaps_folder"]
 
             self.snaps_pattern_full_p = config["constraintProj_bases"]["constraintType"]["snaps_pattern_full_p"]
+            self.snaps_constrained_elements = config["constraintProj_bases"]["constraintType"]["constrained_elements"]
+
             # where snapshots can be stored after pre-processing # TODO
             self.constProj_preprocessed_snapshots_folder = config["constraintProj_bases"]["snapshots"]["processed_snapshots_file"]
             self.constProj_snapshots_ready = config["constraintProj_bases"]["snapshots"]["processed_snapshots_ready"]
@@ -450,6 +452,8 @@ class Config_parameters:
             self.constProj_frame_increment = config["constraintProj_bases"]["snapshots"]["frame_increment"]
             # number of snapshots used in computations
             self.constProj_numFrames = config["constraintProj_bases"]["snapshots"]["numFrames"]
+            self.constProj_train_test_jump = 1
+
             # tolerance used to satisfy bases computation criterion
             self.bases_R_tol = config["constraintProj_bases"]["bases_res_tol"]
             # p: the row size of the nonlinear constraint projection is p x 3
@@ -458,12 +462,19 @@ class Config_parameters:
             self.deim_ele_per_vert = config["constraintProj_bases"]["max_element_per_deim_vert"]
 
             # notice that data should be put in place so that all .py can have access too!
+            self.costProj_St_key = config["constraintProj_bases"]["constraintType"]["assembly_key"]
+
             self.constProj_input_snapshots_pattern = self.snapshots_repo_dir \
-                                                + self.name + "/" \
+                                                + self.name + "/"\
                                                 + self.experiment \
-                                                + self.constProj_snapshots_folder \
-                                                + self.constProj_snapshots_type \
+                                                + self.constProj_full_p_snapshots_folder + "/"\
                                                 + self.snaps_pattern_full_p
+
+            self.constProj_input_snaps_constrained_elements = self.snapshots_repo_dir \
+                                                     + self.name + "/" \
+                                                     + self.experiment \
+                                                     + self.constProj_full_p_snapshots_folder + "/" \
+                                                     + self.snaps_constrained_elements
 
             self.constProj_input_preprocessed_snapshots_dir = self.snapshots_repo_dir \
                                                          + self.name + "/" \
@@ -489,16 +500,14 @@ class Config_parameters:
 
             # weighted selection matrix that maps constraints projections to position space
             self.constProj_weightedSt = self.snapshots_repo_dir \
-                                                + self.name + "/" \
+                                                + self.name + "/"\
                                                 + self.experiment \
-                                                + self.constProj_snapshots_folder \
-                                                + self.constProj_snapshots_type +"/" \
-                                                + self.name + "_lambdaSt_weighted.bin"
-
+                                                + self.constProj_full_p_snapshots_folder + "/"\
+                                                + config["constraintProj_bases"]["constraintType"]["assembly_file_name"]
             self.constProj_constrained_Stp0 = self.snapshots_repo_dir \
                                    + self.name + "/" \
                                    + self.experiment \
-                                   + self.constProj_snapshots_folder \
+                                   + self.constProj_full_p_snapshots_folder \
                                    + self.constProj_snapshots_type + "/" \
                                    +"St_aux_0.off"
 

@@ -11,7 +11,7 @@ import os
 from config.config import Config_parameters
 from snapbases.nonlinear_snapshots import nonlinearSnapshots
 from utils.utils import store_components, store_interpol_points_vector
-from utils.utils import log_time, read_sparse_matrix_from_bin
+from utils.utils import log_time, read_sparse_matrix
 from utils.support import get_tetrahedrons_per_vert, get_triangles_per_vert, get_vertices_per_vert
 
 import polyscope as ps
@@ -67,8 +67,11 @@ class constraintsComponents:  # Components == bases
         self.fileNameBases = fileNameBases
         self.fileName_deim_points = fileName_deim_points
         self.file_name_sing = file_name_sing
-        self.St = read_sparse_matrix_from_bin(self.param.constProj_weightedSt)
+        self.St = read_sparse_matrix(self.param.constProj_weightedSt, ".npz", key=self.param.costProj_St_key )
 
+        # If it's an array holding the sparse matrix as an object
+        if isinstance(self.St, np.ndarray) and self.St.dtype == object:
+            self.St = self.St.item()  # Extracts the actual sparse matrix
 
     @staticmethod
     def project_weight(x):
@@ -405,57 +408,34 @@ class constraintsComponents:  # Components == bases
 
         return mat_e
 
-    def deim_train_constructed(self, r):
+    def deim_constructed(self, r, case):
 
         p = self.nonlinearSnapshots.constraintsSize
-        F, ep, _ = self.nonlinearSnapshots.snapTensor.shape
 
+        if case == "train":
+            F, ep, _ = self.nonlinearSnapshots.snapTensor.shape
+            frames = self.nonlinearSnapshots.snapTensor
+        elif case == "test":
+            F, ep, _ = self.nonlinearSnapshots.test_snapTensor.shape
+            frames = self.nonlinearSnapshots.test_snapTensor
+        else:
+            raise ValueError("unknown frames to reconstruct.")
         V_r = self.comps.swapaxes(0, 1)[:, :r*p, :]  # (ep, rp, 3)
-        Pt = self.deim_alpha[:self.deim_alpha_ranges[r-1]]
+
+
+        if self.param.constProj_snapshots_type == "vertbend":
+            # in case of "vertbend" for non-closed meshes,
+            # mapping between index and its order in the list of constrained_elements is required
+            Pt = [i for i, val in enumerate(self.constrianed_verts) if val in set(self.deim_alpha[:self.deim_alpha_ranges[r - 1]])]
+        else:
+            Pt = self.deim_alpha[:self.deim_alpha_ranges[r - 1]]
 
         reconstructed = np.zeros((F, ep, 3))
 
         for l in range(3):
             u, piv = lu_factor(V_r[Pt, :, l].T @ V_r[Pt, :, l])
             for f in range(F):
-                reconstructed[f, :, l] = V_r[:, :, l] @ lu_solve((u, piv), V_r[Pt, :, l].T @ self.nonlinearSnapshots.snapTensor[f, Pt, l])
-
-        return reconstructed
-
-    def deim_test_constructed(self, r):
-
-        p = self.nonlinearSnapshots.constraintsSize
-        F, ep, _ = self.nonlinearSnapshots.test_snapTensor.shape
-
-        V_r = self.comps.swapaxes(0, 1)[:, :r*p, :]  # (ep, rp, 3)
-        Pt = self.deim_alpha[:self.deim_alpha_ranges[r-1]]
-
-        reconstructed = np.zeros((F, ep, 3))
-
-        for l in range(3):
-            u, piv = lu_factor(V_r[Pt, :, l].T @ V_r[Pt, :, l])
-            for f in range(F):
-                reconstructed[f, :, l] = V_r[:, :, l] @ lu_solve((u, piv), V_r[Pt, :, l].T @ self.nonlinearSnapshots.test_snapTensor[f, Pt, l])
-
-        return reconstructed
-
-    def reconstruct(self, rp):
-        """
-        Reconstructs the data using the reduced basis.
-        :param f: Original tensor of shape (F, ep, 3)
-        :param V_r: Basis tensor of shape (ep, rp, 3)
-        :return: Reconstructed tensor of shape (F, ep, 3)
-        """
-        f = self.nonlinearSnapshots.snapTensor
-        F, ep, _ = f.shape
-        V_r = self.comps.swapaxes(0, 1)[:, :rp, :]  # (ep, rp, 3)
-
-        reconstructed = np.zeros((F, ep, 3))
-
-        for i in range(3):  # For each component (x, y, z)
-            # Project the snapshots onto the reduced basis
-            coefficients = f[:, :, i] @ V_r[:, :, i]  # Shape (F, rp)
-            reconstructed[:, :, i] = coefficients @ V_r[:, :, i].T  # Shape (F, ep)
+                reconstructed[f, :, l] = V_r[:, :, l] @ lu_solve((u, piv), V_r[Pt, :, l].T @ frames[f, Pt, l])
 
         return reconstructed
 
@@ -508,7 +488,7 @@ class constraintsComponents:  # Components == bases
         return s
 
     @log_time(constProj_output_directory)
-    def store_components_to_files(self, start, end, step, fileType):
+    def store_components_gradually_to_files(self, start, end, step, fileType):
         """
         fileType can be either '.bin' or '.npy'
         """
@@ -531,6 +511,25 @@ class constraintsComponents:  # Components == bases
 
         print('done.')
 
+    @log_time(constProj_output_directory)
+    def store_components_n_interpol_points(self):
+        print('Storing bases and interpolation points to one file ...', end='', flush=True)
+
+        data = {}
+        data["components"] = self.comps
+        data["interpol_alphas"] = self.deim_alpha
+
+        # the below attributes can be used to highlight elements in the nl_reduction_test, as below
+        # deim_verts = nlConst_bases.deim_interpol_verts[:visualize_deim_elements_at_K]
+        # highlight_elements = nlConst_bases.deim_alpha[:nlConst_bases.deim_alpha_ranges[visualize_deim_elements_at_K - 1]]
+        data["interpol_verts"] = self.deim_interpol_verts
+        data["interpol_alpha_ranges"] = self.deim_alpha_ranges
+
+        np.savez(os.path.join(constProj_output_directory,
+                              "components_interpol_alphas_interpol_verts_interpol_alpha_ranges.npz"), **data)
+
+        print("done!")
+
     '''
         --- DEIM/ Q-DEIM ---
     '''
@@ -549,6 +548,10 @@ class constraintsComponents:  # Components == bases
             if self.nonlinearSnapshots.ele_type not in ["_tets", "_tris", "_verts"] :
                 print("ERROR! Unknown constained elements type in deim")
                 return
+
+            if self.param.constProj_snapshots_type == "vertbend":
+                # load the list of constrained indices (TODO: specify for meshes with boundary verts?)
+                self.constrianed_verts = np.load(self.param.constProj_input_snaps_constrained_elements)["indices"]
 
         # initialization
         vk = bases[:, :p, :]  # v0  (ep, :p, 3)
@@ -597,17 +600,26 @@ class constraintsComponents:  # Components == bases
                     alpha_list = get_triangles_per_vert([v_interpolate], self.nonlinearSnapshots.tris)
                 elif self.nonlinearSnapshots.ele_type == "_verts":
                     alpha_list = get_vertices_per_vert([v_interpolate], self.nonlinearSnapshots.tris)
+                    if self.param.constProj_snapshots_type == "vertbend":
+                        # in case of "vertbend" for non-closed meshes,
+                        # mapping between index and its order in the list of constrained_elements is required
+                        alpha_list = np.intersect1d(self.constrianed_verts,alpha_list)
+                        mapped_indices = [i for i, val in enumerate(self.constrianed_verts) if val in set(alpha_list)]
 
                 jump = 0
                 for al in range(len(alpha_list)):
                     alpha = alpha_list[al]
                     if alpha not in e_points and jump < self.param.deim_ele_per_vert:
-                        jump +=1
+                        jump += 1
                         e_points.append(alpha)
-                        # update selection mat with all elements that show largest deformation in position space
-                        print(k, alpha)
-                        for m in range(p):
-                            Pt.append(alpha * p + m)
+                        if self.param.constProj_snapshots_type == "vertbend":
+                            indx = mapped_indices[al]
+                            Pt.append(indx)   # in this case p == 1
+                        else:
+                            # update selection mat with all elements that show largest deformation in position space
+                            print(k, alpha)
+                            for m in range(p):
+                                Pt.append(alpha * p + m)
                 e_jump.append(jump)
                 e_range.append(sum(np.asarray(e_jump)))
             else:
@@ -640,6 +652,7 @@ class constraintsComponents:  # Components == bases
         d = self.nonlinearSnapshots.dim
         K = self.numComp
         assert bases.shape == (e * p, K * p, d)
+
 
         # initialization
         vk = bases[:, :p, :]  # v0

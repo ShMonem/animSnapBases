@@ -117,7 +117,7 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, pca_tests= True, postP
     def run_deim_tests():
         global num_usage
         num_usage = 0
-        def reconstruction_test(f, reconstruction_method, file):
+        def reconstruction_test(f, reconstruction_method,file, case):
             r_values = range(1, k + 1, steps)
             frobenius_errors = []
             max_errors = []
@@ -135,7 +135,7 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, pca_tests= True, postP
                 for r in r_values:
                     print("Deim-blocks:", r)
                     # Reconstruct the tensor for the current r
-                    f_reconstructed = reconstruction_method(r)
+                    f_reconstructed = reconstruction_method(r, case)
 
                     # Compute various errors
                     fro_error = nlConst_bases.frobenius_error(f, f_reconstructed)
@@ -192,7 +192,7 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, pca_tests= True, postP
         f_train = nlConst_bases.nonlinearSnapshots.snapTensor
         file_train = os.path.join(nlConst_bases.param.constProj_output_directory, nlConst_bases.param.name + "_" +
                                   nlConst_bases.param.constProj_name + "_deim_train_convergence_tests")
-        reconstruction_test(f_train, nlConst_bases.deim_train_constructed, file_train)
+        reconstruction_test(f_train, nlConst_bases.deim_constructed, file_train, case="train")
         # store number of elements per bases blocks
         header = ['numPoints', 'num_elements']
         file_name = os.path.join(nlConst_bases.param.constProj_output_directory,
@@ -218,7 +218,7 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, pca_tests= True, postP
         f_test = nlConst_bases.nonlinearSnapshots.test_snapTensor
         file_test = os.path.join(nlConst_bases.param.constProj_output_directory, nlConst_bases.param.name + "_" +
                                   nlConst_bases.param.constProj_name + "_deim_test_convergence_tests")
-        reconstruction_test(f_test, nlConst_bases.deim_test_constructed, file_test)
+        reconstruction_test(f_test, nlConst_bases.deim_constructed,  file_test, case="test")
 
 
 

@@ -1,8 +1,12 @@
 addict==2.4.0
+aiohappyeyeballs @ file:///home/conda/feedstock_root/build_artifacts/aiohappyeyeballs_1741775197943/work
+aiohttp @ file:///home/conda/feedstock_root/build_artifacts/aiohttp_1752162595560/work
+aiosignal @ file:///home/conda/feedstock_root/build_artifacts/aiosignal_1751626463503/work
 anyio==4.9.0
 apptools==5.2.1
 asttokens==3.0.0
-attrs==25.3.0
+async-timeout @ file:///home/conda/feedstock_root/build_artifacts/async-timeout_1733235340728/work
+attrs @ file:///home/conda/feedstock_root/build_artifacts/attrs_1741918516150/work
 blinker==1.9.0
 cascadio==0.0.16
 certifi==2025.6.15
@@ -15,7 +19,7 @@ configobj==5.0.8
 contourpy==1.1.1
 coverage==7.9.1
 coveralls==4.0.1
-cycler==0.12.1
+cycler @ file:///home/conda/feedstock_root/build_artifacts/cycler_1733332471406/work
 Cython==3.1.2
 dash==3.1.1
 decorator==5.2.1
@@ -30,13 +34,14 @@ fast_simplification==0.1.11
 fastjsonschema==2.21.1
 Flask==3.1.1
 fonttools==4.51.0
+frozenlist @ file:///home/conda/feedstock_root/build_artifacts/frozenlist_1752167142843/work
 gmsh==4.12.2
 gmsh_interop==2024.1
 h11==0.16.0
 h5py==3.11.0
 httpcore==1.0.9
 httpx==0.28.1
-idna==3.10
+idna @ file:///home/conda/feedstock_root/build_artifacts/idna_1733211830134/work
 imageio==2.37.0
 importlib_metadata==7.1.0
 importlib_resources==6.4.0
@@ -54,6 +59,7 @@ jupyterlab_widgets==3.0.15
 kiwisolver==1.4.5
 lazy_loader==0.4
 libigl==2.5.1
+loguru @ file:///home/conda/feedstock_root/build_artifacts/loguru_1746634721458/work
 lxml==6.0.0
 manifold3d==3.1.1
 mapbox_earcut==1.0.3
@@ -61,18 +67,22 @@ marimo==0.14.9
 Markdown==3.8.2
 markdown-it-py==3.0.0
 MarkupSafe==3.0.2
-matplotlib==3.7.5
+matplotlib==3.9.4
 matplotlib-inline==0.1.7
+mayavi @ file:///home/conda/feedstock_root/build_artifacts/mayavi_1747662904171/work
 mdurl==0.1.2
 meshio==5.3.5
 MeshPy==2022.1.3
 mpmath==1.3.0
+msgpack @ file:///home/conda/feedstock_root/build_artifacts/msgpack-python_1749813188733/work
+multidict @ file:///home/conda/feedstock_root/build_artifacts/multidict_1751310558090/work
+munkres==1.1.4
 narwhals==1.45.0
 nbformat==5.10.4
 nest-asyncio==1.6.0
 networkx==3.2.1
 nodeenv==1.9.1
-numpy==1.24.4
+numpy @ file:///home/conda/feedstock_root/build_artifacts/numpy_1707225342954/work/dist/numpy-1.26.4-cp39-cp39-linux_x86_64.whl#sha256=c799942b5898f6e6c60264d1663a6469a475290e758c654aeeb78e2596463abd
 openctm==0.0.6
 packaging==24.0
 pandas==2.3.0
@@ -82,13 +92,16 @@ pillow==10.3.0
 platformdirs==4.3.8
 plotly==6.2.0
 pluggy==1.6.0
+ply @ file:///home/conda/feedstock_root/build_artifacts/ply_1733239724146/work
 polyscope==2.4.0
+potpourri3d==1.3
 prompt_toolkit==3.0.51
+propcache @ file:///home/conda/feedstock_root/build_artifacts/propcache_1744524932661/work
 psutil==7.0.0
 ptyprocess==0.7.0
 pure_eval==0.2.3
 pycollada==0.9.2
-pyface==8.0.0
+pyface @ file:///home/conda/feedstock_root/build_artifacts/pyface_1734362429785/work
 pygame==2.6.1
 pyglet==1.5.31
 Pygments==2.17.2
@@ -98,14 +111,14 @@ pymeshlab==2023.12.post3
 PyOpenGL==3.1.9
 pyparsing==3.1.2
 pyPBD==2.2.1
-PyQt5==5.15.10
+PyQt5==5.15.9
 PyQt5-Qt5==5.15.16
 PyQt5-sip==12.13.0
 pyquaternion==0.9.9
 pyright==1.1.402
 pytest==8.4.1
 pytest-cov==6.2.1
-python-dateutil==2.9.0.post0
+python-dateutil @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_python-dateutil_1751104122/work
 python-fcl==0.7.0.8
 pytools==2024.1.14
 pytz==2025.2
@@ -121,6 +134,7 @@ scikit-image==0.24.0
 scikit-learn==1.6.1
 scipy==1.10.1
 shapely==2.0.7
+sip @ file:///home/conda/feedstock_root/build_artifacts/sip_1745411216123/work
 six==1.16.0
 sniffio==1.3.1
 stack-data==0.6.3
@@ -129,16 +143,18 @@ svg.path==6.3
 sympy==1.14.0
 threadpoolctl==3.6.0
 tifffile==2024.8.30
-tomli==2.2.1
+toml @ file:///home/conda/feedstock_root/build_artifacts/toml_1734091811753/work
+tomli @ file:///home/conda/feedstock_root/build_artifacts/tomli_1733256695513/work
 tomlkit==0.13.3
 tqdm==4.67.1
 traitlets==5.14.3
 traits==6.4.3
-traitsui==8.0.0
+traitsui @ file:///home/conda/feedstock_root/build_artifacts/traitsui_1734365678418/work
 triangle==20250106
 trimesh==4.6.13
 typing_extensions==4.14.0
 tzdata==2025.2
+unicodedata2 @ file:///home/conda/feedstock_root/build_artifacts/unicodedata2_1736692503055/work
 urllib3==2.5.0
 uvicorn==0.35.0
 vhacdx==0.0.8.post2
@@ -147,6 +163,8 @@ wcwidth==0.2.13
 websockets==15.0.1
 Werkzeug==3.1.3
 widgetsnbextension==4.0.14
+wslink @ file:///home/conda/feedstock_root/build_artifacts/wslink_1747717868707/work
 xatlas==0.0.10
 xxhash==3.5.0
+yarl @ file:///home/conda/feedstock_root/build_artifacts/yarl_1749554822108/work
 zipp==3.19.1

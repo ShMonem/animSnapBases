@@ -1,5 +1,5 @@
-Function 'snapshots_prepare' executed in 52.7155 seconds.
-Function 'compute_nonlinearSnap_k_bases' executed in 98.9732 seconds.
-Function 'compute_components_store_singvalues' executed in 98.9735 seconds.
-Function 'post_process_components' executed in 13.2071 seconds.
-Function 'deim_blocksForm' executed in 83.5692 seconds.
+Function 'snapshots_prepare' executed in 0.0214 seconds.
+Function 'compute_nonlinearity_bases_blocks_utilizing_diffirential_operator' executed in 0.2372 seconds.
+Function 'compute_components_store_singvalues' executed in 0.2373 seconds.
+Function 'post_process_components' executed in 0.1198 seconds.
+Function 'deim_block_form_utilizing_differential_operator' executed in 1.2672 seconds.

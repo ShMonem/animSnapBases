@@ -96,55 +96,76 @@ class nonlinearSnapshots:
         print('nonlinearSnapshots ready ... Volkwein ('+str(self.param.constProj_massWeight)+'), standarized ('+str(self.param.constProj_standarize)+').')
 
     @log_time(constProj_output_directory)
-    def read(self):
+    def read(self, file_type=".npz"):
         """ read separate stored constraints´ projections,
            and build frames tensor """
 
         print("reading the nonlinear snapshots tensor ...")
-        Xtemp = []
+        Xtemp = []   # basis compute/training snapshots
+        X_test = []  # test snapshots
+        if file_type==".npz":
+            # data contains all snapshots in one .npz
+            data = np.load(self.snapshots_file, allow_pickle=True)
+            for i in range(0, self.frs* self.param.constProj_frame_increment, self.param.constProj_frame_increment):
+                Mat_i = data[str(i)]
+                if i == 0:
+                    Xtemp = Mat_i[np.newaxis, :, :]    # create snapshots tensor
+                else:
+                    Xtemp = np.concatenate((Xtemp, Mat_i[np.newaxis, :, :]), axis=0)    # update snapshots tensor # (F, ep, 3)
 
-        for i in range(0, self.frs* self.param.constProj_frame_increment, self.param.constProj_frame_increment):
-            file = open(self.snapshots_file+str(i)+".bin", "rb")
-            #  read matrix dimension
-            ni = struct.unpack('<i', file.read(4))[0]   # read a 4 byte integer in little endian
-            mi = struct.unpack('<i', file.read(4))[0]
-            Mat_i = np.zeros((ni, mi))   # (ep, 3)  #  expected dimension of each snapshot
+            for j in range(self.param.constProj_train_test_jump, self.frs * self.param.constProj_frame_increment,
+                           self.param.constProj_frame_increment):
+                Mat_j = data[str(j)]
+                if j == self.param.constProj_train_test_jump:
+                    X_test = Mat_j[np.newaxis, :, :]  # create snapshots tensor
+                else:
+                    X_test = np.concatenate((X_test, Mat_j[np.newaxis, :, :]),
+                                           axis=0)  # update snapshots tensor # (F, ep, 3)
 
-            for coli in range(mi):
-                for rowi in range(ni):
-                    value = struct.unpack('<d', file.read(8))[0]  # read 8 byte little endian double
-                    Mat_i[rowi, coli] = value
-            if i == 0:
-                Xtemp = Mat_i[np.newaxis, :, :]    # create snapshots tensor
+        elif file_type==".bin":
+            # in this case snapshots are read file by file
+            for i in range(0, self.frs* self.param.constProj_frame_increment, self.param.constProj_frame_increment):
+                file = open(self.snapshots_file+str(i)+".bin", "rb")
+                #  read matrix dimension
+                ni = struct.unpack('<i', file.read(4))[0]   # read a 4 byte integer in little endian
+                mi = struct.unpack('<i', file.read(4))[0]
+                Mat_i = np.zeros((ni, mi))   # (ep, 3)  #  expected dimension of each snapshot
 
-            else:
-                Xtemp = np.concatenate((Xtemp, Mat_i[np.newaxis, :, :]), axis=0)    # update snapshots tensor
-            # (F, ep, 3)
+                for coli in range(mi):
+                    for rowi in range(ni):
+                        value = struct.unpack('<d', file.read(8))[0]  # read 8 byte little endian double
+                        Mat_i[rowi, coli] = value
+                if i == 0:
+                    Xtemp = Mat_i[np.newaxis, :, :]    # create snapshots tensor
 
-        self.num_constained_elements = Xtemp.shape[1]//self.constraintsSize   # e == e.p//p
+                else:
+                    Xtemp = np.concatenate((Xtemp, Mat_i[np.newaxis, :, :]), axis=0)    # update snapshots tensor
+                # (F, ep, 3)
+
+            for i in range(self.param.constProj_train_test_jump, self.frs* self.param.constProj_frame_increment, self.param.constProj_frame_increment):
+                file = open(self.snapshots_file+str(i)+".bin", "rb")
+                #  read matrix dimension
+                ni = struct.unpack('<i', file.read(4))[0]   # read a 4 byte integer in little endian
+                mi = struct.unpack('<i', file.read(4))[0]
+                Mat_i = np.zeros((ni, mi))   # (ep, 3)  #  expected dimension of each snapshot
+
+                for coli in range(mi):
+                    for rowi in range(ni):
+                        value = struct.unpack('<d', file.read(8))[0]  # read 8 byte little endian double
+                        Mat_i[rowi, coli] = value
+                if i == self.param.constProj_train_test_jump:
+                    X_test = Mat_i[np.newaxis, :, :]    # create snapshots tensor
+
+                else:
+                    X_test = np.concatenate((X_test, Mat_i[np.newaxis, :, :]), axis=0)    # update snapshots tensor
+        # --------------------------------------------------------------------------------------------------------------
+
+        self.num_constained_elements = Xtemp.shape[1] // self.constraintsSize  # e == e.p//p
         self.snapTensor = Xtemp  # initialized with the un-pre-processed snapshots
         print("loaded snapshots size", self.snapTensor.shape)
         print("No. constrained verts: ", self.num_constained_elements)
         print("pre-process stats,  min:", np.min(self.snapTensor), "max: ", np.max(self.snapTensor),
-              "mean: ", np.mean(self.snapTensor), "std:", np.std(self.snapTensor) )
-        # --------------------------------------------------------------------------------------------------------------
-        X_test = [] # load test snapshots
-        for i in range(self.param.constProj_train_test_jump, self.frs* self.param.constProj_frame_increment, self.param.constProj_frame_increment):
-            file = open(self.snapshots_file+str(i)+".bin", "rb")
-            #  read matrix dimension
-            ni = struct.unpack('<i', file.read(4))[0]   # read a 4 byte integer in little endian
-            mi = struct.unpack('<i', file.read(4))[0]
-            Mat_i = np.zeros((ni, mi))   # (ep, 3)  #  expected dimension of each snapshot
-
-            for coli in range(mi):
-                for rowi in range(ni):
-                    value = struct.unpack('<d', file.read(8))[0]  # read 8 byte little endian double
-                    Mat_i[rowi, coli] = value
-            if i == self.param.constProj_train_test_jump:
-                X_test = Mat_i[np.newaxis, :, :]    # create snapshots tensor
-
-            else:
-                X_test = np.concatenate((X_test, Mat_i[np.newaxis, :, :]), axis=0)    # update snapshots tensor
+              "mean: ", np.mean(self.snapTensor), "std:", np.std(self.snapTensor))
 
         self.test_snapTensor = X_test
         print("loaded test snapshots size", self.test_snapTensor.shape)
@@ -204,6 +225,9 @@ class nonlinearSnapshots:
 
         #  compute Cholesky factorization for the diagonal auxliary mass matrix
 
+        if self.param.constProj_snapshots_type == "vertbend":
+            verts = np.load(self.param.constProj_input_snaps_constrained_elements)["indices"]
+            self.mass = self.mass[verts]
         massL = np.sqrt(self.mass)  # ep
 
         #  check the Cholesky factorization is done properly:

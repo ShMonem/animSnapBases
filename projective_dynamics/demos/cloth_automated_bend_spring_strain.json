@@ -26,7 +26,7 @@
     "edge_constraint_wi": 1000000.0,
     "vert_bending_constraint_wi": 0.1,
     "deformation_gradient_constraint_wi": 0,
-    "strain_limit_constraint_wi": 0.0,
+    "strain_limit_constraint_wi": 0.01,
     "sigma_min": 0.99,
     "sigma_max": 1.01
   },
@@ -34,7 +34,7 @@
     "apply_constraints": false,
     "vert_bending_constraint": true,
     "edge_constraint": true,
-    "tri_strain_constraint": false,
+    "tri_strain_constraint": true,
     "tet_deformation_constraint": false,
     "tet_strain_constraint": false,
     "is_gravity_active": true,

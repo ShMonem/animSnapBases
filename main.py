@@ -134,7 +134,7 @@ def main(param: Config_parameters):
             # step = 1
             # nonlinearBases.store_components_gradually_to_files(start, end, step, '.bin')
 
-            nonlinearBases.store_components_n_interpol_points()
+            nonlinearBases.store_components_n_interpol_points()  # stores one .npz with all data
 
         if param.run_deim_tests:
             from generate_figures.nl_reduction_tests import tets_plots_deim

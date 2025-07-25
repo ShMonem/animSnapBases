@@ -9,9 +9,9 @@ from Constraint_projections import DeformableMesh
 from geometry import get_simple_bar_model, get_simple_cloth_model
 from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler
 
-from Simulators import Solver
+from Simulators import animSnapBasesSolver
 import trimesh
-solver = Solver()
+solver = animSnapBasesSolver()
 fext = None
 model = None
 output_path="output"

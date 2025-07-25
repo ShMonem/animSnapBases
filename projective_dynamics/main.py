@@ -6,11 +6,11 @@ import numpy as np
 import os
 
 from Constraint_projections import DeformableMesh
-from Simulators import Solver
+# from Simulators import Solver, animSnapBasesSolver
 from geometry import get_simple_bar_model, get_simple_cloth_model
 from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler
 
-solver = Solver()
+# solver = animSnapBasesSolver()
 fext = None
 model = None
 output_path = ""

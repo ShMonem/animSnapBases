@@ -426,7 +426,7 @@ class constraintsComponents:  # Components == bases
         if self.param.constProj_snapshots_type == "vertbend":
             # in case of "vertbend" for non-closed meshes,
             # mapping between index and its order in the list of constrained_elements is required
-            Pt = [i for i, val in enumerate(self.constrianed_verts) if val in set(self.deim_alpha[:self.deim_alpha_ranges[r - 1]])]
+            Pt = [i for i, val in enumerate(self.constrianed_verts) if val in self.deim_alpha[:self.deim_alpha_ranges[r - 1]]]
         else:
             Pt = self.deim_alpha[:self.deim_alpha_ranges[r - 1]]
 
@@ -604,7 +604,7 @@ class constraintsComponents:  # Components == bases
                         # in case of "vertbend" for non-closed meshes,
                         # mapping between index and its order in the list of constrained_elements is required
                         alpha_list = np.intersect1d(self.constrianed_verts,alpha_list)
-                        mapped_indices = [i for i, val in enumerate(self.constrianed_verts) if val in set(alpha_list)]
+                        mapped_indices = [i for i, val in enumerate(self.constrianed_verts) if val in alpha_list]
 
                 jump = 0
                 for al in range(len(alpha_list)):

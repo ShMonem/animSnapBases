@@ -41,3 +41,5 @@ media/
 projective_dynamics/.polyscope.ini
 projective_dynamics/imgui.ini
 projective_dynamics/output/
+time_logs.txt
+

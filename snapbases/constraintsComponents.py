@@ -12,7 +12,7 @@ from config.config import Config_parameters
 from snapbases.nonlinear_snapshots import nonlinearSnapshots
 from utils.utils import store_components, store_interpol_points_vector
 from utils.utils import log_time, read_sparse_matrix
-from utils.support import get_tetrahedrons_per_vert, get_triangles_per_vert, get_vertices_per_vert
+from utils.support import get_tetrahedrons_per_vert, get_triangles_per_vert, get_vert_star_per_vert, get_edges_per_vert
 
 import polyscope as ps
 
@@ -169,8 +169,11 @@ class constraintsComponents:  # Components == bases
             elif self.nonlinearSnapshots.ele_type  == "_tris":
                 elems = get_triangles_per_vert([v], self.nonlinearSnapshots.tris)
 
+            elif self.nonlinearSnapshots.ele_type  == "_edges":
+                elems = get_edges_per_vert([v], self.nonlinearSnapshots.edges)
+
             elif self.nonlinearSnapshots.ele_type == "_verts":
-                elems = get_vertices_per_vert([v], self.nonlinearSnapshots.tris)
+                elems = get_vert_star_per_vert([v], self.nonlinearSnapshots.tris)
             else:
                 print("ERROR! unknown constraints projection type")
 
@@ -423,17 +426,17 @@ class constraintsComponents:  # Components == bases
         V_r = self.comps.swapaxes(0, 1)[:, :r*p, :]  # (ep, rp, 3)
 
 
-        if self.param.constProj_snapshots_type == "vertbend":
-            # in case of "vertbend" for non-closed meshes,
+        if self.param.constProj_snapshots_type == "verts_bending":
+            # in case of "verts_bending" for non-closed meshes,
             # mapping between index and its order in the list of constrained_elements is required
-            Pt = [i for i, val in enumerate(self.constrianed_verts) if val in self.deim_alpha[:self.deim_alpha_ranges[r - 1]]]
+            Pt = self.deim_Pt[:self.deim_alpha_ranges[r - 1]]
         else:
             Pt = self.deim_alpha[:self.deim_alpha_ranges[r - 1]]
 
         reconstructed = np.zeros((F, ep, 3))
 
         for l in range(3):
-            u, piv = lu_factor(V_r[Pt, :, l].T @ V_r[Pt, :, l])
+            u, piv = lu_factor(V_r[Pt, :, l].T @ V_r[Pt, :, l])    # V_r[Pt, :, l] is a rectangular matrix, we need to solve normal equation
             for f in range(F):
                 reconstructed[f, :, l] = V_r[:, :, l] @ lu_solve((u, piv), V_r[Pt, :, l].T @ frames[f, Pt, l])
 
@@ -518,6 +521,7 @@ class constraintsComponents:  # Components == bases
         data = {}
         data["components"] = self.comps
         data["interpol_alphas"] = self.deim_alpha
+        data["Pt"] = self.deim_Pt
 
         # the below attributes can be used to highlight elements in the nl_reduction_test, as below
         # deim_verts = nlConst_bases.deim_interpol_verts[:visualize_deim_elements_at_K]
@@ -544,12 +548,14 @@ class constraintsComponents:  # Components == bases
         K = self.numComp
 
         bases = self.comps.swapaxes(0, 1)  # (ep, Kp, d)
+        test_linear_dependency(bases, 3, K * p)
+
         if error_in_pos_space:
-            if self.nonlinearSnapshots.ele_type not in ["_tets", "_tris", "_verts"] :
+            if self.nonlinearSnapshots.ele_type not in ["_tets", "_tris", "_edges", "_verts"] :
                 print("ERROR! Unknown constained elements type in deim")
                 return
 
-            if self.param.constProj_snapshots_type == "vertbend":
+            if self.param.constProj_snapshots_type == "verts_bending":
                 # load the list of constrained indices (TODO: specify for meshes with boundary verts?)
                 self.constrianed_verts = np.load(self.param.constProj_input_snaps_constrained_elements)["indices"]
 
@@ -575,7 +581,9 @@ class constraintsComponents:  # Components == bases
                         # V (Pt V)^{-1} Pt v_k
                         # check_matrix_properties(V[Pt, :, i].T @ V[Pt, :, i])
                         # In this case we solve for the normal equation because we have more rows than cols
-                        c[:, :, i] = V[:, :, i] @ npla.solve(V[Pt, :, i].T @ V[Pt, :, i], V[Pt, :, i].T @ vk[Pt, :, i])  # (ep, kp,)@ (kp,) --(ep,)xd
+                        # c[:, :, i] = V[:, :, i] @ npla.solve(V[Pt, :, i].T @ V[Pt, :, i], V[Pt, :, i].T @ vk[Pt, :, i])  # (ep, kp,)@ (kp,) --(ep,)xd
+                        c[:, :, i] = V[:, :, i] @ np.linalg.lstsq(V[Pt, :, i], vk[Pt, :, i], rcond=None)[0]
+
 
                     r = c - vk  # residual in constraint projection space  (ep, p, d)
                     r = self.St @ r.reshape(r.shape[0], -1)   # residual in position space (|V|, p*d)
@@ -598,13 +606,14 @@ class constraintsComponents:  # Components == bases
                     alpha_list = get_tetrahedrons_per_vert([v_interpolate], self.nonlinearSnapshots.tets)
                 elif self.nonlinearSnapshots.ele_type == "_tris":
                     alpha_list = get_triangles_per_vert([v_interpolate], self.nonlinearSnapshots.tris)
+                elif self.nonlinearSnapshots.ele_type == "_edges":
+                    alpha_list = get_triangles_per_vert([v_interpolate], self.nonlinearSnapshots.edges)
                 elif self.nonlinearSnapshots.ele_type == "_verts":
-                    alpha_list = get_vertices_per_vert([v_interpolate], self.nonlinearSnapshots.tris)
-                    if self.param.constProj_snapshots_type == "vertbend":
-                        # in case of "vertbend" for non-closed meshes,
+                    alpha_list = get_vert_star_per_vert([v_interpolate], self.nonlinearSnapshots.tris)
+                    if self.param.constProj_snapshots_type == "verts_bending":
+                        # in case of "verts_bending" for non-closed meshes,
                         # mapping between index and its order in the list of constrained_elements is required
-                        alpha_list = np.intersect1d(self.constrianed_verts,alpha_list)
-                        mapped_indices = [i for i, val in enumerate(self.constrianed_verts) if val in alpha_list]
+                        alpha_list, mapped_indices, _ = np.intersect1d(self.constrianed_verts,alpha_list, return_indices=True)
 
                 jump = 0
                 for al in range(len(alpha_list)):
@@ -612,7 +621,7 @@ class constraintsComponents:  # Components == bases
                     if alpha not in e_points and jump < self.param.deim_ele_per_vert:
                         jump += 1
                         e_points.append(alpha)
-                        if self.param.constProj_snapshots_type == "vertbend":
+                        if self.param.constProj_snapshots_type == "verts_bending":
                             indx = mapped_indices[al]
                             Pt.append(indx)   # in this case p == 1
                         else:
@@ -637,6 +646,7 @@ class constraintsComponents:  # Components == bases
             else:
                 V = np.concatenate((V, vk), axis=1)
 
+        self.deim_Pt = np.array(Pt)
         self.deim_alpha = np.array(e_points)
         self.deim_alpha_ranges = np.array(e_range)
         self.deim_interpol_verts = np.array(self.deim_interpol_verts)

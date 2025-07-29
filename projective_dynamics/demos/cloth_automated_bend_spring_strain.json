@@ -12,11 +12,10 @@
   },
   "visualization_params": {
     "window_open": true,
-    "is_simulating": false
+    "is_simulating": true
   },
     "solver_params": {
-      "window_open": true,
-      "is_simulating": false,
+      "name": "animSnapBasesSolver",
       "dt": 0.016,
     "solver_iterations": 10
     },
@@ -33,10 +32,12 @@
   "constraints": {
     "apply_constraints": false,
     "vert_bending_constraint": true,
-    "edge_constraint": true,
+
+    "edge_spring_constraint": true,
     "tri_strain_constraint": true,
-    "tet_deformation_constraint": false,
     "tet_strain_constraint": false,
+    "tet_deformation_constraint": false,
+
     "is_gravity_active": true,
 
     "fix_left_side": false,
@@ -53,5 +54,26 @@
     "fix_bottom_corners": false,
     "_fix_top_corners_triggered": false,
     "_fix_bottom_corners_triggered": false
+  },
+  "constraint_projetions_reduction": {
+    "name": "geom_interpolation",
+    "vert_bending_reduced": true,
+    "num_verts_bending_components": 10,
+    "edge_spring_reduced": true,
+    "edge_spring_num_components": 90,
+    "tri_strain_reduced": true,
+    "tri_strain_num_components": 20,
+    "tet_strain_reduced": false,
+    "tet_strain_num_components": -1,
+    "tet_deformation_reduced": false,
+    "tet_deformation_num_components": -1
+  },
+  "directories": {
+    "output": "output/",
+    "positions_basis": "",
+    "geom_interpolation_basis_dir": "../results/cloth/cloth_automated_bend_spring_strain/p_bases/deim_noAlignement_Volkwein_Standarized_Global_Orthogonalized_Release100_Frames_2_increment",
+    "geom_interpolation_basis_file": "components_interpol_alphas_interpol_verts_interpol_alpha_ranges.npz",
+    "deim_basis": ""
+
   }
 }

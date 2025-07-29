@@ -192,6 +192,7 @@ class Config_parameters:
         self.snapshots_repo_dir = config["object"]["experiment_dir"]  # where snapshots can be found
         # set data sources and parameters
         self.name = config["object"]["mesh"]
+        self.volumetric_mesh = config["object"]["volumetric"] # bool used to determine if to compute surface or tetrahedral edges
         self.experiment = config["object"]["experiment"]  # name of you simulations
 
         self.compute_pos_bases =config["vertexPos_bases"]['computeState']["compute"]
@@ -549,12 +550,12 @@ class Config_parameters:
                                          + self.name + "/" \
                                          + self.experiment\
                                          + "/p_bases/"\
-                                         + self.constProj_name + "/" \
                                          + self.constProj_bases_name_extention \
                                          + str(self.constProj_numFrames) \
                                          + "_Frames_" \
                                          + str(self.constProj_frame_increment) \
-                                         + "_increment" + "/"
+                                         + "_increment" + "/" \
+                                         + self.constProj_name + "/"
 
             if not os.path.exists(self.constProj_output_directory):
                 # Create a new directory because it does not exist

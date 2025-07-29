@@ -5,7 +5,7 @@ import sys
 import cProfile
 from utils.utils import log_time, read_sparse_matrix_from_bin, read_mesh_file, read_obj
 from utils.process import view_anim_file, view_components
-from utils.support import compute_tetMasses, compute_triMasses, compute_edge_incidence_matrix_on_tris
+from utils.support import compute_tetMasses, compute_triMasses, compute_edgeMasses
 import h5py
 from config.config import Config_parameters
 import igl
@@ -200,7 +200,20 @@ class nonlinearSnapshots:
                     # self.edges = compute_edge_incidence_matrix_on_tris(self.tris)
                     m = igl.massmatrix(self.verts, self.tris, igl.MASSMATRIX_TYPE_VORONOI)
                     vertexMasses = np.diag(m.todense())
-                    self.mass = vertexMasses
+
+                    if self.param.constProj_snapshots_type == "verts_bending":
+                        verts = np.load(self.param.constProj_input_snaps_constrained_elements)["indices"]
+                        self.mass = vertexMasses[verts]
+                    elif self.param.constProj_snapshots_type == "edge_spring":
+                        if self.param.volumetric_mesh:
+                            self.verts, self.tets, self.tris = read_mesh_file(self.tet_mesh)
+                            self.edges = igl.edges(self.tets)
+                        else:
+                            self.edges = igl.edges(self.tris)
+
+                        self.mass = compute_edgeMasses(vertexMasses, self.edges, self.num_constained_elements,
+                                              self.constraintsSize)
+
                 elif self.constraintsSize == 2:
                     self.verts, self.tris = igl.read_triangle_mesh(self.tri_mesh)
                     if self.verts is None:
@@ -225,9 +238,7 @@ class nonlinearSnapshots:
 
         #  compute Cholesky factorization for the diagonal auxliary mass matrix
 
-        if self.param.constProj_snapshots_type == "vertbend":
-            verts = np.load(self.param.constProj_input_snaps_constrained_elements)["indices"]
-            self.mass = self.mass[verts]
+
         massL = np.sqrt(self.mass)  # ep
 
         #  check the Cholesky factorization is done properly:

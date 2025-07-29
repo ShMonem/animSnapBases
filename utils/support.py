@@ -22,6 +22,22 @@ def compute_tetMasses(vertexMasses, tetrahedrons, tetSize, auxiliarySize):
 
     return masses
 
+
+def compute_edgeMasses(vertexMasses, edges, edgeSize, auxiliarySize):
+    masses = np.zeros(edgeSize * auxiliarySize)
+
+    for e in range(edges.shape[0]):
+        v1, v2 = edges[e]
+        weight = vertexMasses[v1] + vertexMasses[v2]
+        if weight == 0:
+            print(f"Warning: zero weight on edge {e} ({v1}, {v2})")
+
+        for k in range(auxiliarySize):
+            masses[e * auxiliarySize + k] = weight
+
+    return masses
+
+
 def compute_triMasses(vertexMasses, triangles, triSize, auxiliarySize):
 
     assert auxiliarySize == 2
@@ -200,7 +216,7 @@ def get_tetrahedrons_per_vert(vertex_indices, tets):
 
     return matching_tet_indices
 
-def get_vertices_per_vert(vertex_index, faces):
+def get_vert_star_per_vert(vertex_index, faces):
     neighbors = set()
     for face in faces:
         if vertex_index in face:
@@ -208,6 +224,17 @@ def get_vertices_per_vert(vertex_index, faces):
             neighbors.update(face)
     #neighbors.discard(vertex_index)  # Remove the original vertex from the set of neighbors
     return list(neighbors)
+
+def get_edges_per_vert(vertex_indices, edges):
+    vertex_indices_set = set(vertex_indices)
+    matching_edge_indices = []
+
+    for index, edge in enumerate(edges):
+        if edge[0] in vertex_indices_set or edge[1] in vertex_indices_set:
+            matching_edge_indices.append(index)
+
+    return matching_edge_indices
+
 
 def compute_edge_incidence_matrix_on_tets(tets):
     """

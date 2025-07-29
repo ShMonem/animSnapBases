@@ -28,13 +28,14 @@ class Config_parameters:
             args.cloth_height = self.system_params ["system"][system_name]["cloth_height"]
 
     def add_visualization_args(self, parser):
-        parser.add_argument("--window_open", type=str, default= self.system_params ["visualization_params"]["window_open"])
-        parser.add_argument("--is_simulating", type=str, default= self.system_params ["visualization_params"]["is_simulating"])
+        visualization = self.system_params ["visualization_params"]
+        parser.add_argument("--window_open", type=str, default= visualization["window_open"])
+        parser.add_argument("--is_simulating", type=str, default= visualization["is_simulating"])
 
     def add_solver_args(self, parser):
         solver = self.system_params ["solver_params"]
-        parser.add_argument("--solver_window_open", type=bool, default=solver["window_open"])
-        parser.add_argument("--solver_is_simulating", type=bool, default=solver["is_simulating"])
+        # parser.add_argument("--solver_window_open", type=bool, default=solver["window_open"])
+        parser.add_argument("--solver", type=str, default=solver["name"])
         parser.add_argument("--dt", type=float, default=solver["dt"])
         parser.add_argument("--solver_iterations", type=int, default=solver["solver_iterations"])
 
@@ -54,7 +55,8 @@ class Config_parameters:
 
         parser.add_argument("--apply_constraints", type=bool, default=constraints["apply_constraints"])
         parser.add_argument("--vert_bending_constraint", type=float, default=constraints["vert_bending_constraint"])
-        parser.add_argument("--edge_constraint", type=bool, default=constraints["edge_constraint"])
+
+        parser.add_argument("--edge_constraint", type=bool, default=constraints["edge_spring_constraint"])
         parser.add_argument("--tri_strain_constraint", type=bool, default=constraints["tri_strain_constraint"])
         parser.add_argument("--tet_deformation_constraint", type=bool,
                             default=constraints["tet_deformation_constraint"])
@@ -79,6 +81,38 @@ class Config_parameters:
                             default=constraints['_fix_top_corners_triggered'])
         parser.add_argument("--_fix_bottom_corners_triggered", type=bool,
                             default=constraints['_fix_bottom_corners_triggered'])
+
+
+    def add_constraint_projections_reduction_args(self, parser):
+        constrProj_basis = self.system_params["constraint_projetions_reduction"]
+        parser.add_argument("--constraint_projection_basis_type", type=str, default=constrProj_basis["name"])
+
+        # which constraints projections are reduced
+        constraints = self.system_params ['constraints']
+        parser.add_argument("--vert_bending_reduced", type=bool, default=constrProj_basis["vert_bending_reduced"])
+        parser.add_argument("--vert_bending_num_components", type=bool, default=constrProj_basis["num_verts_bending_components"])
+
+        parser.add_argument("--edge_spring_reduced", type=bool, default=constrProj_basis["edge_spring_reduced"])
+        parser.add_argument("--edge_spring_num_components", type=bool, default=constrProj_basis["edge_spring_num_components"])
+
+        parser.add_argument("--tri_strain_reduced", type=bool, default=constrProj_basis["tri_strain_reduced"])
+        parser.add_argument("--tri_strain_num_components", type=bool,
+                            default=constrProj_basis["tri_strain_num_components"])
+
+        parser.add_argument("--tet_strain_reduced", type=bool, default=constrProj_basis["tet_strain_reduced"])
+        parser.add_argument("--tet_strain_num_components", type=bool,
+                            default=constrProj_basis["tet_strain_num_components"])
+
+        parser.add_argument("--tet_deformation_reduced", type=bool, default=constrProj_basis["tet_deformation_reduced"])
+        parser.add_argument("--tet_deformation_num_components", type=bool,
+                            default=constrProj_basis["tet_deformation_num_components"])
+
+    def add_directories_args(self, parser):
+        directories = self.system_params ["directories"]
+        parser.add_argument("--output_dir", type=str, default=directories['output'])
+
+        parser.add_argument("--geom_interpolation_basis_dir", type=str, default=directories['geom_interpolation_basis_dir'])
+        parser.add_argument("--geom_interpolation_basis_file", type=str, default=directories['geom_interpolation_basis_file'])
 
 
 def initiate_system_args(parser):

@@ -143,15 +143,14 @@ def main(param: Config_parameters):
 
 if __name__ == '__main__':
     # -----------------------------------------------------------------------------------------------------------------
-    # current available examples:
-    # meshes = ["sphere", "armadillo", "bunny", "elephant", "octopus"]
-    # subspaces = ["posSubspace",
-    #               "vertbendSubspace", "edgespringSubspace", "tristrainSubspace",
-    #               "tetstrainSubspace", "vertstarbendingSubspace"]
+
+    available_demos = {"cloth_automated_vertBendingSubspace.json",
+                        "cloth_automated_edgeSpringSubspace",
+                        "cloth_automated_vertBendingSubspace.json"}
 
     mesh = "cloth"
     subspace = "vertbendSubspace"
-    json_file = "config/examples/cloth_automated_vertbendSubspace.json"
+    json_file = "config/examples/cloth_automated_vertBendingSubspace.json"
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
     parser.add_argument('--mesh', type=str, default=mesh, help='Give a character mesh')

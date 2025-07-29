@@ -1195,7 +1195,6 @@ class DeformableMesh:
             )
 
 
-
     def add_vertex_bending_constraint(self, wi=1e6):
 
         self.has_verts_bending_constraints = True
@@ -1310,84 +1309,6 @@ class DeformableMesh:
                 tangential_velocity *= (1.0 - self.friction_coeff)
                 tangential_velocity += correction * self.repulsion_coeff
                 self.velocities[v] = tangential_velocity
-
-    def resolve_self_collision(self, vertices, min_dist=0.001, stiffness=1.0):
-        """
-        Resolve self-collision using a penalty-based vertex-face repulsion.
-        Args:
-            vertices: (N, 3) ndarray of vertex positions
-            faces: (M, 3) ndarray of triangle indices
-            min_dist: minimum allowed vertex-face distance
-            stiffness: repulsion strength
-        Returns:
-            updated_vertices: corrected vertex positions
-        """
-
-        faces = self.faces
-        def point_to_triangle_distance(p, tri):
-            """
-            Compute the closest point on triangle `tri` to point `p`.
-            Returns: distance, closest point
-            """
-            a, b, c = tri
-            ab = b - a
-            ac = c - a
-            ap = p - a
-
-            d1, d2 = np.dot(ab, ap), np.dot(ac, ap)
-            if d1 <= 0 and d2 <= 0:
-                return np.linalg.norm(p - a), a
-
-            bp = p - b
-            d3, d4 = np.dot(ab, bp), np.dot(ac, bp)
-            if d3 >= 0 and d4 <= d3:
-                return np.linalg.norm(p - b), b
-
-            vc = d1 * d4 - d3 * d2
-            if vc <= 0 and d1 >= 0 and d3 <= 0:
-                v = d1 / (d1 - d3)
-                closest = a + v * ab
-                return np.linalg.norm(p - closest), closest
-
-            cp = p - c
-            d5, d6 = np.dot(ab, cp), np.dot(ac, cp)
-            if d6 >= 0 and d5 <= d6:
-                return np.linalg.norm(p - c), c
-
-            vb = d5 * d2 - d1 * d6
-            if vb <= 0 and d2 >= 0 and d6 <= 0:
-                w = d2 / (d2 - d6)
-                closest = a + w * ac
-                return np.linalg.norm(p - closest), closest
-
-            va = d3 * d6 - d5 * d4
-            if va <= 0 and (d4 - d3) >= 0 and (d5 - d6) >= 0:
-                u = (d4 - d3) / ((d4 - d3) + (d5 - d6))
-                closest = b + u * (c - b)
-                return np.linalg.norm(p - closest), closest
-
-            # Inside face
-            denom = 1.0 / (va + vb + vc)
-            v = vb * denom
-            w = vc * denom
-            closest = a + ab * v + ac * w
-            return np.linalg.norm(p - closest), closest
-
-        vertices = vertices.copy()
-        for vi, p in enumerate(vertices):
-            for f in faces:
-                if vi in f:
-                    continue  # Skip self-face
-
-                tri = vertices[f]
-                dist, closest = point_to_triangle_distance(p, tri)
-
-                if dist < min_dist and dist > 1e-8:
-                    direction = (p - closest) / dist
-                    correction = stiffness * (min_dist - dist) * direction
-                    vertices[vi] += correction
-
-        return vertices
 
     def resolve_self_collision_fast(self, vertices, min_dist=0.001, stiffness=1.0):
 

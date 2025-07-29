@@ -9,14 +9,16 @@ from Constraint_projections import DeformableMesh
 from geometry import get_simple_bar_model, get_simple_cloth_model
 from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler
 
-from Simulators import animSnapBasesSolver
+from Simulators import animSnapBasesSolver, Solver
 import trimesh
-solver = animSnapBasesSolver()
-fext = None
+
+from utils import check_dir_exists
+
+# declare global variables
 model = None
-output_path="output"
-object_name = None
-is_simulating = False
+fext = None
+solver = None
+
 picking_state = {
     "is_picking": False,
     "vertex": 0,
@@ -24,6 +26,14 @@ picking_state = {
     "mouse_y": 0,
     "force": 400.0,
 }
+
+def get_solver_class_from_name(args):
+    if args.solver == "animSnapBasesSolver":
+        return animSnapBasesSolver(args)
+    elif args.solver == "Solver":
+        return Solver()
+    else:
+        raise ValueError("Unknown solver name")
 
 def rescale(V):
     v_mean = np.mean(V, axis=0)
@@ -34,8 +44,7 @@ def rescale(V):
     return V
 
 def reset_simulation_model(V, F, T, should_rescale=False, params=None):
-    global model, solver_instance, fext
-
+    global model, fext, solver
     if should_rescale:
         V = rescale(V)
 
@@ -69,7 +78,7 @@ def interacrive_testing_callback(args, record_fom_info = False, params=None):
 
                 if psim.Button("Compute##Bar"):
                     V, T, F = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
-                    reset_simulation_model(V, F, T, should_rescale=True)
+                    reset_simulation_model(V, F, T,model, fext, solver, should_rescale=True)
                     object_name = "Bar"
 
                 psim.TreePop()
@@ -79,7 +88,7 @@ def interacrive_testing_callback(args, record_fom_info = False, params=None):
 
                 if psim.Button("Compute##Cloth"):
                     V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
-                    reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
+                    reset_simulation_model(V, F, np.empty((0, 3)), model, fext, solver, should_rescale=True)
                     object_name = "Cloth"
 
                 psim.TreePop()
@@ -264,12 +273,13 @@ def interacrive_testing_callback(args, record_fom_info = False, params=None):
 
     return callback
 
-def cloth_automated_bend_spring_strain_callback(args, record_fom_info = False, params=None,experiment="cloth_automated_bend_spring_strain", reduction="constraint_projection/FOM"):
-    global model, solver, fext, is_simulating
-    is_simulating = True
+def cloth_automated_bend_spring_strain_callback(args, record_fom_info = False, params=None,experiment="cloth_automated_bend_spring_strain"):
+    global model, fext, solver
+    solver = get_solver_class_from_name(args)
+    is_simulating = args.is_simulating
+    output_path = args.output_dir
     def callback():
-        global output_path, object_name, is_simulating
-        psim.PushItemWidth(200)
+        nonlocal output_path, is_simulating
         psim.TextUnformatted("== Projective Dynamics ==")
         psim.Separator()
         # Frame 0: create mesh and apply initial constraints
@@ -282,8 +292,9 @@ def cloth_automated_bend_spring_strain_callback(args, record_fom_info = False, p
             reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
             object_name = "cloth"
 
+            check_dir_exists(os.path.join(output_path, object_name))
             mesh = trimesh.Trimesh(vertices=V, faces=F)
-            mesh.export(os.path.join(output_path, object_name+".obj"))
+            mesh.export(os.path.join(output_path, object_name, object_name+".obj"))
 
             psim.PushItemWidth(200)
             psim.TextUnformatted("== Projective Dynamics ==")
@@ -306,6 +317,10 @@ def cloth_automated_bend_spring_strain_callback(args, record_fom_info = False, p
 
             # if recording snapshots build output file name/ path
             if record_fom_info:
+                constrproj_case = "constraint_projection/FOM"
+                if solver.reduced_constraint_projectios:
+                    constrproj_case = "constraint_projection/" + args.constraint_projection_basis_type
+
                 specify_path = ""
                 if model.has_verts_bending_constraints:
                     specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
@@ -316,9 +331,8 @@ def cloth_automated_bend_spring_strain_callback(args, record_fom_info = False, p
                 if model.has_tris_strain_constraints:
                     specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
 
-                mesh.export(os.path.join(output_path+"/" + object_name + "/", object_name + ".obj"))
-                output_path += "/" + object_name + "/" + experiment + "/" + "/" + reduction + "/" + specify_path
-
+                output_path += "/" + object_name + "/" + experiment + "/" + "/" + constrproj_case + "/" + specify_path + "/"
+                check_dir_exists(output_path)
             solver.set_dirty()
 
         elif solver.frame == 20:

@@ -1,22 +1,4 @@
-from zoneinfo import available_timezones
-
 import polyscope as ps
-import polyscope.imgui as psim
-import numpy as np
-import os
-
-from Constraint_projections import DeformableMesh
-# from Simulators import Solver, animSnapBasesSolver
-from geometry import get_simple_bar_model, get_simple_cloth_model
-from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler
-
-# solver = animSnapBasesSolver()
-fext = None
-model = None
-output_path = ""
-frame= 0
-mouse_down_handler, mouse_move_handler, pre_draw_handler = None, None, None
-
 import config
 import argparse
 
@@ -56,6 +38,8 @@ if __name__ == '__main__':
 
     param = Config_parameters()
     param.reset_parameters("demos/cloth_automated_bend_spring_strain.json")
+
+
     # Add visualization params
     param.add_visualization_args(parser)
 
@@ -65,9 +49,15 @@ if __name__ == '__main__':
     # Physics parameters
     param.add_physics_args(parser)
 
+    # Model reduction parameters
+    param.add_constraint_projections_reduction_args(parser)
+
+    # Important output and input directories
+    param.add_directories_args(parser)
+
     args = parser.parse_args()
 
-    record_fom_info = True
+    record_fom_info = False
     example = "cloth_automated_bend_spring_strain"
     main(args,
          record_fom_info = record_fom_info,

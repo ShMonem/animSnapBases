@@ -27,7 +27,7 @@ def unflatten(q: np.ndarray) -> np.ndarray:
     return q.reshape(-1, 3)
 
 class animSnapBasesSolver:
-    def __init__(self):
+    def __init__(self, args):
         self.model = None
         self.dirty = True
         self.A = None
@@ -42,18 +42,38 @@ class animSnapBasesSolver:
         self.num_constrproj_basis_blocks = -1
 
         # which constraint projections are reduced
-        self.reduced_local_step = False
-        self.reduced_verts_bending = False
+        self.constraint_projection_reduction_type = args.constraint_projection_basis_type
+
+        self.vert_bending_num_components = args.vert_bending_num_components
+        self.vert_bending_row_dim = 1
+        self.reduced_verts_bending = args.vert_bending_reduced
         self.projecting_mat_verts_bending = None    # can be either "U^T S^T V" or  "S^T V"
-        self.mapped_indices_verts_bending = None    # when mesh is not closed, not all verts are constrained
+        self.mapped_indices_verts_bending_Pt = None    # when mesh is not closed, not all verts are constrained
         self.interpolation_alpha_verts_bending = None  # original indices
         self.cholesky_list_verts_bending  = []
 
-        self.reduced_edge_spring = False
-        self.reduced_tris_strain = False
+        self.edge_spring_num_components = args.edge_spring_num_components
+        self.edge_spring_row_dim = 1
+        self.reduced_edge_spring = args.edge_spring_reduced
+        self.projecting_mat_edge_spring = None
+        self.cholesky_list_edge_spring  = []
+
+        self.tris_strain_num_components = args.tri_strain_num_components
+        self.tris_strain_row_dim = 2
+        self.reduced_tris_strain = args.tri_strain_reduced
+        self.projecting_mat_tris_strain = None
+        self.cholesky_list_tris_strain = []
+
         self.reduced_tets_strain = False
         self.reduced_tets_deformation_gradient = False
 
+        self.reduced_constraint_projectios = any([self.reduced_verts_bending ,
+                                        self.reduced_edge_spring,
+                                        self.reduced_tris_strain ,
+                                        self.reduced_tets_strain,
+                                        self.reduced_tets_deformation_gradient
+        ])
+        self.constraint_projection_ready = False
 
     def set_model(self, model):
         self.model = model
@@ -68,10 +88,9 @@ class animSnapBasesSolver:
     def ready(self):
         return not self.dirty
 
-    def prepare_full_global(self, args):
+    def prepare_global_matrix(self, args):
 
         self.dt = args.dt
-
         mass = self.model.mass
         N = self.model.positions.shape[0]
 
@@ -87,13 +106,9 @@ class animSnapBasesSolver:
             A_triplets.append((3 * i + 2, 3 * i + 2, mass[i] * dt2_inv))
 
         rows, cols, data = zip(*A_triplets)
-        return scipy.sparse.csc_matrix((data, (rows, cols)), shape=(3 * N, 3 * N))   # (mass/dt^2)+ Sum_i wi SiT Si
+        full_global_mat = scipy.sparse.csc_matrix((data, (rows, cols)), shape=(3 * N, 3 * N))   # (mass/dt^2)+ Sum_i wi SiT Si
 
-    def prepare(self, args, store_fom_info=False, record_path=None):
-
-        full_global_mat = self.prepare_full_global(args)
-
-        if not self.reduced_position :
+        if not self.reduced_position:
             self.cholesky = scipy.sparse.linalg.factorized(full_global_mat)
         else:
             raise ValueError("animSnapBases position reduction not yet implemented")
@@ -106,51 +121,167 @@ class animSnapBasesSolver:
             #
             # self.cholesky = scipy.linalg.factorized(Ut full_global_mat U)
 
-        if not self.reduced_local_step:
-            pass
+    def prepare_local_term(self, args):
+
+        if self.constraint_projection_reduction_type in {"geom_interpolation"}:
+            dir = args.geom_interpolation_basis_dir
+            file = args.geom_interpolation_basis_file
         else:
-            # TODO: one file has all basis types all mulity files?
+            raise ValueError("Unknown reduction type for constraint projections")
 
-            if self.model.has_verts_bending_constraints and self.reduced_verts_bending:
+        if self.model.has_verts_bending_constraints and self.reduced_verts_bending:
+            upload_file = os.path.join(dir, "verts_bending", file)
+            local_data = np.load(upload_file)
+            Vj = local_data["components"].swapaxes(0, 1)[:, :self.vert_bending_num_components*self.vert_bending_row_dim, :]   # shape shold be (ep, mp, 3)
 
-                local_data = np.load("constraint_projections_basis_file")
-                Vj = local_data["components"]  # shape shold be (ep, mp, 3) # TODO: check
-                self.interpolation_alpha_verts_bending = local_data["interpol_alphas"]
-                print(f"Basis file loaded with: \n Basis shape {Vj.shape} and {self.interpolation_alpha_verts_bending} interpolation points.")
+            # self.interpolation_alpha_verts_bending = local_data["interpol_alphas"]  # for verts bending we use Pt instead of alphas
+            """  
+            in case of "verts_bending" for non-closed meshes, not all verts are constrained, therefore
+            mapping between index and its order in the list of constrained_elements is required.
+            we compute V[Pt,:] now Pt/mapped_indices takes alpha in the StV rows to where it appears in the V rows
+            """
 
-                """  
-                in case of "vertbend" for non-closed meshes,
-                mapping between index and its order in the list of constrained_elements is required.
-                when we call constraints to stack them, we use alphas,
-                while when we compute V[Pt,:] now Pt/mapped_indices takes alpha to where it appears in the V rows
-                """
-                self.mapped_indices_verts_bending = [i for i, val in enumerate(self.model.verts_bending_indicies) if
-                                       val in self.interpolation_alpha_verts_bending]
+            alpha_range = local_data["interpol_alpha_ranges"][self.vert_bending_num_components-1]
+            self.mapped_indices_verts_bending_Pt = local_data["Pt"][:alpha_range]
+            print(f"Verts bending basis file loaded with: \n Basis shape {Vj.shape} and {self.mapped_indices_verts_bending_Pt.shape} interpolation points.")
 
-                if not self.reduced_global_step:
-                    # ST (N, ep) @ V (ep, mp, 3) --> (N, mp, 3) # TODO : check (N, m.p, 3)
-                    self.projecting_mat_verts_bending = np.einsum('ne,emi->nmi', self.model.verts_bending_assembly_ST, Vj)
-                else:
-                    # U^T (r, N, 3) @ S^T (N, ep) --> (r, ep, 3)
-                    UtSt = np.einsum('rni,ne->rei', self.U.T, self.model.verts_bending_assembly_ST)
-                    # U^T S^T(r, ep, 3) @ Vj (ep, mp, 3) --> (r, mp, 3)
-                    self.projecting_mat_verts_bending =  np.einsum('rei,emi->rmi', UtSt, Vj) # TODO : check (r, m.p, 3)
+            if not self.reduced_position:
+                # ST (N, ep) @ V (ep, mp, 3) --> S^T V: (N, mp, 3)
+                self.projecting_mat_verts_bending = np.einsum('ne,emi->nmi',self.model.verts_bending_assembly_ST.toarray(), Vj)
+            else:
+                ## TODO: requieres test
+                # U^T (r, N, 3) @ S^T (N, ep) --> U^T S^T V: (r, ep, 3)
+                UtSt = np.einsum('rni,ne->rei', self.U.T, self.model.verts_bending_assembly_ST)
+                # U^T S^T(r, ep, 3) @ Vj (ep, mp, 3) --> (r, mp, 3)
+                self.projecting_mat_verts_bending =  np.einsum('rei,emi->rmi', UtSt, Vj) # TODO : check (r, m.p, 3)
 
-                PtV = Vj[:, self.mapped_indices_verts_bending , :]   # TODO : check (m.p, m.p, 3)
+            PtV = Vj[self.mapped_indices_verts_bending_Pt, :, :]   # (num_interpolation_alphas > m, mp, 3)
+            PtV_T = Vj[self.mapped_indices_verts_bending_Pt, : , :].swapaxes(0,1)   # TODO : check (m.p, m.p, 3)
+            AtA = np.einsum('nai,ami->nmi',PtV_T, PtV)
 
-                for d in range(3):
-                    self.cholesky_list_verts_bending.append(lu_factor(PtV))
+            for d in range(3):
+                # for each dim store [(lu_factor(AtA), At)]
+                self.cholesky_list_verts_bending.append([lu_factor(AtA[:, :, d]), PtV_T[:, :, d]])
 
-                print("Solver list created", self.cholesky_list_verts_bending)
+        if self.model.has_edge_spring_constraints and self.reduced_edge_spring:
+            upload_file = os.path.join(dir, "edge_spring", file)
+            local_data = np.load(upload_file)
+            Vj = local_data["components"].swapaxes(0, 1)[:,
+                 :self.edge_spring_num_components * self.edge_spring_row_dim, :]  # shape shold be (ep, mp, 3)
+            alpha_range = local_data["interpol_alpha_ranges"][self.edge_spring_num_components - 1]
+            self.interpolation_alpha_edge_spring = local_data["interpol_alphas"][:alpha_range]  # for verts bending we use Pt instead of alphas
 
-            if self.model.has_edge_spring_constraints and self.reduced_edge_spring:
-                raise ValueError("not yet implemented! spring")
-            if self.model.has_tris_strain_constraints and self.reduced_tris_strain:
-                raise ValueError("not yet implemented! strain")
-            if self.model.has_tets_strain_constraints and self.reduced_tets_strain:
-                raise ValueError("not yet implemented! strain")
-            if self.model.has_tets_deformation_gradient_constraints and self.reduced_tets_deformation_gradient:
-                raise ValueError("not yet implemented! gradient")
+            # building Pt
+            Pt = []
+            for alpha in self.interpolation_alpha_edge_spring:
+                for l in range(self.edge_spring_row_dim):
+                    Pt.append(alpha*self.edge_spring_row_dim + l)
+
+            if not self.reduced_position:
+                # ST (N, ep) @ V (ep, mp, 3) --> S^T V: (N, mp, 3)
+                self.projecting_mat_edge_spring = np.einsum('ne,emi->nmi',
+                                                              self.model.edge_spring_assembly_ST.toarray(), Vj)
+            else:
+                ## TODO: requieres test
+                # U^T (r, N, 3) @ S^T (N, ep) --> U^T S^T V: (r, ep, 3)
+                UtSt = np.einsum('rni,ne->rei', self.U.T, self.model.edge_spring_assembly_ST)
+                # U^T S^T(r, ep, 3) @ Vj (ep, mp, 3) --> (r, mp, 3)
+                self.projecting_mat_edge_spring = np.einsum('rei,emi->rmi', UtSt, Vj)  # TODO : check (r, m.p, 3)
+
+            PtV = Vj[Pt, :, :]  # (num_interpolation_alphas > m, mp, 3)
+            PtV_T = Vj[Pt, :, :].swapaxes(0, 1)  # TODO : check (m.p, m.p, 3)
+            AtA = np.einsum('nai,ami->nmi', PtV_T, PtV)
+
+            for d in range(3):
+                # for each dim store [(lu_factor(AtA), At)]
+                self.cholesky_list_edge_spring.append([lu_factor(AtA[:, :, d]), PtV_T[:, :, d]])
+
+            print(
+                f"Edges spring basis file loaded with: \n Basis shape {Vj.shape} and {self.interpolation_alpha_edge_spring.shape} interpolation points.")
+
+        if self.model.has_tris_strain_constraints and self.reduced_tris_strain:
+            upload_file = os.path.join(dir, "tris_strain", file)
+            local_data = np.load(upload_file)
+            Vj = local_data["components"].swapaxes(0, 1)[:,
+                 :self.tris_strain_num_components * self.tris_strain_row_dim, :]  # shape shold be (ep, mp, 3)
+            alpha_range = local_data["interpol_alpha_ranges"][self.tris_strain_num_components - 1]
+            self.interpolation_alpha_tris_strain = local_data["interpol_alphas"][
+                                                   :alpha_range]  # for verts bending we use Pt instead of alphas
+
+            # building Pt
+            Pt = []
+            for alpha in self.interpolation_alpha_tris_strain:
+                for l in range(self.tris_strain_row_dim):
+                    Pt.append(alpha * self.tris_strain_row_dim + l)
+
+            if not self.reduced_position:
+                # ST (N, ep) @ V (ep, mp, 3) --> S^T V: (N, mp, 3)
+                self.projecting_mat_tris_strain = np.einsum('ne,emi->nmi',
+                                                            self.model.tris_strain_assembly_ST.toarray(), Vj)
+            else:
+                ## TODO: requieres test
+                # U^T (r, N, 3) @ S^T (N, ep) --> U^T S^T V: (r, ep, 3)
+                UtSt = np.einsum('rni,ne->rei', self.U.T, self.model.tris_strain_assembly_ST)
+                # U^T S^T(r, ep, 3) @ Vj (ep, mp, 3) --> (r, mp, 3)
+                self.projecting_mat_tris_strain = np.einsum('rei,emi->rmi', UtSt, Vj)  # TODO : check (r, m.p, 3)
+
+            PtV = Vj[Pt, :, :]  # (num_interpolation_alphas > m, mp, 3)
+            PtV_T = Vj[Pt, :, :].swapaxes(0, 1)  # TODO : check (m.p, m.p, 3)
+            AtA = np.einsum('nai,ami->nmi', PtV_T, PtV)
+
+            for d in range(3):
+                # for each dim store [(lu_factor(AtA), At)]
+                self.cholesky_list_tris_strain.append([lu_factor(AtA[:, :, d]), PtV_T[:, :, d]])
+
+            print(
+                f"Edges spring basis file loaded with: \n Basis shape {Vj.shape} and {self.interpolation_alpha_tris_strain.shape} interpolation points.")
+
+        if self.model.has_tets_strain_constraints and self.reduced_tets_strain:
+            raise ValueError("not yet implemented! strain")
+        if self.model.has_tets_deformation_gradient_constraints and self.reduced_tets_deformation_gradient:
+            raise ValueError("not yet implemented! gradient")
+
+    def prepare(self, args, store_fom_info=False, record_path=None):
+
+        def store_assembly_matrices():
+            """store a .npz contains assembly matrices for all used constraint types"""
+            assert record_path is not None
+            check_dir_exists(record_path)
+
+            matrices = {}
+            file_name = "assembly_ST"
+            # if self.model.has_positional_constraints :
+            #     matrices["positional" ] = self.model.positional_assembly_ST
+
+            if self.model.has_verts_bending_constraints :
+                matrices["verts_bending" ] = self.model.verts_bending_assembly_ST
+                np.savez(os.path.join(record_path , "verts_bending_constrained_indices.npz"), indices=self.model.verts_bending_indicies)
+
+            if self.model.has_edge_spring_constraints :
+                matrices["edge_spring" ] = self.model.edge_spring_assembly_ST
+
+            if self.model.has_tris_strain_constraints :
+                matrices["tris_strain" ] = self.model.tris_strain_assembly_ST
+
+            if self.model.has_tets_strain_constraints:
+                matrices["tets_strain"] = self.model.tets_strain_assembly_ST
+
+            if self.model.has_tets_deformation_gradient_constraints :
+                matrices["tets_deformation_gradient" ] = self.model.tets_deformation_gradient_assembly_ST
+
+            np.savez(os.path.join(record_path , file_name+".npz") , **matrices)
+
+        if store_fom_info:
+            store_assembly_matrices()
+
+        if self.dirty:
+            # global term computation is called every time mass matrix is changed
+            self.prepare_global_matrix(args)
+
+        if self.reduced_constraint_projectios and not self.constraint_projection_ready:
+            # called only once
+            self.prepare_local_term(args)
+            self.constraint_projection_ready = True
 
         self.set_clean()
 
@@ -183,7 +314,7 @@ class animSnapBasesSolver:
 
         q = sn.copy()
 
-        def get_group_ST_p(q_t, group_constraints, constraint_dim, ST):
+        def get_group_ST_p(q_t, group_constraints, constraint_dim, ST, name, list={}):
             """
             Args:
                 group_constraints:
@@ -198,8 +329,12 @@ class animSnapBasesSolver:
             p = np.zeros((ST.shape[1], 3))
             for i, c in enumerate(group_constraints):
                 p[constraint_dim * i:constraint_dim * i + constraint_dim, :]  = c.get_pi(q_t)
-            if store_stacked_projections:
-                np.savez(os.path.join(record_path, "positional_p_" + str(self.frame) + ".npz"),p)
+
+                if store_stacked_projections:
+                    list[str(self.frame)] = p
+                    if self.frame == max_p_snapshots_num:
+                        np.savez(os.path.join(record_path, name + ".npz"), **list)
+
             # update constraints projection term
             return ST @ p
 
@@ -226,7 +361,7 @@ class animSnapBasesSolver:
                 p[constraint_dim * i:constraint_dim * i + constraint_dim, :] = c.get_pi(q_t)
 
             def compute_rhs_column(d):
-                return projection_mat[:, :, d] @ lu_solve(solver_list[d], p[:, d])
+                return projection_mat[:, :, d] @ lu_solve(solver_list[d][0], solver_list[d][1] @p[:, d])
 
             rhs_cols = Parallel(n_jobs=3)(delayed(compute_rhs_column)(d) for d in range(3))
             temp = np.column_stack(rhs_cols)
@@ -247,42 +382,35 @@ class animSnapBasesSolver:
                 rhs += self.model.positional_assembly_ST @ self.model.positional_stacked_p
 
             if self.model.has_verts_bending_constraints:
-                assert self.model.verts_bending_assembly_ST is not None
-
                 if not self.reduced_verts_bending:
-                    rhs += get_group_ST_p(q_t, self.model.verts_bending_constraints, 1, self.model.verts_bending_assembly_ST)
+                    rhs += get_group_ST_p(q_t, self.model.verts_bending_constraints, self.vert_bending_row_dim,
+                                          self.model.verts_bending_assembly_ST, name="verts_bending_p", list=verts_bending_p)
                 else:
-                    rhs += get_group_reduced_term(q_t, self.model.verts_bending_constraints, 1,
-                                                  self.interpolation_alpha_verts_bending,
+                    rhs += get_group_reduced_term(q_t, self.model.verts_bending_constraints, self.vert_bending_row_dim,
+                                                  self.mapped_indices_verts_bending_Pt,
                                                   self.projecting_mat_verts_bending, self.cholesky_list_verts_bending)
 
             if self.model.has_edge_spring_constraints:
-                assert self.model.edge_spring_assembly_ST is not None
-                self.model.edge_spring_stacked_p = np.zeros((self.model.edge_spring_assembly_ST.shape[1], 3))
-                for i, c in enumerate(self.model.edge_spring_constraints):
-                    self.model.edge_spring_stacked_p[i, :] = c.get_pi(q_t)
-                if store_stacked_projections:
-                    edge_spring_p[str(self.frame)] = self.model.edge_spring_stacked_p
-                    if self.frame == max_p_snapshots_num:
-                        np.savez(os.path.join(record_path, "edge_spring_p" + ".npz"), **edge_spring_p)
-
-                    # np.savez(os.path.join(record_path ,"edge_spring_p_"+str(self.frame)+".npz") , self.model.edge_spring_stacked_p)
-                # update constraints projection term
-                rhs += self.model.edge_spring_assembly_ST @ self.model.edge_spring_stacked_p
+                if not self.reduced_edge_spring:
+                    rhs += get_group_ST_p(q_t, self.model.edge_spring_constraints, self.edge_spring_row_dim,
+                                          self.model.edge_spring_assembly_ST, name="edge_spring_p",
+                                          list=edge_spring_p)
+                else:
+                    rhs += get_group_reduced_term(q_t, self.model.edge_spring_constraints, self.edge_spring_row_dim,
+                                                  self.interpolation_alpha_edge_spring,
+                                                  self.projecting_mat_edge_spring,
+                                                  self.cholesky_list_edge_spring)
 
             if self.model.has_tris_strain_constraints:
-                assert self.model.tris_strain_assembly_ST is not None
-                self.model.tris_strain_stacked_p = np.zeros((self.model.tris_strain_assembly_ST.shape[1], 3))
-                for i, c in enumerate(self.model.tris_strain_constraints):
-                    self.model.tris_strain_stacked_p[2 * i:2 * i + 2, :] = c.get_pi(q_t)
-                if store_stacked_projections:
-                    tris_strain_p[str(self.frame)] = self.model.tris_strain_stacked_p
-                    if self.frame == max_p_snapshots_num:
-                        np.savez(os.path.join(record_path, "tris_strain_p" + ".npz"), **tris_strain_p)
-
-                    # np.savez(os.path.join(record_path ,"tris_strain_p_"+str(self.frame)+".npz") , self.model.tris_strain_stacked_p)
-                # update constraints projection term
-                rhs += self.model.tris_strain_assembly_ST @ self.model.tris_strain_stacked_p
+                if not self.reduced_tris_strain:
+                    rhs += get_group_ST_p(q_t, self.model.tris_strain_constraints, self.tris_strain_row_dim,
+                                          self.model.tris_strain_assembly_ST, name="tris_strain_p",
+                                          list=tris_strain_p)
+                else:
+                    rhs += get_group_reduced_term(q_t, self.model.tris_strain_constraints, self.tris_strain_row_dim,
+                                                  self.interpolation_alpha_tris_strain,
+                                                  self.projecting_mat_tris_strain,
+                                                  self.cholesky_list_tris_strain)
 
             if self.model.has_tets_strain_constraints:
                 assert self.model.tets_strain_assembly_ST is not None

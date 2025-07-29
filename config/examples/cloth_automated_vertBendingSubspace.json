@@ -3,6 +3,7 @@
 	{
 		"experiment_dir": "projective_dynamics/output/",
 		"mesh": "cloth",
+		"volumetric": false,
 		"experiment": "cloth_automated_bend_spring_strain/",
 		"snap_format": ".off"
 	},
@@ -23,7 +24,7 @@
 		},
 		"constraintType":
 		{
-			"name": "vertbend",
+			"name": "verts_bending",
 			"elements": "_verts",
 			"p_snaps_folder": "/constraint_projection/FOM/verts_bending_wi0.1_edge_spring_wi1000000.0_tris_strain_wi0.01_",
 			"pos_snaps_folder": "/position_snapshots/FOM/verts_bending_wi0.1_edge_spring_wi1000000.0_tris_strain_wi0.01_",
@@ -49,7 +50,7 @@
 		"numComponents_verts": 5,
 		"bases_res_tol": 98,
 		"dim": 3,
-		"constraintsDim": 3,
+		"constraintsDim": 1,
 		"max_element_per_deim_vert": 100000000,
 		"rest_shape": "first",
 		"massWeighted": "_Volkwein",

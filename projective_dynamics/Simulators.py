@@ -121,14 +121,7 @@ class animSnapBasesSolver:
             #
             # self.cholesky = scipy.linalg.factorized(Ut full_global_mat U)
 
-    def prepare_local_term(self, args):
-
-        if self.constraint_projection_reduction_type in {"geom_interpolation"}:
-            dir = args.geom_interpolation_basis_dir
-            file = args.geom_interpolation_basis_file
-        else:
-            raise ValueError("Unknown reduction type for constraint projections")
-
+    def prepare_reduced_verts_bending(self, dir, file):
         if self.model.has_verts_bending_constraints and self.reduced_verts_bending:
             upload_file = os.path.join(dir, "verts_bending", file)
             local_data = np.load(upload_file)
@@ -163,6 +156,7 @@ class animSnapBasesSolver:
                 # for each dim store [(lu_factor(AtA), At)]
                 self.cholesky_list_verts_bending.append([lu_factor(AtA[:, :, d]), PtV_T[:, :, d]])
 
+    def prepare_reduced_edge_spring(self,dir, file):
         if self.model.has_edge_spring_constraints and self.reduced_edge_spring:
             upload_file = os.path.join(dir, "edge_spring", file)
             local_data = np.load(upload_file)
@@ -199,6 +193,7 @@ class animSnapBasesSolver:
             print(
                 f"Edges spring basis file loaded with: \n Basis shape {Vj.shape} and {self.interpolation_alpha_edge_spring.shape} interpolation points.")
 
+    def prepare_reduced_tris_strain(self, dir, file):
         if self.model.has_tris_strain_constraints and self.reduced_tris_strain:
             upload_file = os.path.join(dir, "tris_strain", file)
             local_data = np.load(upload_file)
@@ -234,12 +229,31 @@ class animSnapBasesSolver:
                 self.cholesky_list_tris_strain.append([lu_factor(AtA[:, :, d]), PtV_T[:, :, d]])
 
             print(
-                f"Edges spring basis file loaded with: \n Basis shape {Vj.shape} and {self.interpolation_alpha_tris_strain.shape} interpolation points.")
+                f"Tria strain basis file loaded with: \n Basis shape {Vj.shape} and {self.interpolation_alpha_tris_strain.shape} interpolation points.")
 
+    def prepare_reduced_tet_strain(self, dir, file):
         if self.model.has_tets_strain_constraints and self.reduced_tets_strain:
             raise ValueError("not yet implemented! strain")
+
+    def prepare_reduced_tet_deformation_gradient(self, dir, file):
         if self.model.has_tets_deformation_gradient_constraints and self.reduced_tets_deformation_gradient:
             raise ValueError("not yet implemented! gradient")
+
+    def prepare_local_term(self, args):
+
+        if self.constraint_projection_reduction_type in {"geom_interpolation"}:
+            dir = args.geom_interpolation_basis_dir
+            file = args.geom_interpolation_basis_file
+        else:
+            raise ValueError("Unknown reduction type for constraint projections")
+
+        Parallel(n_jobs=3, backend="threading")(
+            delayed(f)(dir, file) for f in [self.prepare_reduced_verts_bending,
+                                            self.prepare_reduced_edge_spring,
+                                            self.prepare_reduced_tris_strain,
+                                            self.prepare_reduced_tet_strain,
+                                            self.prepare_reduced_tet_deformation_gradient]
+        )
 
     def prepare(self, args, store_fom_info=False, record_path=None):
 

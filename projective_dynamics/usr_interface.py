@@ -159,7 +159,7 @@ class PreDrawHandler:
             if ps.has_surface_mesh("model"):
                 ps.remove_surface_mesh("model")
             ps.register_surface_mesh("model", model.positions, model.faces, color=(0.4, 0.4, 0.9))
-
+            update_camera_to_mesh_center(model)
         # -- 3. Show fixed points
         fixed_indices = [i for i, fix in enumerate(model.get_fixed_indices()) if fix]
         if fixed_indices:
@@ -168,3 +168,10 @@ class PreDrawHandler:
             # ps.register_point_cloud("fixed_points", model.positions[0:2], color=(1.0, 1.0, 0.0))
 
             ps.get_point_cloud("fixed_points").set_radius(0.01, relative=True)
+
+
+def update_camera_to_mesh_center(model, distance=3.0, direction=np.array([0, 0, 1])):
+    if model.positions is not None:
+        center = np.mean(model.positions, axis=0)
+        eye = center + direction * distance  # place the camera some distance away
+        ps.look_at(camera_location=eye, target=center)

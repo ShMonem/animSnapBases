@@ -485,6 +485,8 @@ class Config_parameters:
             self.constProj_store_sing_val = config["constraintProj_bases"]["store_sing_val"]
             self.constProj_element = config["constraintProj_bases"]["constraintType"]["name"]
             self.constProj_bases_type = config["constraintProj_bases"]["type"]
+            if self.constProj_bases_type == "deim":
+                self.deim_desired_num_components = config["constraintProj_bases"]["desired_num_components"]
 
             self.constProj_preprocessed_snapshots_file = "snapshots_" \
                                                     + str(self.constProj_numFrames)\

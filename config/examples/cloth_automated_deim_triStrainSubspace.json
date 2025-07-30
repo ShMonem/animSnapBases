@@ -1,0 +1,67 @@
+{
+	"object":
+	{
+		"experiment_dir": "projective_dynamics/output/",
+		"mesh": "cloth",
+		"volumetric": false,
+		"experiment": "cloth_automated_bend_spring_strain/",
+		"snap_format": ".off"
+	},
+	"vertexPos_bases":
+		{
+			"computeState":
+			{
+				"compute": false
+			}
+		},
+	"constraintProj_bases":
+	{
+		"computeState":
+		{
+			"compute": true,
+			"run_main": true,
+			"testingComputations": "_Release"
+		},
+		"constraintType":
+		{
+			"name": "tris_strain",
+			"elements": "_tris",
+			"p_snaps_folder": "/constraint_projection/FOM/verts_bending_wi0.1_edge_spring_wi1000000.0_tris_strain_wi0.01_",
+			"pos_snaps_folder": "/position_snapshots/FOM/verts_bending_wi0.1_edge_spring_wi1000000.0_tris_strain_wi0.01_",
+			"geom_pos_snaps_folder": "/position_snapshots/deim/",
+			"assembly_file_name": "assembly_ST.npz",
+			"assembly_key": "tris_strain",
+			"snaps_pattern_full_p": "/tris_strain_p.npz",
+			"constrained_elements": "",
+			"rowSize": 2
+		},
+		"snapshots":
+		{
+			"max_numFrames": 200,
+			"numFrames": 100,
+			"frame_increment": 2,
+			"read_all_from_first": true,
+			"processed_snapshots_file": "/processed_snapshots/",
+			"preAlignement": "_noAlignement" ,
+			"processed_snapshots_ready": false,
+			"reduced_snaps_available": false
+		},
+		"type": "deim",
+		"desired_num_components": 200,
+		"numComponents_verts": 5,
+		"bases_res_tol": 98,
+		"dim": 3,
+		"constraintsDim": 1,
+		"max_element_per_geom_vert": 100000000,
+		"rest_shape": "first",
+		"massWeighted": "_Volkwein",
+		"standarized": "_Standarized",
+		"supported": "_Global",
+		"orthogonalized": "_Orthogonalized",
+		"store_sing_val": true,
+		"store_to_files": true,
+		"run_tests": true,
+		"visualize_elements_at_bases_num": 30,
+		"visualize_geom_elements": 528
+	}
+}

@@ -57,9 +57,9 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    record_fom_info = False
+    record_projection_data = args.record_projection_data
     example = "cloth_automated_bend_spring_strain"
     main(args,
-         record_fom_info = record_fom_info,
+         record_fom_info = record_projection_data,
          case = example,
          params = param)

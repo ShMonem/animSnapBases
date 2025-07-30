@@ -339,10 +339,10 @@ class animSnapBasesSolver:
         for i, c in enumerate(group_constraints):
             p[constraint_dim * i:constraint_dim * i + constraint_dim, :]  = c.get_pi(q_t)
 
-            if self.store_stacked_projections:
-                list[str(self.frame)] = p
-                if self.frame == max_p_snapshots_num:
-                    np.savez(os.path.join(self.record_path, name + ".npz"), **list)
+        if self.store_stacked_projections:
+            list[str(self.frame)] = p
+        if self.frame == max_p_snapshots_num:
+            np.savez(os.path.join(self.record_path, name + ".npz"), **list)
 
         # update constraints projection term
         return ST @ p

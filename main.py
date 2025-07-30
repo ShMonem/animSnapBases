@@ -120,9 +120,9 @@ def main(param: Config_parameters):
         # Post-process bases w.r.to standardization and mass weighting
         nonlinearBases.post_process_components()
 
-        # Compute DEIM Interpolation points
-        deim_interpolation_in_pos_space = True
-        nonlinearBases.deim_block_form_utilizing_differential_operator(deim_interpolation_in_pos_space)
+        # Compute Constraint projections interpolation points
+        geom_interpolation_in_pos_space = True
+        nonlinearBases.geom_block_form_utilizing_differential_operator(geom_interpolation_in_pos_space)
 
         # copy time log file to correct directory
         copy_and_delete_file("function_timings.txt", os.path.join(param.vertPos_output_directory,"time_logs.txt"))
@@ -136,21 +136,21 @@ def main(param: Config_parameters):
 
             nonlinearBases.store_components_n_interpol_points()  # stores one .npz with all data
 
-        if param.run_deim_tests:
-            from generate_figures.nl_reduction_tests import tets_plots_deim
-            tets_plots_deim(nonlinearBases, pca_tests= True, postProcess_tests=True,
-                                            deim_tests=True, visualize_deim_elements=True)
+        if param.run_geom_tests:
+            from generate_figures.nl_reduction_tests import tets_plots_nonlinearity_basis
+            tets_plots_nonlinearity_basis(nonlinearBases, pca_tests= True, postProcess_tests=True,
+                                            geom_tests=True, visualize_geom_elements=True)
 
 if __name__ == '__main__':
     # -----------------------------------------------------------------------------------------------------------------
 
     available_demos = {"cloth_automated_vertBendingSubspace.json",
                         "cloth_automated_edgeSpringSubspace",
-                        "cloth_automated_vertBendingSubspace.json"}
+                        "cloth_automated_triStrainSubspace.json"}
 
     mesh = "cloth"
     subspace = "vertbendSubspace"
-    json_file = "config/examples/cloth_automated_vertBendingSubspace.json"
+    json_file = "config/examples/cloth_automated_triStrainSubspace.json"
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
     parser.add_argument('--mesh', type=str, default=mesh, help='Give a character mesh')
@@ -196,9 +196,9 @@ if __name__ == '__main__':
         pos_file_pattern = "/pos_"
         compute_accuracy(param.tet_mesh_file, param.snapshots_format,
                         0, param.constProj_numFrames*param.constProj_frame_increment, param.constProj_frame_increment,
-                        param.visualize_deim_elements_at_K,
+                        param.visualize_geom_elements_at_K,
                         param._pos_snaps_folder+pos_file_pattern,
-                        param._deim_pos_snaps_folder, "_"+param.constProj_name+pos_file_pattern,
+                        param._geom_pos_snaps_folder, "_"+param.constProj_name+pos_file_pattern,
                         param.constProj_name ,
                         param.constProj_output_directory,
                          color=(1.0, 0.5, 0.0)
@@ -206,9 +206,9 @@ if __name__ == '__main__':
         # Testing om unseen data
         compute_accuracy(param.tet_mesh_file, param.snapshots_format,
                          1, param.constProj_numFrames*param.constProj_frame_increment, param.constProj_frame_increment,
-                         param.visualize_deim_elements_at_K,
+                         param.visualize_geom_elements_at_K,
                          param._pos_snaps_folder + pos_file_pattern,
-                         param._deim_pos_snaps_folder, "_" + param.constProj_name + pos_file_pattern,
+                         param._geom_pos_snaps_folder, "_" + param.constProj_name + pos_file_pattern,
                          param.constProj_name ,
                          param.constProj_output_directory,
                          color=(0.4, 2.0, 0.4) ,
@@ -218,6 +218,6 @@ if __name__ == '__main__':
 
         from generate_figures.onMesh_accuracyMeasures import visualize_interpolation_elements
         visualize_interpolation_elements(param,
-                                         deim_interpol_verts_file=param.constProj_output_directory+"corrVerts_F150K33_points33.bin",
-                                         deim_alpha_file=param.constProj_output_directory+"p_nl_interpol_points_F150K33_points778.bin")
+                                         geom_interpol_verts_file=param.constProj_output_directory+"corrVerts_F150K33_points33.bin",
+                                         geom_alpha_file=param.constProj_output_directory+"p_nl_interpol_points_F150K33_points778.bin")
     # # -----------------------------------------------------------------------------------------------------------------

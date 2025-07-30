@@ -28,7 +28,7 @@
 			"elements": "_tris",
 			"p_snaps_folder": "/constraint_projection/FOM/verts_bending_wi0.1_edge_spring_wi1000000.0_tris_strain_wi0.01_",
 			"pos_snaps_folder": "/position_snapshots/FOM/verts_bending_wi0.1_edge_spring_wi1000000.0_tris_strain_wi0.01_",
-			"deim_pos_snaps_folder": "/position_snapshots/deim/",
+			"geom_pos_snaps_folder": "/position_snapshots/geom/",
 			"assembly_file_name": "assembly_ST.npz",
 			"assembly_key": "tris_strain",
 			"snaps_pattern_full_p": "/tris_strain_p.npz",
@@ -46,12 +46,12 @@
 			"processed_snapshots_ready": false,
 			"reduced_snaps_available": false
 		},
-		"type": "deim",
+		"type": "geom",
 		"numComponents_verts": 5,
 		"bases_res_tol": 173.7,
 		"dim": 3,
 		"constraintsDim": 2,
-		"max_element_per_deim_vert": 100000000,
+		"max_element_per_geom_vert": 100000000,
 		"rest_shape": "first",
 		"massWeighted": "_Volkwein",
 		"standarized": "_Standarized",
@@ -61,6 +61,6 @@
 		"store_to_files": true,
 		"run_tests": true,
 		"visualize_elements_at_bases_num": 30,
-		"visualize_deim_elements": 528
+		"visualize_geom_elements": 528
 	}
 }

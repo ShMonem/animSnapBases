@@ -53,7 +53,8 @@
     "fix_top_corners": false,
     "fix_bottom_corners": false,
     "_fix_top_corners_triggered": false,
-    "_fix_bottom_corners_triggered": false
+    "_fix_bottom_corners_triggered": false,
+    "record_projection_data": false
   },
   "constraint_projetions_reduction": {
     "name": "geom_interpolation",
@@ -71,9 +72,9 @@
   "directories": {
     "output": "output/",
     "positions_basis": "",
-    "geom_interpolation_basis_dir": "../results/cloth/cloth_automated_bend_spring_strain/p_bases/deim_noAlignement_Volkwein_Standarized_Global_Orthogonalized_Release100_Frames_2_increment",
+    "geom_interpolation_basis_dir": "../results/cloth/cloth_automated_bend_spring_strain/p_bases/geom_noAlignement_Volkwein_Standarized_Global_Orthogonalized_Release100_Frames_2_increment",
     "geom_interpolation_basis_file": "components_interpol_alphas_interpol_verts_interpol_alpha_ranges.npz",
-    "deim_basis": ""
+    "geom_basis": ""
 
   }
 }

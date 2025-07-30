@@ -133,5 +133,5 @@ def tets_plots_pca(bases: posComponents, param:Config_parameters):
         # plt.legend()
         #
         # # plt.tight_layout()
-        # fig_name = os.path.join(vertPos_output_directory, 'deim_convergence_tests')
+        # fig_name = os.path.join(vertPos_output_directory, 'geom_convergence_tests')
         # plt.savefig(fig_name)

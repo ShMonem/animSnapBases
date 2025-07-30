@@ -46,26 +46,26 @@ class constraintsComponents:  # Components == bases
         # self.res_at_largeDeforVerts = None  # the residual norm during PCA bases computation, all 'Kp' steps
 
         self.fileNameBases = ""
-        self.fileName_deim_points = ""
+        self.fileName_geom_points = ""
         self.file_name_sing = ""
 
-        # DEIM attributes
-        self.deim_interpol_verts = []   # if error is tracked in position spaces, the verts wich coneect the elements
-        self.deim_alpha = None  # Indices of interpolation blocks (0 < block < e)
-        # deim_alpha_ranges: a list/array to keep the number of interpolation elements in deim
-        # in a fixed dim (x,y,z) bases with size (e*p, k*p) use deim_alpha[:deim_alpha_range(k)] interpolation points
-        self.deim_alpha_ranges = None
+        # Constraint projection reduction attributes
+        self.geom_interpol_verts = []   # if error is tracked in position spaces, the verts wich coneect the elements
+        self.geom_alpha = None  # Indices of interpolation blocks (0 < block < e)
+        # geom_alpha_ranges: a list/array to keep the number of interpolation elements for constraints reduction
+        # in a fixed dim (x,y,z) bases with size (e*p, k*p) use geom_alpha[:geom_alpha_range(k)] interpolation points
+        self.geom_alpha_ranges = None
         self.St = None   # differential operator that maps constraints projections to position space
         self.param = param
 
-    def config(self, fileNameBases="p_nl_", fileName_deim_points="p_nl_interpol_points_",
+    def config(self, fileNameBases="p_nl_", fileName_geom_points="p_nl_interpol_points_",
                file_name_sing="_constrprojBases_pcaExtraction_singValues"):
         self.basesType = self.param.constProj_bases_type
         self.support = self.param.constProj_support  # can be 'local' or 'global'
 
         self.storeSingVal = self.param.constProj_store_sing_val  # boolean
         self.fileNameBases = fileNameBases
-        self.fileName_deim_points = fileName_deim_points
+        self.fileName_geom_points = fileName_geom_points
         self.file_name_sing = file_name_sing
         self.St = read_sparse_matrix(self.param.constProj_weightedSt, ".npz", key=self.param.costProj_St_key )
 
@@ -411,7 +411,7 @@ class constraintsComponents:  # Components == bases
 
         return mat_e
 
-    def deim_constructed(self, r, case):
+    def geom_constructed(self, r, case):
 
         p = self.nonlinearSnapshots.constraintsSize
 
@@ -429,9 +429,9 @@ class constraintsComponents:  # Components == bases
         if self.param.constProj_snapshots_type == "verts_bending":
             # in case of "verts_bending" for non-closed meshes,
             # mapping between index and its order in the list of constrained_elements is required
-            Pt = self.deim_Pt[:self.deim_alpha_ranges[r - 1]]
+            Pt = self.geom_Pt[:self.geom_alpha_ranges[r - 1]]
         else:
-            Pt = self.deim_alpha[:self.deim_alpha_ranges[r - 1]]
+            Pt = self.geom_alpha[:self.geom_alpha_ranges[r - 1]]
 
         reconstructed = np.zeros((F, ep, 3))
 
@@ -499,7 +499,7 @@ class constraintsComponents:  # Components == bases
         numframes = self.nonlinearSnapshots.frs
         numverts = self.nonlinearSnapshots.num_constained_elements * self.nonlinearSnapshots.constraintsSize
         basesFile = os.path.join(constProj_output_directory, self.fileNameBases)
-        pointsFile = os.path.join(constProj_output_directory, self.fileName_deim_points)
+        pointsFile = os.path.join(constProj_output_directory, self.fileName_geom_points)
         vertsFile = os.path.join(constProj_output_directory, "corrVerts")
         p = self.nonlinearSnapshots.constraintsSize
 
@@ -507,10 +507,10 @@ class constraintsComponents:  # Components == bases
         for k in range(start, end + 1, step):
             store_components(basesFile, numframes, k * p, numverts, 3, self.comps[:k * p, :, :], fileType, 'Kp')
 
-            store_interpol_points_vector(pointsFile, self.nonlinearSnapshots.frs, k, self.deim_alpha[:self.deim_alpha_ranges[k - 1]], fileType)
+            store_interpol_points_vector(pointsFile, self.nonlinearSnapshots.frs, k, self.geom_alpha[:self.geom_alpha_ranges[k - 1]], fileType)
             # TODO: check file name storage
             store_interpol_points_vector(vertsFile, self.nonlinearSnapshots.frs, k,
-                                         self.deim_interpol_verts[:k], fileType)
+                                         self.geom_interpol_verts[:k], fileType)
 
         print('done.')
 
@@ -520,14 +520,14 @@ class constraintsComponents:  # Components == bases
 
         data = {}
         data["components"] = self.comps
-        data["interpol_alphas"] = self.deim_alpha
-        data["Pt"] = self.deim_Pt
+        data["interpol_alphas"] = self.geom_alpha
+        data["Pt"] = self.geom_Pt
 
         # the below attributes can be used to highlight elements in the nl_reduction_test, as below
-        # deim_verts = nlConst_bases.deim_interpol_verts[:visualize_deim_elements_at_K]
-        # highlight_elements = nlConst_bases.deim_alpha[:nlConst_bases.deim_alpha_ranges[visualize_deim_elements_at_K - 1]]
-        data["interpol_verts"] = self.deim_interpol_verts
-        data["interpol_alpha_ranges"] = self.deim_alpha_ranges
+        # geom_verts = nlConst_bases.geom_interpol_verts[:visualize_geom_elements_at_K]
+        # highlight_elements = nlConst_bases.geom_alpha[:nlConst_bases.geom_alpha_ranges[visualize_geom_elements_at_K - 1]]
+        data["interpol_verts"] = self.geom_interpol_verts
+        data["interpol_alpha_ranges"] = self.geom_alpha_ranges
 
         np.savez(os.path.join(constProj_output_directory,
                               "components_interpol_alphas_interpol_verts_interpol_alpha_ranges.npz"), **data)
@@ -535,10 +535,10 @@ class constraintsComponents:  # Components == bases
         print("done!")
 
     '''
-        --- DEIM/ Q-DEIM ---
+        --- Constraint reduction interpolation methods ---
     '''
     @log_time(constProj_output_directory)
-    def deim_block_form_utilizing_differential_operator(self, error_in_pos_space=False):
+    def geom_block_form_utilizing_differential_operator(self, error_in_pos_space=False):
         """
         :return:
         """
@@ -552,7 +552,7 @@ class constraintsComponents:  # Components == bases
 
         if error_in_pos_space:
             if self.nonlinearSnapshots.ele_type not in ["_tets", "_tris", "_edges", "_verts"] :
-                print("ERROR! Unknown constained elements type in deim")
+                print("ERROR! Unknown constained elements nonliner snapshots type!")
                 return
 
             if self.param.constProj_snapshots_type == "verts_bending":
@@ -596,12 +596,12 @@ class constraintsComponents:  # Components == bases
 
                     r = c - vk  # residual in constraint projection space  (ep, p, d)
                 if np.allclose(r, np.zeros(r.shape)):
-                    print("ERROR!: deim res is zero!!")
+                    print("ERROR!: zero residual!!")
                     return
 
             if error_in_pos_space:
                 v_interpolate = np.argmax((r ** 2).sum(axis=1))
-                self.deim_interpol_verts.append(v_interpolate)   # list of verts that showed largest errors
+                self.geom_interpol_verts.append(v_interpolate)   # list of verts that showed largest errors
                 if self.nonlinearSnapshots.ele_type == "_tets":
                     alpha_list = get_tetrahedrons_per_vert([v_interpolate], self.nonlinearSnapshots.tets)
                 elif self.nonlinearSnapshots.ele_type == "_tris":
@@ -618,7 +618,7 @@ class constraintsComponents:  # Components == bases
                 jump = 0
                 for al in range(len(alpha_list)):
                     alpha = alpha_list[al]
-                    if alpha not in e_points and jump < self.param.deim_ele_per_vert:
+                    if alpha not in e_points and jump < self.param.geom_ele_per_vert:
                         jump += 1
                         e_points.append(alpha)
                         if self.param.constProj_snapshots_type == "verts_bending":
@@ -646,11 +646,11 @@ class constraintsComponents:  # Components == bases
             else:
                 V = np.concatenate((V, vk), axis=1)
 
-        self.deim_Pt = np.array(Pt)
-        self.deim_alpha = np.array(e_points)
-        self.deim_alpha_ranges = np.array(e_range)
-        self.deim_interpol_verts = np.array(self.deim_interpol_verts)
-        print("Deim interpolation utilizing differential operator, used", self.deim_alpha.shape[0], "constrained elements")
+        self.geom_Pt = np.array(Pt)
+        self.geom_alpha = np.array(e_points)
+        self.geom_alpha_ranges = np.array(e_range)
+        self.geom_interpol_verts = np.array(self.geom_interpol_verts)
+        print("Computing interpolation elements utilizing differential operator, used", self.geom_alpha.shape[0], "constrained elements")
 
     def deim_blocksForm(self):
         """
@@ -712,16 +712,16 @@ class constraintsComponents:  # Components == bases
         for i in range(d):
             VM[:, :, i] = V[:, :, i] @ M[:, :, i]
 
-        self.deim_alpha = np.array(S)
-        self.deim_alpha_ranges = np.ones(self.deim_alpha.shape[0]-1)
-        self.deim_interpol_verts = None
-        print("Regular Deim interpolation, used", self.deim_alpha.shape[0], "constrained elements")
+        self.geom_alpha = np.array(S)
+        self.geom_alpha_ranges = np.ones(self.geom_alpha.shape[0]-1)
+        self.geom_interpol_verts = None
+        print("Regular Deim interpolation, used", self.geom_alpha.shape[0], "constrained elements")
 
     '''
         --- Results/ Tests ---
     '''
     @log_time(constProj_output_directory)
-    def tets_plots_deim(self):
+    def tets_plots_interpolation(self):
         """
         Plots different reconstruction errors for varying reduction dimensions "r".
         :param f: Original tensor (T, N, 3)
@@ -816,7 +816,7 @@ class constraintsComponents:  # Components == bases
             if self.param.constProj_orthogonal:
                 self.is_utmu_orthogonal()  # test U^T M U = I (Kp x Kp)
 
-            # DEIM tests -------------------------------------------------------------------------------------------------------
+            # Interpolation tests -------------------------------------------------------------------------------------------------------
 
             frobenius_errors = []
             max_errors = []
@@ -829,13 +829,13 @@ class constraintsComponents:  # Components == bases
             header = ['numPoints', 'fro_error', 'max_err', 'relative_errors_x', 'relative_errors_y',
                       'relative_errors_z']
 
-            file_name = os.path.join(self.param.constProj_output_directory, "deim_convergence_tests")
+            file_name = os.path.join(self.param.constProj_output_directory, "geom_convergence_tests")
             with open(file_name + '.csv', 'w', encoding='UTF8') as dataFile:
                 writer = csv.writer(dataFile)
                 writer.writerow(header)
                 for r in r_values:
                     # Reconstruct the tensor for the current r
-                    f_reconstructed = self.deim_constructed(r)
+                    f_reconstructed = self.geom_constructed(r)
 
                     # Compute various errors
                     fro_error = self.frobenius_error(f, f_reconstructed)
@@ -852,7 +852,7 @@ class constraintsComponents:  # Components == bases
                     writer.writerow([r, fro_error, max_err, rel_errors[0], rel_errors[1], rel_errors[2]])
             dataFile.close()
             # Plot Frobenius and inf norm error
-            plt.figure('Error measures for DEIM ', figsize=(20, 10))
+            plt.figure('Error measures for nonlinearity Basis ', figsize=(20, 10))
 
             plt.subplot(1, 2, 1)
             plt.plot(frobenius_errors, label='Frobenius Error', marker='o')
@@ -880,31 +880,31 @@ class constraintsComponents:  # Components == bases
             plt.legend()
 
             # plt.tight_layout()
-            fig_name = os.path.join(constProj_output_directory, 'constrproj_deim_reconstruction_norms_tests')
+            fig_name = os.path.join(constProj_output_directory, 'constrproj_geom_reconstruction_norms_tests')
             plt.savefig(fig_name)
 
-            plt.figure('Number of constrained elements in DEIM ', figsize=(20, 10))
+            plt.figure('Number of constrained elements in nonlinearity basis ', figsize=(20, 10))
             plt.subplot(1, 1, 1)
-            plt.plot(self.deim_alpha_ranges, 'bo', ls='--', label=' 0 < elements < e')
+            plt.plot(self.geom_alpha_ranges, 'bo', ls='--', label=' 0 < elements < e')
             plt.xlabel('Reduction Dimension (r)')
             plt.ylabel('number of elements')
-            plt.title('Number of constrained elements in DEIM ')
+            plt.title('Number of constrained elements in nonlinearty basis ')
 
-            fig_name = os.path.join(constProj_output_directory, 'deim_numberOfElements')
+            fig_name = os.path.join(constProj_output_directory, 'geom_numberOfElements')
             plt.legend()
             plt.savefig(fig_name)
 
-            if self.param.visualize_deim_elements:
-                self.visualize_interpolation_elements(self.param.visualize_deim_elements_at_K,
+            if self.param.visualize_geom_elements:
+                self.visualize_interpolation_elements(self.param.visualize_geom_elements_at_K,
                                                  constProj_output_directory)
             plt.close()
 
         run_tests()
-        # End of DEIM tests ------------------------------------------------------------------------------------------------
+        # End of tests ------------------------------------------------------------------------------------------------
 
         # plt.show()
 
-    def visualize_interpolation_elements(self, visualize_deim_elements_at_K,
+    def visualize_interpolation_elements(self, visualize_geom_elements_at_K,
                                          constProj_output_directory, ele_color=(0.5, 0.8, 0.5), num_frames=30,
                                          file_prefix="frame"):
         """
@@ -918,16 +918,16 @@ class constraintsComponents:  # Components == bases
         - highlight_faces: list[tuple], specific faces (triplets of vertex indices) to highlight.
         """
 
-        deim_verts = self.deim_interpol_verts[:visualize_deim_elements_at_K]
-        highlight_elements = self.deim_alpha[
-                             :self.deim_alpha_ranges[visualize_deim_elements_at_K - 1]]
+        geom_verts = self.geom_interpol_verts[:visualize_geom_elements_at_K]
+        highlight_elements = self.geom_alpha[
+                             :self.geom_alpha_ranges[visualize_geom_elements_at_K - 1]]
         highlight_type = self.nonlinearSnapshots.ele_type
 
         # Register the mesh
         ps.register_surface_mesh("Tet Mesh", self.nonlinearSnapshots.verts,
                                  self.nonlinearSnapshots.tris,
                                  transparency=0.1, color=(0.89, 0.807, 0.565))
-        ps.register_point_cloud("deim Vertices", self.nonlinearSnapshots.verts[deim_verts], enabled=True,
+        ps.register_point_cloud("interpolation Vertices", self.nonlinearSnapshots.verts[geom_verts], enabled=True,
                                 color=(0.9, 0.1, 0.25), radius=0.008)
 
         # Highlight vertices

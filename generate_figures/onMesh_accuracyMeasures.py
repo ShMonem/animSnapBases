@@ -253,7 +253,7 @@ def compute_accuracy(orig_mesh, snapsFormat, frame_start, frame_end, frame_jump,
 	ps.unshow()
 
 
-def visualize_interpolation_elements(param, deim_interpol_verts_file, deim_alpha_file, edges=None,
+def visualize_interpolation_elements(param, geom_interpol_verts_file, geom_alpha_file, edges=None,
 									 ele_color=(0.5, 0.8, 0.5), num_frames = 100, file_prefix = "frame"):
 	"""
 	Highlights specific elements (vertices, tetrahedra, faces) in a tetrahedral mesh using Polyscope.
@@ -266,14 +266,14 @@ def visualize_interpolation_elements(param, deim_interpol_verts_file, deim_alpha
 	- highlight_faces: list[tuple], specific faces (triplets of vertex indices) to highlight.
 	"""
 	verts, tets, tris = read_mesh_file(param.tet_mesh_file)
-	deim_verts = load_vector_values(deim_interpol_verts_file).astype(int)
-	highlight_elements = load_vector_values(deim_alpha_file).astype(int)
+	geom_verts = load_vector_values(geom_interpol_verts_file).astype(int)
+	highlight_elements = load_vector_values(geom_alpha_file).astype(int)
 	highlight_type = param.constProj_element_type
 
 	# Register the mesh
 	ps.register_surface_mesh("Tet Mesh", verts, tris,
 						transparency=0.18, color=(0.89, 0.807, 0.565))
-	ps.register_point_cloud("deim Vertices", verts[deim_verts], enabled=True,
+	ps.register_point_cloud("interpolation Vertices", verts[geom_verts], enabled=True,
 						color=(0.9, 0.1, 0.25), radius=0.008)
 
 	# Highlight vertices

@@ -18,7 +18,7 @@ angle = 0
 frame = 1
 
 
-def tets_plots_deim(nlConst_bases: constraintsComponents, pca_tests= True, postProcess_tests=False, deim_tests=False, steps=5, visualize_deim_elements=False):
+def tets_plots_nonlinearity_basis(nlConst_bases: constraintsComponents, pca_tests= True, postProcess_tests=False, geom_tests=False, steps=5, visualize_geom_elements=False):
     """
     Plots different reconstruction errors for varying reduction dimensions "r".
     :param f: Original tensor (T, N, 3)
@@ -104,7 +104,7 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, pca_tests= True, postP
         fig_name = os.path.join(constProj_output_directory, 'constrprojBases_pca_extraction_tests')
         plt.savefig(fig_name)
     # End of PCA tests -------------------------------------------------------------------------------------------------
-    # DEIM tests -------------------------------------------------------------------------------------------------------
+    # Nonlinearity tes--------------------------------------------------------------------------------------------------
     def run_postProcess_tests():
         # After post-process tests
         testSparsity(nlConst_bases.comps)
@@ -114,7 +114,7 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, pca_tests= True, postP
         if nlConst_bases.param.constProj_orthogonal:
             nlConst_bases.is_utmu_orthogonal()  # test U^T M U = I (Kp x Kp)
 
-    def run_deim_tests():
+    def run_geom_tests():
         global num_usage
         num_usage = 0
         def reconstruction_test(f, reconstruction_method,file, case):
@@ -133,7 +133,7 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, pca_tests= True, postP
                 writer = csv.writer(dataFile)
                 writer.writerow(header)
                 for r in r_values:
-                    print("Deim-blocks:", r)
+                    print("Basis-blocks:", r)
                     # Reconstruct the tensor for the current r
                     f_reconstructed = reconstruction_method(r, case)
 
@@ -155,7 +155,7 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, pca_tests= True, postP
             del dataFile
 
             # Plot Frobenius and inf norm error
-            plt.figure('Error measures for DEIM ', figsize=(20, 10))
+            plt.figure('Error measures for Nonlinearity basis ', figsize=(20, 10))
 
             plt.subplot(1, 2, 1)
             plt.plot(r_values, frobenius_errors, label='Frobenius Error', marker='o')
@@ -191,25 +191,25 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, pca_tests= True, postP
         # test convergence on training data
         f_train = nlConst_bases.nonlinearSnapshots.snapTensor
         file_train = os.path.join(nlConst_bases.param.constProj_output_directory, nlConst_bases.param.name + "_" +
-                                  nlConst_bases.param.constProj_name + "_deim_train_convergence_tests")
-        reconstruction_test(f_train, nlConst_bases.deim_constructed, file_train, case="train")
+                                  nlConst_bases.param.constProj_name + "_geom_train_convergence_tests")
+        reconstruction_test(f_train, nlConst_bases.geom_constructed, file_train, case="train")
         # store number of elements per bases blocks
         header = ['numPoints', 'num_elements']
         file_name = os.path.join(nlConst_bases.param.constProj_output_directory,
-                                 nlConst_bases.param.name + "_" + nlConst_bases.param.constProj_name + "_deim_num_interpol_elemnets")
+                                 nlConst_bases.param.name + "_" + nlConst_bases.param.constProj_name + "_geom_num_interpol_elemnets")
         with open(file_name + '.csv', 'w', encoding='UTF8') as dataFile2:
             writer = csv.writer(dataFile2)
             writer.writerow(header)
             for r in r_values:
-                writer.writerow([r, nlConst_bases.deim_alpha_ranges[r - 1]])
+                writer.writerow([r, nlConst_bases.geom_alpha_ranges[r - 1]])
         dataFile2.close()
 
-        plt.figure('Number of constrained elements in DEIM ', figsize=(20, 10))
+        plt.figure('Number of constrained elements ', figsize=(20, 10))
         plt.subplot(1, 1, 1)
-        plt.plot(nlConst_bases.deim_alpha_ranges, 'bo', ls='--', label=' 0 < elements < e')
+        plt.plot(nlConst_bases.geom_alpha_ranges, 'bo', ls='--', label=' 0 < elements < e')
         plt.xlabel('Reduction Dimension (r)')
         plt.ylabel('number of elements')
-        plt.title('Number of constrained elements in DEIM ')
+        plt.title('Number of constrained elements')
 
         plt.legend()
         plt.savefig(file_name+"plot")
@@ -217,8 +217,8 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, pca_tests= True, postP
         #test convergence on unseen data
         f_test = nlConst_bases.nonlinearSnapshots.test_snapTensor
         file_test = os.path.join(nlConst_bases.param.constProj_output_directory, nlConst_bases.param.name + "_" +
-                                  nlConst_bases.param.constProj_name + "_deim_test_convergence_tests")
-        reconstruction_test(f_test, nlConst_bases.deim_constructed,  file_test, case="test")
+                                  nlConst_bases.param.constProj_name + "_geom_test_convergence_tests")
+        reconstruction_test(f_test, nlConst_bases.geom_constructed,  file_test, case="test")
 
 
 
@@ -226,18 +226,18 @@ def tets_plots_deim(nlConst_bases: constraintsComponents, pca_tests= True, postP
         run_pca_tests()
     if postProcess_tests:
         run_postProcess_tests()
-    if deim_tests:
-        run_deim_tests()
+    if geom_tests:
+        run_geom_tests()
 
-    if visualize_deim_elements:
-        visualize_interpolation_elements(nlConst_bases, nlConst_bases.param.visualize_deim_elements_at_K,
+    if visualize_geom_elements:
+        visualize_interpolation_elements(nlConst_bases, nlConst_bases.param.visualize_geom_elements_at_K,
                                          constProj_output_directory)
     # run_tests(nlConst_bases, constProj_output_directory, param)
-    # End of DEIM tests ------------------------------------------------------------------------------------------------
+    # End of tests ------------------------------------------------------------------------------------------------
 
     # plt.show()
 
-def visualize_interpolation_elements(nlConst_bases: constraintsComponents, visualize_deim_elements_at_K,
+def visualize_interpolation_elements(nlConst_bases: constraintsComponents, visualize_geom_elements_at_K,
                                      constProj_output_directory, ele_color=(0.5, 0.8, 0.5), num_frames = 100, file_prefix = "frame"):
     """
     Highlights specific elements (vertices, tetrahedra, faces) in a tetrahedral mesh using Polyscope.
@@ -250,14 +250,14 @@ def visualize_interpolation_elements(nlConst_bases: constraintsComponents, visua
     - highlight_faces: list[tuple], specific faces (triplets of vertex indices) to highlight.
     """
 
-    deim_verts = nlConst_bases.deim_interpol_verts[:visualize_deim_elements_at_K]
-    highlight_elements = nlConst_bases.deim_alpha[:nlConst_bases.deim_alpha_ranges[visualize_deim_elements_at_K - 1]]
+    geom_verts = nlConst_bases.geom_interpol_verts[:visualize_geom_elements_at_K]
+    highlight_elements = nlConst_bases.geom_alpha[:nlConst_bases.geom_alpha_ranges[visualize_geom_elements_at_K - 1]]
     highlight_type = nlConst_bases.nonlinearSnapshots.ele_type
 
     # Register the mesh
     ps.register_surface_mesh("Tet Mesh", nlConst_bases.nonlinearSnapshots.verts, nlConst_bases.nonlinearSnapshots.tris,
                             transparency=0.18, color=(0.89, 0.807, 0.565))
-    ps.register_point_cloud("deim Vertices", nlConst_bases.nonlinearSnapshots.verts[deim_verts], enabled=True,
+    ps.register_point_cloud("interpolation Vertices", nlConst_bases.nonlinearSnapshots.verts[geom_verts], enabled=True,
                             color=(0.9, 0.1, 0.25), radius=0.008)
 
     # Highlight vertices

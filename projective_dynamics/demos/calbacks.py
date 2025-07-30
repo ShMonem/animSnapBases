@@ -335,7 +335,7 @@ def cloth_automated_bend_spring_strain_callback(args, record_fom_info = False, p
                 check_dir_exists(output_path)
 
                 solver.set_record_path(output_path)
-                solver.set_store_(record_fom_info)
+                solver.set_store_p(record_fom_info)
             solver.set_dirty()
 
         elif solver.frame == 20:

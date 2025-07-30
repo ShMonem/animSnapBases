@@ -82,6 +82,9 @@ class Config_parameters:
         parser.add_argument("--_fix_bottom_corners_triggered", type=bool,
                             default=constraints['_fix_bottom_corners_triggered'])
 
+        parser.add_argument("--record_projection_data", type=str, default=constraints["record_projection_data"])
+
+
 
     def add_constraint_projections_reduction_args(self, parser):
         constrProj_basis = self.system_params["constraint_projetions_reduction"]

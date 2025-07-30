@@ -148,8 +148,8 @@ class Config_parameters:
         self.bases_R_tol = -1
         # p: the row size of the nonlinear constraint projection is p x 3
         self.constProj_p_size = -1
-        # in deim algorithm we can choose to include a limited number of constained elements per large deformation vertex
-        self.deim_ele_per_vert = -1
+        # in nonlinear basis interpolation points computing algorithm we can choose to include a limited number of constained elements per large deformation vertex
+        self.geom_ele_per_vert = -1
         self.constProj_frame_increment = -1
         self.constProj_train_test_jump = 1
         # notice that data should be put in place so that all .py can have access too!
@@ -180,9 +180,9 @@ class Config_parameters:
         self.constProj_output_directory = ""
 
         self.store_nonlinear_bases = False
-        self.run_deim_tests = False
-        self.visualize_deim_elements = False
-        self.visualize_deim_elements_at_K = False
+        self.run_geom_tests = False
+        self.visualize_geom_elements = False
+        self.visualize_geom_elements_at_K = False
 
     def reset(self, jason_file):
         with open(jason_file) as fp:
@@ -459,8 +459,8 @@ class Config_parameters:
             self.bases_R_tol = config["constraintProj_bases"]["bases_res_tol"]
             # p: the row size of the nonlinear constraint projection is p x 3
             self.constProj_p_size = config["constraintProj_bases"]["constraintType"]["rowSize"]
-            # in deim algorithm we can choose to include a limited number of constained elements per large deformation vertex
-            self.deim_ele_per_vert = config["constraintProj_bases"]["max_element_per_deim_vert"]
+            # in interpolation points computation algorithm we can choose to include a limited number of constained elements per large deformation vertex
+            self.geom_ele_per_vert = config["constraintProj_bases"]["max_element_per_geom_vert"]
 
             # notice that data should be put in place so that all .py can have access too!
             self.costProj_St_key = config["constraintProj_bases"]["constraintType"]["assembly_key"]
@@ -516,10 +516,10 @@ class Config_parameters:
                                      + self.name + "/" \
                                      + self.experiment + "/" \
                                      + config["constraintProj_bases"]["constraintType"]["pos_snaps_folder"]
-            self._deim_pos_snaps_folder = self.snapshots_repo_dir \
+            self._geom_pos_snaps_folder = self.snapshots_repo_dir \
                                      + self.name + "/" \
                                      + self.experiment + "/" \
-                                     + config["constraintProj_bases"]["constraintType"]["deim_pos_snaps_folder"]
+                                     + config["constraintProj_bases"]["constraintType"]["geom_pos_snaps_folder"]
             """
             Set necessary boolean parameters
             """
@@ -566,8 +566,8 @@ class Config_parameters:
                       "\n make sure you are not over-writing! ")
 
             self.store_nonlinear_bases = config["constraintProj_bases"]["store_to_files"]
-            self.run_deim_tests = config["constraintProj_bases"]["run_tests"]
-            self.visualize_deim_elements = config["constraintProj_bases"]["visualize_deim_elements"]
-            self.visualize_deim_elements_at_K = config["constraintProj_bases"]["visualize_elements_at_bases_num"]
+            self.run_geom_tests = config["constraintProj_bases"]["run_tests"]
+            self.visualize_geom_elements = config["constraintProj_bases"]["visualize_geom_elements"]
+            self.visualize_geom_elements_at_K = config["constraintProj_bases"]["visualize_elements_at_bases_num"]
 
         print("Parameters have been resetusing:", jason_file, "!")

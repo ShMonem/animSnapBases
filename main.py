@@ -16,7 +16,6 @@ import time
 root_folder = os.getcwd()
 profiler = cProfile.Profile()
 
-
 def main(param: Config_parameters):
 
     if param.compute_pos_bases:  # if position bases will be computed
@@ -100,7 +99,6 @@ def main(param: Config_parameters):
             step = 1
             bases.store_components_to_files(start, end, step, ".bin")
 
-
     if param.compute_constProj_bases:
         from snapbases.constraintsComponents import constraintsComponents
         print("Computing nonlinear bases for")
@@ -121,9 +119,9 @@ def main(param: Config_parameters):
         nonlinearBases.post_process_components()
 
         # Compute Constraint projections interpolation points
-        geom_interpolation_in_pos_space = True
-        nonlinearBases.geom_block_form_utilizing_differential_operator(geom_interpolation_in_pos_space)
-
+        geom_interpolation_in_pos_space = False
+        # nonlinearBases.geom_block_form_utilizing_differential_operator(geom_interpolation_in_pos_space)
+        nonlinearBases.deim_blocksForm()
         # copy time log file to correct directory
         copy_and_delete_file("function_timings.txt", os.path.join(param.vertPos_output_directory,"time_logs.txt"))
 
@@ -144,13 +142,16 @@ def main(param: Config_parameters):
 if __name__ == '__main__':
     # -----------------------------------------------------------------------------------------------------------------
 
-    available_demos = {"cloth_automated_vertBendingSubspace.json",
-                        "cloth_automated_edgeSpringSubspace",
-                        "cloth_automated_triStrainSubspace.json"}
+    available_demos = {"cloth_automated_geom_vertBendingSubspace.json",
+                       "cloth_automated_deim_vertBendingSubspace.json",
+                        "cloth_automated_edgeSpringSubspace.json",
+                       "cloth_automated_deim_edgeSpringSubspace.json",
+                        "cloth_automated_triStrainSubspace.json",
+                       "cloth_automated_deim_triStrainSubspace.json"}
 
     mesh = "cloth"
     subspace = "vertbendSubspace"
-    json_file = "config/examples/cloth_automated_triStrainSubspace.json"
+    json_file = "config/examples/cloth_automated_deim_triStrainSubspace.json"
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
     parser.add_argument('--mesh', type=str, default=mesh, help='Give a character mesh')

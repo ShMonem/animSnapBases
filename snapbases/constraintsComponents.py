@@ -105,13 +105,14 @@ class constraintsComponents:  # Components == bases
         return idx
 
     @log_time(constProj_output_directory)
-    def compute_components_store_singvalues(self, with_differential_operator=True):
+    def compute_components_store_singvalues(self):
         """
         
         Args:
             with_differential_operator: weither or not the differential operator is utilized for basis computations
             
         """
+        basis_type = self.param.constProj_bases_type
         # compute_geodesic_distance = self.nonlinearSnapshots.compute_geodesic_distance
         headerSing = ['component', 'idx', 'residual_matrix_norm']
         p = self.nonlinearSnapshots.constraintsSize
@@ -123,16 +124,20 @@ class constraintsComponents:  # Components == bases
             with open(file_name + '.csv', 'w', encoding='UTF8') as singFile:
                 writer = csv.writer(singFile)
                 writer.writerow(headerSing)
-                if with_differential_operator:
+                if basis_type == "geom":
                     self.compute_nonlinearity_bases_blocks_utilizing_diffirential_operator(writer)
-                else:
+                elif basis_type == "deim":
                     self.compute_nonlinearity_bases_blocks(writer)
+                else:
+                    raise ValueError("Uknown basis type: ", basis_type)
             singFile.close()
         else:
-            if with_differential_operator:
+            if basis_type == "geom":
                 self.compute_nonlinearity_bases_blocks_utilizing_diffirential_operator(None)
-            else:
+            elif basis_type == "deim":
                 self.compute_nonlinearity_bases_blocks(None)
+            else:
+                raise ValueError("Uknown basis type: ", basis_type)
 
     @log_time(constProj_output_directory)
     def compute_nonlinearity_bases_blocks_utilizing_diffirential_operator(self, writer=None):
@@ -262,20 +267,22 @@ class constraintsComponents:  # Components == bases
         W = []
         S_idx = []  # stores the indices of constrained vol. verts with the largest deformation (0, e)
         S_p = []  # stores the indices of the complete blocks in the range (0, ep)
-        add_to_indx = False  # Decide to add index to list or not
+        # add_to_indx = False  # Decide to add index to list or not
 
         p = self.nonlinearSnapshots.constraintsSize  # p: row size of each constraint
         e = self.nonlinearSnapshots.num_constained_elements  # numConstraints
         self.measures_at_largeDeforVerts = []
         res_norm = []
-        for k in range(self.numComp):
+
+        for k in range(self.param.deim_desired_num_components):
             #  find the constraint index explaining the most variance across the residual animation
             idx = self.indxLargestDeformation(np.swapaxes(R, 0, 1), p, e)  # 0 <= idx < e
 
             #  keep list of the constraints indices verts with largest deformation  0 <= idx < ep
-            if idx not in S_idx:
-                S_idx.append(idx)
-                add_to_indx = True
+            # if idx not in S_idx:
+            #     S_idx.append(idx)
+            #     add_to_indx = True
+            S_idx.append(idx)
             sigma = []
             ck = None
 
@@ -286,7 +293,7 @@ class constraintsComponents:  # Components == bases
                 #  R[:,idx*p+i,:].reshape(R.shape[0], -1).T is the (3,F) tensor associated to the vertex==id
                 wk = sing[0] * Vt[0, :]  # weight associated to first mode of the svd
                 # print(" wk", wk.shape)
-                sigma.append(sing[0])
+
 
                 if self.support == 'local':
                     # weight according to their projection onto the constraint set
@@ -313,16 +320,19 @@ class constraintsComponents:  # Components == bases
                 #  update residual
                 R -= np.outer(wk, ck).reshape(R.shape)  # project out computed bases block
                 res_norm.append(norm(R))
-
+                print(k, sing[0] , norm(R))
                 #  keep list of the constraints indices of blocks with largest deformation  0 <= idx < ep
-                if add_to_indx:
-                    S_p.append(idx * p + i)
-                    C.append(ck)
-                    W.append(wk)
-                    if i == (p - 1):
-                        add_to_indx = False
+                # if add_to_indx:
+                S_p.append(idx * p + i)
+                C.append(ck)
+                W.append(wk)
+                sigma.append(sing[0])
+                    # if i == (p - 1):
+                    #     add_to_indx = False
 
-            singList = [k, idx, norm(R), sigma[0], sigma[1], sigma[2]]
+            singList = [k, idx, norm(R)]  # TODO: make sigma size auto in the header
+            for j in range(p):
+                singList.append(sigma[j])
             self.measures_at_largeDeforVerts.append(singList)
             if self.storeSingVal:
                 writer.writerow(singList)
@@ -592,7 +602,7 @@ class constraintsComponents:  # Components == bases
                         # V (Pt V)^{-1} Pt v_k
                         # check_matrix_properties(V[Pt, :, i])
                         # In this case we solve for a square matrix
-                        c[:, :, i] = V[:, :, i] @ npla.solve(V[Pt, :, i], vk[Pt, :, i])  # (ep, kp,)@ (kp,kp)(kp,) --(ep,)xd
+                        c[:, :, i] = V[:, :, i] @ np.linalg.lstsq(V[Pt, :, i], vk[Pt, :, i], rcond=None)[0] # (ep, kp,)@ (kp,kp)(kp,) --(ep,)xd
 
                     r = c - vk  # residual in constraint projection space  (ep, p, d)
                 if np.allclose(r, np.zeros(r.shape)):
@@ -656,65 +666,64 @@ class constraintsComponents:  # Components == bases
         """
         :return:
         """
-        bases = np.swapaxes(self.comps, 0, 1)  # (ep, Kp, 3)
         p = self.nonlinearSnapshots.constraintsSize
         e = self.nonlinearSnapshots.num_constained_elements
         d = self.nonlinearSnapshots.dim
         K = self.numComp
-        assert bases.shape == (e * p, K * p, d)
 
-
+        bases = self.comps.swapaxes(0, 1)  # (ep, Kp, d)
+        test_linear_dependency(bases, 3, K * p)
         # initialization
-        vk = bases[:, :p, :]  # v0
-        # V = bases[:, :p, :]
+        vk = bases[:, :p, :]  # v0  (ep, :p, 3)
         V = np.empty(vk.shape)
         # initialize selection.T mat
         Pt = []
-        Pt = np.array(Pt).astype(int)
-        S = []
+        e_points = []
+        e_jump = []
+        e_range = []
+        idxs = []
         for k in range(K):
             if k == 0:
                 r = vk
             else:
                 vk = bases[:, k * p:(k + 1) * p, :]  # (ep, p, d)   kth bases block
-                c = np.zeros(vk.shape)
+                c = np.empty(vk.shape)
+
                 for i in range(d):
                     # V (Pt V)^{-1} Pt v_k
-                    c[:, :, i] = V[:, :, i] @ npla.solve(V[Pt, :, i], vk[Pt, :, i])
+                    # check_matrix_properties(V[Pt, :, i])
+                    # In this case we solve for a square matrix
+                    c[:, :, i] = V[:, :, i] @ np.linalg.lstsq(V[Pt, :, i], vk[Pt, :, i], rcond=None)[
+                        0]  # (ep, kp,)@ (kp,kp)(kp,) --(ep,)xd
 
-                r = c - vk  # error
-            # find the largest deformation block
-            alpha = self.indxLargestDeformation(r, p, e)
-            # alpha = self.max_raw(r, p)
-            S.append(alpha)
+                r = c - vk  # residual in constraint projection space  (ep, p, d)
+                if np.allclose(r, np.zeros(r.shape)):
+                    print("ERROR!: zero residual!!")
+                    return
+
+            idx = np.argmax((r ** 2).sum(axis=(1, 2)))
+            alpha = idx // p  #  0 <= alpha < e
+            row = idx % p     # idx = alpha * p + row
+            assert idx not in idxs
+            idxs.append(idx)
+            e_points.append(alpha)
             # update selection mat with the largest deformation block in the error
-            if alpha in Pt.tolist():
-                print('skip', k)
-                continue
+            print(k, alpha)
+            for m in range(p):
+                Pt.append(alpha * p + m)
+            e_jump.append(1)
+            e_range.append(sum(np.asarray(e_jump)))
+            if k == 0:
+                V = vk
             else:
-                print(k)
-                for m in range(p):
-                    Pt = np.append(Pt, alpha * p + m)
+                V = np.concatenate((V, vk), axis=1)
 
-                # update V and vk
-                if k == 0:
-                    V = vk
-                else:
-                    V = np.concatenate((V, vk), axis=1)
+        self.geom_Pt = np.array(Pt)
+        self.geom_alpha = np.array(e_points)
+        self.geom_ep_idxs = np.array(idxs)
+        self.geom_alpha_ranges = np.array(e_range)
+        self.geom_interpol_verts = np.array(self.geom_interpol_verts)
 
-        # test_linear_independency(V, V.shape[1])
-
-        M = np.zeros((V.shape[1], V.shape[1], d))
-        for i in range(d):
-            M[:, :, i] = npla.inv(V[Pt, :, i])
-
-        VM = np.zeros((e * p, V.shape[1], d))
-        for i in range(d):
-            VM[:, :, i] = V[:, :, i] @ M[:, :, i]
-
-        self.geom_alpha = np.array(S)
-        self.geom_alpha_ranges = np.ones(self.geom_alpha.shape[0]-1)
-        self.geom_interpol_verts = None
         print("Regular Deim interpolation, used", self.geom_alpha.shape[0], "constrained elements")
 
     '''

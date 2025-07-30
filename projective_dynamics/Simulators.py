@@ -265,7 +265,7 @@ class animSnapBasesSolver:
 
     def prepare_local_term(self, args):
 
-        if self.constraint_projection_reduction_type in {"geom_interpolation"}:
+        if self.constraint_projection_reduction_type in {"geom_interpolation", "deim"}:
             dir = args.geom_interpolation_basis_dir
             file = args.geom_interpolation_basis_file
         else:

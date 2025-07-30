@@ -39,7 +39,6 @@ if __name__ == '__main__':
     param = Config_parameters()
     param.reset_parameters("demos/cloth_automated_bend_spring_strain.json")
 
-
     # Add visualization params
     param.add_visualization_args(parser)
 

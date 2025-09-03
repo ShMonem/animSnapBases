@@ -46,8 +46,9 @@
 			"processed_snapshots_ready": false,
 			"reduced_snaps_available": false
 		},
-		"type": "deim",
-		"desired_num_components": 200,
+		"basis_type": "pca_blocks",
+		"interpolation_type": "deim",
+		"desired_num_components": 1000,
 		"numComponents_verts": 5,
 		"bases_res_tol": 98,
 		"dim": 3,

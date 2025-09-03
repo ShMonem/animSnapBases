@@ -1,4 +1,5 @@
 import polyscope as ps
+
 import config
 import argparse
 
@@ -11,10 +12,26 @@ def main(args, record_fom_info = False, case=None, params=None):
 
     elif case == "cloth_automated_bend_spring_strain":
         callback = demos.calbacks.cloth_automated_bend_spring_strain_callback(args, record_fom_info, params)
+    elif case == "cloth_automated_spring":
+        callback = demos.calbacks.cloth_automated_bend_spring_strain_callback(args, record_fom_info, params,
+                                                                              experiment="cloth_automated_spring")
+    elif case == "cloth_automated_strain":
+        callback = demos.calbacks.cloth_automated_strain_callback(args, record_fom_info, params)
+    elif case == "cloth_automated_bend":
+        callback = demos.calbacks.cloth_automated_bend_callback(args, record_fom_info, params)
+    elif case == "bar_automated_deformationgradient":
+        callback = demos.calbacks.bar_automated_deformationgradient_callback(args, record_fom_info, params)
 
-    available_demos = {"testing": demos.calbacks.interacrive_testing_callback,
-                       "cloth_automated_bend_spring_strain": demos.calbacks.cloth_automated_bend_spring_strain_callback}
-    assert case in available_demos
+    else:
+        callback = None
+        raise ValueError("callback not set to a true value!")
+
+    # available_demos = {"testing": demos.calbacks.interacrive_testing_callback,
+    #                    "cloth_automated_bend_spring_strain": demos.calbacks.cloth_automated_bend_spring_strain_callback,
+    #                    "cloth_automated_strain": demos.calbacks.cloth_automated_strain_callback,
+    #                    "cloth_automated_bend": demos.calbacks.cloth_automated_bend_callback,
+    #                    "bar_automated_deformationgradient": demos.calbacks.bar_automated_deformationgradient_callback}
+    # assert case in available_demos
 
     # Register callback
     ps.init()
@@ -27,7 +44,10 @@ def main(args, record_fom_info = False, case=None, params=None):
 if __name__ == '__main__':
     # -----------------------------------------------------------------------------------------------------------------
     # available demos:
-    #["cloth_automated_bend_spring_strain.json"]
+    #["cloth_automated_bend_spring_strain.json",
+    # "cloth_automated_strain.json",
+    # "cloth_automated_bend.json",
+    # "demos/bar_automated_deformationgradient.json"]
 
     # # ---------------- build parser argument ----------------
     parser = argparse.ArgumentParser()
@@ -37,7 +57,9 @@ if __name__ == '__main__':
     from config import Config_parameters
 
     param = Config_parameters()
-    param.reset_parameters("demos/cloth_automated_bend_spring_strain.json")
+    example = "cloth_automated_bend_spring_strain"
+
+    param.reset_parameters("demos/"+example+".json")
 
     # Add visualization params
     param.add_visualization_args(parser)
@@ -56,8 +78,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    record_projection_data = args.record_projection_data
-    example = "cloth_automated_bend_spring_strain"
+    record_projection_data = True #args.record_projection_data
     main(args,
          record_fom_info = record_projection_data,
          case = example,

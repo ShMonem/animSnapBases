@@ -4,7 +4,7 @@
 		"experiment_dir": "projective_dynamics/output/",
 		"mesh": "cloth",
 		"volumetric": false,
-		"experiment": "cloth_automated_bend_spring_strain/",
+		"experiment": "cloth_automated_spring/",
 		"snap_format": ".off"
 	},
 	"vertexPos_bases":
@@ -24,16 +24,16 @@
 		},
 		"constraintType":
 		{
-			"name": "tris_strain",
-			"elements": "_tris",
-			"p_snaps_folder": "/constraint_projection/FOM/verts_bending_wi0.1_edge_spring_wi1000000.0_tris_strain_wi0.01_",
-			"pos_snaps_folder": "/position_snapshots/FOM/verts_bending_wi0.1_edge_spring_wi1000000.0_tris_strain_wi0.01_",
+			"name": "edge_spring",
+			"elements": "_edges",
+			"p_snaps_folder": "/constraint_projection/FOM/edge_spring_wi1000000.0_",
+			"pos_snaps_folder": "/position_snapshots/FOM/edge_spring_wi1000000",
 			"geom_pos_snaps_folder": "/position_snapshots/deim/",
 			"assembly_file_name": "assembly_ST.npz",
-			"assembly_key": "tris_strain",
-			"snaps_pattern_full_p": "/tris_strain_p.npz",
+			"assembly_key": "edge_spring",
+			"snaps_pattern_full_p": "/edge_spring_p.npz",
 			"constrained_elements": "",
-			"rowSize": 2
+			"rowSize": 1
 		},
 		"snapshots":
 		{
@@ -46,9 +46,9 @@
 			"processed_snapshots_ready": false,
 			"reduced_snaps_available": false
 		},
-		"basis_type": "pca_blocks",
+		"basis_type": "pod",
 		"interpolation_type": "deim",
-		"desired_num_components": 500,
+		"desired_num_components": 1000,
 		"numComponents_verts": 5,
 		"bases_res_tol": 98,
 		"dim": 3,

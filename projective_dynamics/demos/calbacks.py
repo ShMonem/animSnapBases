@@ -6,12 +6,12 @@ import polyscope as ps
 import polyscope.imgui as psim
 import config
 from Constraint_projections import DeformableMesh
-from geometry import get_simple_bar_model, get_simple_cloth_model
+from geometry import get_simple_bar_model, get_simple_cloth_model, get_simple_bar_model_with_surface_points_only, compute_lumped_mass_matrix
 from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler
 
 from Simulators import animSnapBasesSolver, Solver
 import trimesh
-
+import meshio
 from utils import check_dir_exists
 
 # declare global variables
@@ -63,14 +63,18 @@ def reset_simulation_model(V, F, T, should_rescale=False, params=None):
 
 # Example callbacks called in main.py
 def interacrive_testing_callback(args, record_fom_info = False, params=None):
-    global model, solver, fext
+    global model, fext, solver
+    solver = get_solver_class_from_name(args)
+    is_simulating = args.is_simulating
+    output_path = args.output_dir
+
 
     def callback():
-        global output_path, object_name
+        nonlocal output_path
         psim.PushItemWidth(200)
         psim.TextUnformatted("== Projective Dynamics ==")
         psim.Separator()
-
+        object_name = ""
         if psim.CollapsingHeader("Geometry"):
             if psim.TreeNode("Bar"):
 
@@ -78,7 +82,7 @@ def interacrive_testing_callback(args, record_fom_info = False, params=None):
 
                 if psim.Button("Compute##Bar"):
                     V, T, F = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
-                    reset_simulation_model(V, F, T,model, fext, solver, should_rescale=True)
+                    reset_simulation_model(V, F, T, should_rescale=True)
                     object_name = "Bar"
 
                 psim.TreePop()
@@ -88,7 +92,7 @@ def interacrive_testing_callback(args, record_fom_info = False, params=None):
 
                 if psim.Button("Compute##Cloth"):
                     V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
-                    reset_simulation_model(V, F, np.empty((0, 3)), model, fext, solver, should_rescale=True)
+                    reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
                     object_name = "Cloth"
 
                 psim.TreePop()
@@ -318,18 +322,24 @@ def cloth_automated_bend_spring_strain_callback(args, record_fom_info = False, p
             # if recording snapshots build output file name/ path
             if record_fom_info:
                 constrproj_case = "constraint_projection/FOM"
-                if solver.reduced_constraint_projectios:
+                if solver.has_reduced_constraint_projectios:
                     constrproj_case = "constraint_projection/" + args.constraint_projection_basis_type
 
                 specify_path = ""
                 if model.has_verts_bending_constraints:
                     specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
+                    if args.vert_bending_reduced :
+                        specify_path = specify_path + "reduced_"
 
                 if model.has_edge_spring_constraints:
                     specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
+                    if args.edge_spring_reduced :
+                        specify_path = specify_path + "reduced_"
 
                 if model.has_tris_strain_constraints:
                     specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+                    if args.tri_strain_reduced :
+                        specify_path = specify_path + "reduced_"
 
                 output_path += "/" + object_name + "/" + experiment + "/" + "/" + constrproj_case + "/" + specify_path + "/"
                 check_dir_exists(output_path)
@@ -355,6 +365,386 @@ def cloth_automated_bend_spring_strain_callback(args, record_fom_info = False, p
 
 
         elif solver.frame == 240:
+            print("Stopping simulation.")
+            is_simulating = False
+            ps.unshow()
+            return
+
+        # Run a single simulation step
+        if model is not None and is_simulating:
+
+            pre_draw_handler = PreDrawHandler(
+                lambda: model.positions.shape[0] > 0, args, solver, fext,
+                record_info=record_fom_info, record_path=output_path
+            )
+            pre_draw_handler.set_animating(True)
+            pre_draw_handler.handle()
+
+        if model is not None:
+            psim.BulletText(f"Vertices: {model.positions.shape[0]}")
+            psim.BulletText(f"Triangles: {model.faces.shape[0]}")
+            psim.BulletText(f"Edges: {model.count_edges(model.faces)}")
+            psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
+
+            if model.has_verts_bending_constraints:
+                psim.BulletText(f"Vertices bending constraint: {len(model.verts_bending_constraints)}")
+                psim.BulletText(f"wi: { str(args.vert_bending_constraint_wi) }")
+
+            if model.has_edge_spring_constraints:
+                psim.BulletText(f"Edge pring constraint: {len(model.edge_spring_constraints)}")
+                psim.BulletText(f"wi: { str(args.edge_constraint_wi) }")
+
+            if model.has_tris_strain_constraints:
+                psim.BulletText(f"Triangles strain constraint: {len(model.tris_strain_constraints)}")
+                psim.BulletText(f"wi: { str(args.strain_limit_constraint_wi) }")
+
+
+        psim.End()
+
+    return callback
+
+def cloth_automated_strain_callback(args, record_fom_info = False, params=None,experiment="cloth_automated_strain"):
+    global model, fext, solver
+    solver = get_solver_class_from_name(args)
+    is_simulating = args.is_simulating
+    output_path = args.output_dir
+    def callback():
+        nonlocal output_path, is_simulating
+        psim.TextUnformatted("== Projective Dynamics ==")
+        psim.Separator()
+        # Frame 0: create mesh and apply initial constraints
+        if solver.frame == 0:
+            print("Frame 0: Creating cloth and fixing left/right corners")
+
+            params.edit_system_args(args, "Cloth")
+
+            V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
+            reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
+            object_name = "cloth"
+
+            check_dir_exists(os.path.join(output_path, object_name))
+            mesh = trimesh.Trimesh(vertices=V, faces=F)
+            mesh.export(os.path.join(output_path, object_name, object_name+".obj"))
+
+            psim.PushItemWidth(200)
+            psim.TextUnformatted("== Projective Dynamics ==")
+            psim.Separator()
+
+            # model.fix_surface_side_vertices(side="right")
+            # model.fix_surface_side_vertices(side="left")
+
+            # Apply any desired constraints
+            model.immobilize()
+            model.clear_constraints()
+            model.reset_constraints_attributes()
+
+            if args.vert_bending_constraint:
+                model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
+            if args.edge_constraint:
+                model.add_edge_spring_constrain(args.edge_constraint_wi)
+            if args.tri_strain_constraint:
+                model.add_tri_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
+
+            # if recording snapshots build output file name/ path
+            if record_fom_info:
+                constrproj_case = "constraint_projection/FOM"
+                if solver.has_reduced_constraint_projectios:
+                    constrproj_case = "constraint_projection/" + args.constraint_projection_basis_type
+
+                specify_path = ""
+                if model.has_verts_bending_constraints:
+                    specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
+                    if args.vert_bending_reduced :
+                        specify_path = specify_path + "reduced_"
+
+                if model.has_edge_spring_constraints:
+                    specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
+                    if args.edge_spring_reduced :
+                        specify_path = specify_path + "reduced_"
+
+                if model.has_tris_strain_constraints:
+                    specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+                    if args.tri_strain_reduced :
+                        specify_path = specify_path + "reduced_"
+
+                output_path += "/" + object_name + "/" + experiment + "/" + "/" + constrproj_case + "/" + specify_path + "/"
+                check_dir_exists(output_path)
+
+                solver.set_record_path(output_path)
+                solver.set_store_p(record_fom_info)
+            solver.set_dirty()
+
+        # elif solver.frame == 20:
+        #     print("Frame 10: Releasing sides")
+        #     model.release_surface_side_vertices(side="right")
+        #     model.release_surface_side_vertices(side="left")
+
+
+        elif solver.frame == 220:
+            print("Stopping simulation.")
+            is_simulating = False
+            ps.unshow()
+            return
+
+        # Run a single simulation step
+        if model is not None and is_simulating:
+
+            pre_draw_handler = PreDrawHandler(
+                lambda: model.positions.shape[0] > 0, args, solver, fext,
+                record_info=record_fom_info, record_path=output_path
+            )
+            pre_draw_handler.set_animating(True)
+            pre_draw_handler.handle()
+
+        if model is not None:
+            psim.BulletText(f"Vertices: {model.positions.shape[0]}")
+            psim.BulletText(f"Triangles: {model.faces.shape[0]}")
+            psim.BulletText(f"Edges: {model.count_edges(model.faces)}")
+            psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
+
+            if model.has_verts_bending_constraints:
+                psim.BulletText(f"Vertices bending constraint: {len(model.verts_bending_constraints)}")
+                psim.BulletText(f"wi: { str(args.vert_bending_constraint_wi) }")
+
+            if model.has_edge_spring_constraints:
+                psim.BulletText(f"Edge pring constraint: {len(model.edge_spring_constraints)}")
+                psim.BulletText(f"wi: { str(args.edge_constraint_wi) }")
+
+            if model.has_tris_strain_constraints:
+                psim.BulletText(f"Triangles strain constraint: {len(model.tris_strain_constraints)}")
+                psim.BulletText(f"wi: { str(args.strain_limit_constraint_wi) }")
+
+
+        psim.End()
+
+    return callback
+
+def cloth_automated_bend_callback(args, record_fom_info = False, params=None,experiment="cloth_automated_bend"):
+    global model, fext, solver
+    solver = get_solver_class_from_name(args)
+    is_simulating = args.is_simulating
+    output_path = args.output_dir
+    def callback():
+        nonlocal output_path, is_simulating
+        psim.TextUnformatted("== Projective Dynamics ==")
+        psim.Separator()
+        # Frame 0: create mesh and apply initial constraints
+        if solver.frame == 0:
+            print("Frame 0: Creating cloth and fixing left/right corners")
+
+            params.edit_system_args(args, "Cloth")
+
+            V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
+            reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
+            object_name = "cloth"
+
+            check_dir_exists(os.path.join(output_path, object_name))
+            mesh = trimesh.Trimesh(vertices=V, faces=F)
+            mesh.export(os.path.join(output_path, object_name, object_name+".obj"))
+
+            psim.PushItemWidth(200)
+            psim.TextUnformatted("== Projective Dynamics ==")
+            psim.Separator()
+
+            # model.fix_surface_side_vertices(side="right")
+            # model.fix_surface_side_vertices(side="left")
+
+            # Apply any desired constraints
+            model.immobilize()
+            model.clear_constraints()
+            model.reset_constraints_attributes()
+
+            if args.vert_bending_constraint:
+                model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
+            if args.edge_constraint:
+                model.add_edge_spring_constrain(args.edge_constraint_wi)
+            if args.tri_strain_constraint:
+                model.add_tri_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
+
+            # if recording snapshots build output file name/ path
+            if record_fom_info:
+                constrproj_case = "constraint_projection/FOM"
+                if solver.has_reduced_constraint_projectios:
+                    constrproj_case = "constraint_projection/" + args.constraint_projection_basis_type
+
+                specify_path = ""
+                if model.has_verts_bending_constraints:
+                    specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
+                    if args.vert_bending_reduced :
+                        specify_path = specify_path + "reduced_"
+
+                if model.has_edge_spring_constraints:
+                    specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
+                    if args.edge_spring_reduced :
+                        specify_path = specify_path + "reduced_"
+
+                if model.has_tris_strain_constraints:
+                    specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+                    if args.tri_strain_reduced :
+                        specify_path = specify_path + "reduced_"
+
+                output_path += "/" + object_name + "/" + experiment + "/" + "/" + constrproj_case + "/" + specify_path + "/"
+                check_dir_exists(output_path)
+
+                solver.set_record_path(output_path)
+                solver.set_store_p(record_fom_info)
+            solver.set_dirty()
+
+        # elif solver.frame == 20:
+        #     print("Frame 10: Releasing sides")
+        #     model.release_surface_side_vertices(side="right")
+        #     model.release_surface_side_vertices(side="left")
+
+
+        elif solver.frame == 55:
+            print("Stopping simulation.")
+            is_simulating = False
+            ps.unshow()
+            return
+
+        # Run a single simulation step
+        if model is not None and is_simulating:
+
+            pre_draw_handler = PreDrawHandler(
+                lambda: model.positions.shape[0] > 0, args, solver, fext,
+                record_info=record_fom_info, record_path=output_path
+            )
+            pre_draw_handler.set_animating(True)
+            pre_draw_handler.handle()
+
+        if model is not None:
+            psim.BulletText(f"Vertices: {model.positions.shape[0]}")
+            psim.BulletText(f"Triangles: {model.faces.shape[0]}")
+            psim.BulletText(f"Edges: {model.count_edges(model.faces)}")
+            psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
+
+            if model.has_verts_bending_constraints:
+                psim.BulletText(f"Vertices bending constraint: {len(model.verts_bending_constraints)}")
+                psim.BulletText(f"wi: { str(args.vert_bending_constraint_wi) }")
+
+            if model.has_edge_spring_constraints:
+                psim.BulletText(f"Edge pring constraint: {len(model.edge_spring_constraints)}")
+                psim.BulletText(f"wi: { str(args.edge_constraint_wi) }")
+
+            if model.has_tris_strain_constraints:
+                psim.BulletText(f"Triangles strain constraint: {len(model.tris_strain_constraints)}")
+                psim.BulletText(f"wi: { str(args.strain_limit_constraint_wi) }")
+
+
+        psim.End()
+
+    return callback
+
+def bar_automated_deformationgradient_callback(args, record_fom_info = False, params=None,experiment="bar_automated_deformationgradient"):
+    global model, fext, solver
+    solver = get_solver_class_from_name(args)
+    is_simulating = args.is_simulating
+    output_path = args.output_dir
+    def callback():
+        nonlocal output_path, is_simulating
+        psim.TextUnformatted("== Projective Dynamics ==")
+        psim.Separator()
+        # Frame 0: create mesh and apply initial constraints
+        if solver.frame == 0:
+            print("Frame 0: Creating cloth and fixing left/right corners")
+
+            params.edit_system_args(args, "Bar")
+
+            V, T, F, _ = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
+
+            reset_simulation_model(V, F, T, should_rescale=True)
+            object_name = "bar"
+
+            check_dir_exists(os.path.join(output_path, object_name))
+            mesh = meshio.Mesh(
+                points=V,
+                cells=[
+                    ("triangle", F),
+                    ("tetra", T)
+                ]
+            )
+            mesh.write(os.path.join(output_path, object_name, object_name+".mesh"))
+
+            mesh_surface = trimesh.Trimesh(vertices=V, faces=F)
+            mesh_surface.export(os.path.join(output_path, object_name, object_name + ".obj"))
+
+            psim.PushItemWidth(200)
+            psim.TextUnformatted("== Projective Dynamics ==")
+            psim.Separator()
+
+            model.fix_surface_side_vertices(side="left")
+            model.fix_surface_side_vertices(side="right")
+
+            # Apply any desired constraints
+            model.immobilize()
+            model.clear_constraints()
+            model.reset_constraints_attributes()
+
+            if args.vert_bending_constraint:
+                model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
+            if args.edge_constraint:
+                model.add_edge_spring_constrain(args.edge_constraint_wi)
+            if args.tri_strain_constraint:
+                model.add_tri_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
+            if args.tet_strain_constraint:
+                model.add_tet_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
+            if args.tet_deformation_constraint:
+                model.add_tet_constrain_deformation_gradient(args.deformation_gradient_constraint_wi)
+            # if recording snapshots build output file name/ path
+            if record_fom_info:
+                constrproj_case = "constraint_projection/FOM"
+                if solver.has_reduced_constraint_projectios:
+                    constrproj_case = "constraint_projection/" + args.constraint_projection_basis_type
+
+                specify_path = ""
+                if model.has_verts_bending_constraints:
+                    specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
+                    if args.vert_bending_reduced :
+                        specify_path = specify_path + "reduced_"
+
+                if model.has_edge_spring_constraints:
+                    specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
+                    if args.edge_spring_reduced :
+                        specify_path = specify_path + "reduced_"
+
+                if model.has_tris_strain_constraints:
+                    specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+                    if args.tri_strain_reduced :
+                        specify_path = specify_path + "reduced_"
+                if model.has_tets_strain_constraints:
+                    specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+                    if args.tet_strain_reduced :
+                        specify_path = specify_path + "reduced_"
+                if model.has_tets_deformation_gradient_constraints:
+                    specify_path = specify_path + "tets_deformation_gradient_wi" + str(args.deformation_gradient_constraint_wi) + "_"
+                    if args.tet_deformation_reduced :
+                        specify_path = specify_path + "reduced_"
+
+
+                output_path += "/" + object_name + "/" + experiment + "/" + "/" + constrproj_case + "/" + specify_path + "/"
+                check_dir_exists(output_path)
+
+                solver.set_record_path(output_path)
+                solver.set_store_p(record_fom_info)
+            solver.set_dirty()
+
+        elif solver.frame == 40:
+            print("Frame 10: Releasing left side")
+            model.release_surface_side_vertices(side="left")
+
+
+        elif solver.frame == 80:
+            print("Frame 10: Releasing right side")
+            model.release_surface_side_vertices(side="right")
+        #
+        # elif solver.frame == 140:
+        #     print("Frame 30: Releasing all corners")
+        #     model.release_cloth_corners(side="top")
+        #     model.release_cloth_corners(side="bottom")
+        #     model.fix_cloth_corners(side="right")
+
+
+        elif solver.frame == 144:
             print("Stopping simulation.")
             is_simulating = False
             ps.unshow()

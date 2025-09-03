@@ -1,13 +1,13 @@
 {
   "system": {
     "Bar": {
-      "bar_width": 0,
-      "bar_height": 0,
-      "bar_depth":0
+      "bar_width": 40,
+      "bar_height": 5,
+      "bar_depth":5
     },
     "Cloth": {
-      "cloth_width": 20,
-      "cloth_height": 20
+      "cloth_width": 0,
+      "cloth_height": 0
     }
   },
   "visualization_params": {
@@ -22,33 +22,33 @@
   "physics_params": {
     "mass_per_particle": 10.0,
     "positional_constraint_wi": 0,
-    "edge_constraint_wi": 1000000.0,
+    "edge_constraint_wi": 1000.0,
     "vert_bending_constraint_wi": 0.1,
-    "deformation_gradient_constraint_wi": 0,
-    "strain_limit_constraint_wi": 0.01,
+    "deformation_gradient_constraint_wi": 100000000.0,
+    "strain_limit_constraint_wi": 1000000,
     "sigma_min": 0.99,
     "sigma_max": 1.01
   },
   "constraints": {
     "apply_constraints": false,
-    "vert_bending_constraint": true,
+    "vert_bending_constraint": false,
 
-    "edge_spring_constraint": true,
-    "tri_strain_constraint": true,
+    "edge_spring_constraint": false,
+    "tri_strain_constraint": false,
     "tet_strain_constraint": false,
-    "tet_deformation_constraint": false,
+    "tet_deformation_constraint": true,
 
     "is_gravity_active": true,
 
-    "fix_left_side": false,
-    "fix_right_side": false,
+    "fix_left_side": true,
+    "fix_right_side": true,
     "_fix_left_triggered": false,
     "_fix_right_triggered": false,
 
-    "fix_left_corners": true,
-    "fix_right_corners": true,
-    "_fix_left_corners_triggered": true,
-    "_fix_right_corners_triggered": true,
+    "fix_left_corners": false,
+    "fix_right_corners": false,
+    "_fix_left_corners_triggered": false,
+    "_fix_right_corners_triggered": false,
 
     "fix_top_corners": false,
     "fix_bottom_corners": false,
@@ -58,26 +58,26 @@
   },
   "constraint_projetions_reduction": {
     "name": "deim_pca_blocks",
-    "properties": "_noAlignement_Volkwein_Standarized_Global_Orthogonalized_Release100_Frames_2_increment",
-    "vert_bending_reduced": true,
-    "num_verts_bending_components": 10,
+    "properties": "_noAlignement_Volkwein_Standarized_Global_Orthogonalized_Release70_Frames_2_increment",
+    "vert_bending_reduced": false,
+    "num_verts_bending_components": -1,
     "edge_spring_reduced": false,
-    "edge_spring_num_components": 1000,
+    "edge_spring_num_components": -1,
     "tri_strain_reduced": false,
-    "tri_strain_num_components": 10,
+    "tri_strain_num_components": -1,
     "tet_strain_reduced": false,
     "tet_strain_num_components": -1,
     "tet_deformation_reduced": false,
-    "tet_deformation_num_components": -1
+    "tet_deformation_num_components": 200
   },
-    "nonlinear_snapshots": {
-    "max_p_snapshots_num": 200,
+  "nonlinear_snapshots": {
+    "max_p_snapshots_num": 140,
     "recodr_snapshots_info": true
   },
   "directories": {
     "output": "output/",
     "positions_basis": "",
-    "geom_interpolation_basis_dir": "../results/cloth/cloth_automated_bend_spring_strain/p_bases/",
+    "geom_interpolation_basis_dir": "../results/bar/bar_automated_deformationgradient/p_bases/",
     "geom_interpolation_basis_file": "components_interpol_alphas_interpol_verts_interpol_alpha_ranges.npz",
     "geom_basis": ""
 

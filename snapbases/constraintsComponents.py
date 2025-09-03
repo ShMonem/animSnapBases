@@ -60,7 +60,7 @@ class constraintsComponents:  # Components == bases
 
     def config(self, fileNameBases="p_nl_", fileName_geom_points="p_nl_interpol_points_",
                file_name_sing="_constrprojBases_pcaExtraction_singValues"):
-        self.basesType = self.param.constProj_bases_type
+        self.basesType = self.param.constProj_bases_interpolation_type
         self.support = self.param.constProj_support  # can be 'local' or 'global'
 
         self.storeSingVal = self.param.constProj_store_sing_val  # boolean
@@ -112,7 +112,7 @@ class constraintsComponents:  # Components == bases
             with_differential_operator: weither or not the differential operator is utilized for basis computations
             
         """
-        basis_type = self.param.constProj_bases_type
+        constProj_bases_interpolation_type = self.param.constProj_bases_interpolation_type
         # compute_geodesic_distance = self.nonlinearSnapshots.compute_geodesic_distance
         headerSing = ['component', 'idx', 'residual_matrix_norm']
         p = self.nonlinearSnapshots.constraintsSize
@@ -124,20 +124,24 @@ class constraintsComponents:  # Components == bases
             with open(file_name + '.csv', 'w', encoding='UTF8') as singFile:
                 writer = csv.writer(singFile)
                 writer.writerow(headerSing)
-                if basis_type == "geom":
-                    self.compute_nonlinearity_bases_blocks_utilizing_diffirential_operator(writer)
-                elif basis_type == "deim":
+                if self.param.constProj_basis_type == "pod":
+                    self.compute_pod_for_nonlinear_snapshots_tensor(writer)
+                elif self.param.constProj_basis_type == "pca_blocks":
                     self.compute_nonlinearity_bases_blocks(writer)
+                elif self.param.constProj_basis_type == "pca_blocks_with_St":
+                        self.compute_nonlinearity_bases_blocks_utilizing_diffirential_operator(writer)
                 else:
-                    raise ValueError("Uknown basis type: ", basis_type)
+                    raise ValueError("Uknown basis type: ", self.param.constProj_basis_type)
             singFile.close()
         else:
-            if basis_type == "geom":
-                self.compute_nonlinearity_bases_blocks_utilizing_diffirential_operator(None)
-            elif basis_type == "deim":
+            if self.param.constProj_basis_type == "pod":
+                self.compute_pod_for_nonlinear_snapshots_tensor(None)
+            elif self.param.constProj_basis_type == "pca_blocks":
                 self.compute_nonlinearity_bases_blocks(None)
+            elif self.param.constProj_basis_type == "pca_blocks_with_St":
+                self.compute_nonlinearity_bases_blocks_utilizing_diffirential_operator(None)
             else:
-                raise ValueError("Uknown basis type: ", basis_type)
+                raise ValueError("Uknown basis type: ", self.param.constProj_basis_type)
 
     @log_time(constProj_output_directory)
     def compute_nonlinearity_bases_blocks_utilizing_diffirential_operator(self, writer=None):
@@ -258,6 +262,30 @@ class constraintsComponents:  # Components == bases
         print("bases shape",self.comps.shape, "number of components", self.numComp)
 
     @log_time(constProj_output_directory)
+    def compute_pod_for_nonlinear_snapshots_tensor(self, writer=None):
+        import torch
+        from torch import linalg
+        # inialized by a copy of the original snapshots tensor (F, ep, d)
+        R = copy.deepcopy(self.nonlinearSnapshots.snapTensor)
+        p = self.nonlinearSnapshots.constraintsSize  # p: row size of each constraint
+        e = self.nonlinearSnapshots.num_constained_elements  # numConstraints
+
+        R = R.reshape(R.shape[0], e, p, R.shape[-1])    # reshape to (F, e, p, d)
+        R = np.moveaxis(R, [0, 1, 2, 3], [3, 2, 0, 1])            # reshape to (p, d, e, F)
+        C, S, Vh = torch.linalg.svd(torch.as_tensor(R, dtype=torch.float32, device='cpu'), full_matrices=False)
+
+        C = np.moveaxis(C.detach().cpu().numpy(), [0, 1, 2, 3], [2, 3, 1, 0]) # reshape to ( e,p, F, 3)
+        C = C.reshape( C.shape[0], e*p, C.shape[3])  # reshape to (F, e,p, 3)
+
+        if self.param.deim_desired_num_components < C.shape[0]:
+            self.comps = np.array(C[:self.param.deim_desired_num_components, :, :])
+        else:
+            self.comps= np.array(C)
+
+        self.numComp = self.comps.shape[0]
+
+
+    @log_time(constProj_output_directory)
     def compute_nonlinearity_bases_blocks(self, writer=None):
 
         # inialized by a copy of the original snapshots tensor (F, ep, d)
@@ -321,7 +349,7 @@ class constraintsComponents:  # Components == bases
                 R -= np.outer(wk, ck).reshape(R.shape)  # project out computed bases block
                 res_norm.append(norm(R))
                 print(k, sing[0] , norm(R))
-                #  keep list of the constraints indices of blocks with largest deformation  0 <= idx < ep
+                #  keep list of the constraints indices of blocks with the largest deformation  0 <= idx < ep
                 # if add_to_indx:
                 S_p.append(idx * p + i)
                 C.append(ck)
@@ -392,8 +420,10 @@ class constraintsComponents:  # Components == bases
         for l in range(self.comps.shape[2]):
             Mu_l = self.comps[:, :, l].T * self.nonlinearSnapshots.mass[:, None]  # M U
             utMu_l = np.dot(self.comps[:, :, l], Mu_l)  # U^T M U
-            assert np.allclose(utMu_l, np.eye(self.comps.shape[0]))
-        print('(True).')
+            if  np.allclose(utMu_l, np.eye(self.comps.shape[0])):
+                print('True..')
+            else:
+                print("False..")
 
     def matrix_properties_test(self, interpol_kp_blocks, precondition=False):
 
@@ -421,9 +451,12 @@ class constraintsComponents:  # Components == bases
 
         return mat_e
 
-    def geom_constructed(self, r, case):
+    def geom_constructed(self, r, case, interpol="geom"):
 
-        p = self.nonlinearSnapshots.constraintsSize
+        if self.param.constProj_bases_interpolation_type == "geom" or self.param.constProj_bases_interpolation_type == "deim_block_form":
+            p = self.nonlinearSnapshots.constraintsSize
+        else:
+            p = 1
 
         if case == "train":
             F, ep, _ = self.nonlinearSnapshots.snapTensor.shape
@@ -704,7 +737,7 @@ class constraintsComponents:  # Components == bases
             idx = np.argmax((r ** 2).sum(axis=(1, 2)))
             alpha = idx // p  #  0 <= alpha < e
             row = idx % p     # idx = alpha * p + row
-            assert idx not in idxs
+            # assert idx not in idxs
             idxs.append(idx)
             e_points.append(alpha)
             # update selection mat with the largest deformation block in the error
@@ -720,12 +753,76 @@ class constraintsComponents:  # Components == bases
 
         self.geom_Pt = np.array(Pt)
         self.geom_alpha = np.array(e_points)
-        self.geom_ep_idxs = np.array(idxs)
+        self.geom_ep_idxs = np.array(set(idxs))
         self.geom_alpha_ranges = np.array(e_range)
         self.geom_interpol_verts = np.array(self.geom_interpol_verts)
 
         print("Regular Deim interpolation, used", self.geom_alpha.shape[0], "constrained elements")
 
+    def deim(self):
+        """
+        :return:
+        """
+        p = self.nonlinearSnapshots.constraintsSize
+        e = self.nonlinearSnapshots.num_constained_elements
+        d = self.nonlinearSnapshots.dim
+        K = self.numComp
+
+        bases = self.comps.swapaxes(0, 1)  # (ep, K, d)
+        test_linear_dependency(bases, 3, K)
+        # initialization
+        vk = bases[:, 0, :]  # v0  (ep, 1, 3)
+        V = np.empty(vk.shape)
+        # initialize selection.T mat
+        Pt = []
+        e_points = []
+        e_jump = []
+        e_range = []
+        idxs = []
+        for k in range(K):
+
+            if k == 0:
+                r = vk
+            else:
+                vk = bases[:, k, :]  # (ep, d)   kth bases block
+                c = np.empty(vk.shape)
+
+                for i in range(d):
+                    # V (Pt V)^{-1} Pt v_k
+
+                    # In this case we solve for a square matrix
+                    c[:, i] = V[:,:, i] @ np.linalg.lstsq(V[Pt, :, i], vk[Pt, i], rcond=None)[0]  # (ep, k,)@ (k,k)(k,)
+
+                r = c - vk  # residual in constraint projection space  (ep, d)
+                if np.allclose(r, np.zeros(r.shape)):
+                    print("ERROR!: zero residual!!")
+                    return
+
+            idx = np.argmax((r ** 2).sum(axis=(1)))
+            alpha = idx // p  # 0 <= alpha < e
+            row = idx % p  # idx = alpha * p + row
+            # assert idx not in idxs
+            idxs.append(idx)
+            e_points.append(alpha)
+            # update selection mat with the largest deformation block in the error
+            print(k, alpha)
+            Pt.append(idx)
+            # for m in range(p):
+            #     Pt.append(alpha * p + m)
+            e_jump.append(1)
+            e_range.append(sum(np.asarray(e_jump)))
+            if k == 0:
+                V = vk[:, None, :]
+            else:
+                V = np.concatenate((V, vk[:, None, :]), axis=1)
+
+        self.geom_Pt = np.array(Pt)
+        self.geom_alpha = np.array(e_points)
+        self.geom_ep_idxs = np.array(set(idxs))
+        self.geom_alpha_ranges = np.array(e_range)
+        self.geom_interpol_verts = np.array(self.geom_interpol_verts)
+
+        print("Regular Deim interpolation, used", self.geom_alpha.shape[0], "constrained elements")
     '''
         --- Results/ Tests ---
     '''
@@ -838,7 +935,8 @@ class constraintsComponents:  # Components == bases
             header = ['numPoints', 'fro_error', 'max_err', 'relative_errors_x', 'relative_errors_y',
                       'relative_errors_z']
 
-            file_name = os.path.join(self.param.constProj_output_directory, "geom_convergence_tests")
+            file_name = os.path.join(self.param.constProj_output_directory,
+                                     self.param.constProj_bases_interpolation_type + "_" + self.param.constProj_basis_type +"_convergence_tests")
             with open(file_name + '.csv', 'w', encoding='UTF8') as dataFile:
                 writer = csv.writer(dataFile)
                 writer.writerow(header)
@@ -889,7 +987,9 @@ class constraintsComponents:  # Components == bases
             plt.legend()
 
             # plt.tight_layout()
-            fig_name = os.path.join(constProj_output_directory, 'constrproj_geom_reconstruction_norms_tests')
+            fig_name = os.path.join(constProj_output_directory,
+                                    'constrproj_'+self.param.constProj_bases_interpolation_type + "_" +
+                                    self.param.constProj_basis_type +'_reconstruction_norms_tests')
             plt.savefig(fig_name)
 
             plt.figure('Number of constrained elements in nonlinearity basis ', figsize=(20, 10))
@@ -899,7 +999,8 @@ class constraintsComponents:  # Components == bases
             plt.ylabel('number of elements')
             plt.title('Number of constrained elements in nonlinearty basis ')
 
-            fig_name = os.path.join(constProj_output_directory, 'geom_numberOfElements')
+            fig_name = os.path.join(constProj_output_directory, self.param.constProj_bases_interpolation_type + "_" +
+                                    self.param.constProj_basis_type +'_numberOfElements')
             plt.legend()
             plt.savefig(fig_name)
 

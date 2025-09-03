@@ -4,7 +4,7 @@
 		"experiment_dir": "projective_dynamics/output/",
 		"mesh": "cloth",
 		"volumetric": false,
-		"experiment": "cloth_automated_bend_spring_strain/",
+		"experiment": "cloth_automated_strain/",
 		"snap_format": ".off"
 	},
 	"vertexPos_bases":
@@ -26,8 +26,8 @@
 		{
 			"name": "tris_strain",
 			"elements": "_tris",
-			"p_snaps_folder": "/constraint_projection/FOM/verts_bending_wi0.1_edge_spring_wi1000000.0_tris_strain_wi0.01_",
-			"pos_snaps_folder": "/position_snapshots/FOM/verts_bending_wi0.1_edge_spring_wi1000000.0_tris_strain_wi0.01_",
+			"p_snaps_folder": "/constraint_projection/FOM/tris_strain_wi10000000_",
+			"pos_snaps_folder": "/position_snapshots/FOM/tris_strain_wi10000000_",
 			"geom_pos_snaps_folder": "/position_snapshots/deim/",
 			"assembly_file_name": "assembly_ST.npz",
 			"assembly_key": "tris_strain",

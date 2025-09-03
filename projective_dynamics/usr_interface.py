@@ -1,3 +1,4 @@
+import os.path
 
 import polyscope as ps
 import polyscope.imgui as psim
@@ -156,10 +157,22 @@ class PreDrawHandler:
             # Reset fext and update mesh
             self.fext[:] = 0.0
 
+            if self.solver.has_reduced_constraint_projectios:
+                color = (64 / 255, 224 / 255, 208 / 255)  # turquoise
+            else:
+                color = (0.4, 0.4, 0.9)  # light_purple
+
             if ps.has_surface_mesh("model"):
                 ps.remove_surface_mesh("model")
-            ps.register_surface_mesh("model", model.positions, model.faces, color=(0.4, 0.4, 0.9))
-            update_camera_to_mesh_center(model)
+
+            ps.register_surface_mesh("model", model.positions, model.faces, color=color, enabled=True)
+            # update_camera_to_mesh_center(model)
+            ps.reset_camera_to_home_view()
+
+            if self.record_info:
+                filename = os.path.join(self.record_path, "frame"+str(self.solver.frame)+".png")
+                ps.screenshot(filename, transparent_bg=True)
+
         # -- 3. Show fixed points
         fixed_indices = [i for i, fix in enumerate(model.get_fixed_indices()) if fix]
         if fixed_indices:

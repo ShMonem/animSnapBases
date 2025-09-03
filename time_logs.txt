@@ -1,4 +1,4 @@
-Function 'snapshots_prepare' executed in 0.0216 seconds.
-Function 'compute_nonlinearity_bases_blocks' executed in 0.1850 seconds.
-Function 'compute_components_store_singvalues' executed in 0.1851 seconds.
-Function 'post_process_components' executed in 0.1238 seconds.
+Function 'snapshots_prepare' executed in 0.0360 seconds.
+Function 'compute_pod_for_nonlinear_snapshots_tensor' executed in 0.8107 seconds.
+Function 'compute_components_store_singvalues' executed in 0.8110 seconds.
+Function 'post_process_components' executed in 0.0245 seconds.

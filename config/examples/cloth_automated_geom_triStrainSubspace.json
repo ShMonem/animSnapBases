@@ -24,16 +24,16 @@
 		},
 		"constraintType":
 		{
-			"name": "edge_spring",
-			"elements": "_edges",
+			"name": "tris_strain",
+			"elements": "_tris",
 			"p_snaps_folder": "/constraint_projection/FOM/verts_bending_wi0.1_edge_spring_wi1000000.0_tris_strain_wi0.01_",
 			"pos_snaps_folder": "/position_snapshots/FOM/verts_bending_wi0.1_edge_spring_wi1000000.0_tris_strain_wi0.01_",
-			"geom_pos_snaps_folder": "/position_snapshots/geom/",
+			"geom_pos_snaps_folder": "/position_snapshots/deim/",
 			"assembly_file_name": "assembly_ST.npz",
-			"assembly_key": "edge_spring",
-			"snaps_pattern_full_p": "/edge_spring_p.npz",
-			"constrained_elements": "_",
-			"rowSize": 1
+			"assembly_key": "tris_strain",
+			"snaps_pattern_full_p": "/tris_strain_p.npz",
+			"constrained_elements": "",
+			"rowSize": 2
 		},
 		"snapshots":
 		{
@@ -46,9 +46,11 @@
 			"processed_snapshots_ready": false,
 			"reduced_snaps_available": false
 		},
-		"type": "geom",
+		"basis_type": "pca_blocks_with_St",
+		"interpolation_type": "geom",
+		"desired_num_components": 1000,
 		"numComponents_verts": 5,
-		"bases_res_tol": 126,
+		"bases_res_tol": 177,
 		"dim": 3,
 		"constraintsDim": 1,
 		"max_element_per_geom_vert": 100000000,

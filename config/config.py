@@ -159,7 +159,7 @@ class Config_parameters:
 
         self.constProj_store_sing_val = False
         self.constProj_element = ""
-        self.constProj_bases_type = ""
+        self.constProj_bases_interpolation_type = ""
 
         self.constProj_preprocessed_snapshots_file = ""
 
@@ -199,7 +199,7 @@ class Config_parameters:
         # weighted selection matrix that maps constraints projections to position space
         self.tet_mesh_file = self.snapshots_repo_dir \
                     + self.name + "/" \
-                    + self.name + "_made_tet.mesh"
+                    + self.name + ".mesh"
         self.tri_mesh_file = self.snapshots_repo_dir \
                     + self.name + "/" \
                     + self.name + ".obj"
@@ -484,9 +484,11 @@ class Config_parameters:
 
             self.constProj_store_sing_val = config["constraintProj_bases"]["store_sing_val"]
             self.constProj_element = config["constraintProj_bases"]["constraintType"]["name"]
-            self.constProj_bases_type = config["constraintProj_bases"]["type"]
-            if self.constProj_bases_type == "deim":
-                self.deim_desired_num_components = config["constraintProj_bases"]["desired_num_components"]
+            self.constProj_bases_interpolation_type = config["constraintProj_bases"]["interpolation_type"]
+            self.constProj_basis_type = config["constraintProj_bases"]["basis_type"]
+
+            # if self.constProj_bases_interpolation_type == "deim":
+            self.deim_desired_num_components = config["constraintProj_bases"]["desired_num_components"]
 
             self.constProj_preprocessed_snapshots_file = "snapshots_" \
                                                     + str(self.constProj_numFrames)\
@@ -540,7 +542,7 @@ class Config_parameters:
                 Form the name of the storing files automatically depending on the given bases type and its characteristics
             """
 
-            self.constProj_bases_name_extention = self.constProj_bases_type \
+            self.constProj_bases_name_extention = self.constProj_bases_interpolation_type + "_" + self.constProj_basis_type \
                                              + self.constProj_preAlignement \
                                              + config['constraintProj_bases']['massWeighted'] \
                                              + config['constraintProj_bases']['standarized'] \

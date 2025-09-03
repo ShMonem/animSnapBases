@@ -119,9 +119,15 @@ def main(param: Config_parameters):
         nonlinearBases.post_process_components()
 
         # Compute Constraint projections interpolation points
-        geom_interpolation_in_pos_space = False
-        # nonlinearBases.geom_block_form_utilizing_differential_operator(geom_interpolation_in_pos_space)
-        nonlinearBases.deim_blocksForm()
+
+        if param.constProj_bases_interpolation_type == "deim":
+            nonlinearBases.deim()
+        elif param.constProj_bases_interpolation_type == "deim_block_form":
+            nonlinearBases.deim_blocksForm()
+        elif param.constProj_bases_interpolation_type == "geom":
+            geom_interpolation_in_pos_space = True
+            nonlinearBases.geom_block_form_utilizing_differential_operator(geom_interpolation_in_pos_space)
+
         # copy time log file to correct directory
         copy_and_delete_file("function_timings.txt", os.path.join(param.vertPos_output_directory,"time_logs.txt"))
 
@@ -132,31 +138,58 @@ def main(param: Config_parameters):
             # step = 1
             # nonlinearBases.store_components_gradually_to_files(start, end, step, '.bin')
 
+            ## recommended: uncomment to store all data in one .npz file
             nonlinearBases.store_components_n_interpol_points()  # stores one .npz with all data
 
         if param.run_geom_tests:
             from generate_figures.nl_reduction_tests import tets_plots_nonlinearity_basis
-            tets_plots_nonlinearity_basis(nonlinearBases, pca_tests= True, postProcess_tests=True,
-                                            geom_tests=True, visualize_geom_elements=True)
+
+            postProcess_tests = True,
+            geom_tests = True
+            pca_tests = False
+            visualize_geom_elements = False
+            steps = 5
+
+            if param.constProj_basis_type == "pod":
+                steps = 1
+
+            if param.constProj_basis_type == "pca_blocks" or param.constProj_basis_type == "pca_blocks_with_St" :
+                pca_tests = True
+
+            if param.constProj_bases_interpolation_type == "geom":
+                visualize_geom_elements = param.reduced_constProj_snapshots_available
+
+            tets_plots_nonlinearity_basis(nonlinearBases, pca_tests=pca_tests, postProcess_tests=postProcess_tests,
+                                              geom_tests=geom_tests, visualize_geom_elements=visualize_geom_elements, steps=steps)
 
 if __name__ == '__main__':
     # -----------------------------------------------------------------------------------------------------------------
 
-    available_demos = {"cloth_automated_geom_vertBendingSubspace.json",
-                       "cloth_automated_deim_vertBendingSubspace.json",
-                        "cloth_automated_edgeSpringSubspace.json",
-                       "cloth_automated_deim_edgeSpringSubspace.json",
-                        "cloth_automated_triStrainSubspace.json",
-                       "cloth_automated_deim_triStrainSubspace.json"}
+    available_demos = {"cloth_automated_deim_vertBendingSubspace.json",
+                       "cloth_bendOnly_automated_deim_vertBendingSubspace.json"
 
-    mesh = "cloth"
-    subspace = "vertbendSubspace"
-    json_file = "config/examples/cloth_automated_deim_triStrainSubspace.json"
+                       "cloth_automated_geom_vertBendingSubspace.json",
+
+                       "cloth_automated_deim_edgeSpringSubspace.json",
+                       "cloth_springOnly_automated_deim_edgeSpringSubspace.json",
+
+                       "cloth_automated_geom_edgeSpringSubspace.json",
+
+                       "cloth_automated_deim_triStrainSubspace.json",
+                       "cloth_strainOnly_automated_deim_triStrainSubspace.json"
+
+                       "cloth_automated_geom_triStrainSubspace.json",
+
+                       "bar_automated_deim_tetDeformationGradientSubspace.json"}
+
+    # mesh = "bar"
+    # subspace = "vertbendSubspace"
+    json_file = "config/examples/cloth_springOnly_automated_deim_edgeSpringSubspace.json"
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
-    parser.add_argument('--mesh', type=str, default=mesh, help='Give a character mesh')
-    parser.add_argument('--subspace', type=str, default=subspace,
-                        help='Subspaces for which bases are computed')
+    parser.add_argument('--mesh', type=str, default="mesh", help='Give a character mesh')
+    # parser.add_argument('--subspace', type=str, default=subspace,
+    #                     help='Subspaces for which bases are computed')
     parser.add_argument('--config_file', type=str, default=json_file,
                         help='Provide .json path')
 

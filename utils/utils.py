@@ -385,6 +385,7 @@ def read_mesh_file(file_path):
 def read_obj(filename):
     vertices = []
     faces = []
+    tetrahedrons = []
     with open(filename, 'r') as file:
         for line in file:
             parts = line.split()
@@ -396,6 +397,34 @@ def read_obj(filename):
                 # Assumes that the OBJ file uses 1-based index
                 faces.append([int(p.split('/')[0]) - 1 for p in parts[1:]])
     return np.array(vertices), np.array(faces)
+
+import numpy as np
+
+def read_obj(filename):
+    vertices = []
+    faces = []
+    tetrahedrons = []
+
+    with open(filename, 'r') as file:
+        for line in file:
+            parts = line.strip().split()
+            if not parts:
+                continue
+
+            if parts[0] == 'v':
+                vertices.append(list(map(float, parts[1:])))
+
+            elif parts[0] == 'f':
+                # Parse face (triangles or quads); assumes 1-based index
+                face = [int(p.split('/')[0]) - 1 for p in parts[1:]]
+                faces.append(face)
+
+            elif parts[0] == 't':
+                # Custom format for tetrahedra (1-based indices)
+                tet = [int(idx) - 1 for idx in parts[1:5]]
+                tetrahedrons.append(tet)
+
+    return  np.array(vertices), np.array(faces, dtype=int) if faces else None, np.array(tetrahedrons, dtype=int) if tetrahedrons else None
 
 
 def copy_and_delete_file(original_path, new_path):
@@ -413,3 +442,32 @@ def copy_and_delete_file(original_path, new_path):
     os.remove(original_path)
 
     print(f"Copied '{original_path}' to '{new_path}' and deleted the original.")
+
+
+def tetrahedralize(V, F):
+    tetgen_options = "pq1.2Y"  # or "pq1.414a0.01"
+    from igl import boundary_facets, barycenter, winding_number, copyleft
+    from igl.copyleft import tetgen
+
+    TV, TT, TF = copyleft.tetgen.tetrahedralize(V, F, switches=tetgen_options)
+
+    # if not success:
+    #     print("[ERROR] Tetrahedralization failed.")
+    #     return
+
+    TT = TT[:, ::-1]  # reverse rows
+    TF = TF[:, ::-1]
+
+    BC = barycenter(TV, TT)
+    W = winding_number(V, F, BC)
+
+    inside = (W > 0.5)
+    IT = TT[inside]
+
+    G = boundary_facets(IT)
+    G = G[:, ::-1]
+
+    positions = TV
+    tets = IT
+    faces = G
+    return positions, tets, faces

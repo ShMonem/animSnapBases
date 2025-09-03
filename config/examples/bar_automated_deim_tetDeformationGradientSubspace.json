@@ -2,9 +2,9 @@
 	"object":
 	{
 		"experiment_dir": "projective_dynamics/output/",
-		"mesh": "cloth",
-		"volumetric": false,
-		"experiment": "cloth_automated_bend_spring_strain/",
+		"mesh": "bar",
+		"volumetric": true,
+		"experiment": "bar_automated_deformationgradient/",
 		"snap_format": ".off"
 	},
 	"vertexPos_bases":
@@ -24,21 +24,21 @@
 		},
 		"constraintType":
 		{
-			"name": "tris_strain",
-			"elements": "_tris",
-			"p_snaps_folder": "/constraint_projection/FOM/verts_bending_wi0.1_edge_spring_wi1000000.0_tris_strain_wi0.01_",
-			"pos_snaps_folder": "/position_snapshots/FOM/verts_bending_wi0.1_edge_spring_wi1000000.0_tris_strain_wi0.01_",
+			"name": "tets_deformation_gradient",
+			"elements": "_tets",
+			"p_snaps_folder": "/constraint_projection/FOM/tets_deformation_gradient_wi100000000.0_",
+			"pos_snaps_folder": "/position_snapshots/FOM/tets_deformation_gradient_wi100000000.0_",
 			"geom_pos_snaps_folder": "/position_snapshots/deim/",
 			"assembly_file_name": "assembly_ST.npz",
-			"assembly_key": "tris_strain",
-			"snaps_pattern_full_p": "/tris_strain_p.npz",
+			"assembly_key": "tets_deformation_gradient",
+			"snaps_pattern_full_p": "/tets_deformation_gradient_p.npz",
 			"constrained_elements": "",
-			"rowSize": 2
+			"rowSize": 3
 		},
 		"snapshots":
 		{
-			"max_numFrames": 200,
-			"numFrames": 100,
+			"max_numFrames": 140,
+			"numFrames": 70,
 			"frame_increment": 2,
 			"read_all_from_first": true,
 			"processed_snapshots_file": "/processed_snapshots/",
@@ -47,8 +47,8 @@
 			"reduced_snaps_available": false
 		},
 		"basis_type": "pca_blocks",
-		"interpolation_type": "deim",
-		"desired_num_components": 500,
+		"interpolation_type": "deim_block_form",
+		"desired_num_components": 200,
 		"numComponents_verts": 5,
 		"bases_res_tol": 98,
 		"dim": 3,

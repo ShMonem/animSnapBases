@@ -682,6 +682,29 @@ class TetDeformationGradientConstraint(Constraint):
     def project_wi_SiT_pi(self, q, rhs):
         rhs += self.selection_matrix @ self.get_pi(q)
 
+    def tetrahedralize(self, V, F):
+        tetgen_options = "pq1.2Y"  # or "pq1.414a0.01"
+
+        TV, TT, TF = copyleft.tetgen.tetrahedralize(V, F, tetgen_options)
+
+        # if not success:
+        #     print("[ERROR] Tetrahedralization failed.")
+        #     return
+
+        TT = TT[:, ::-1]  # reverse rows
+        TF = TF[:, ::-1]
+
+        BC = barycenter(TV, TT)
+        W = winding_number(V, F, BC)
+
+        inside = (W > 0.5)
+        IT = TT[inside]  # tets
+
+        faces = boundary_facets(IT)
+        F = faces[:, ::-1]
+
+        return TV, IT, F
+
     # def evaluate(self, positions, masses):
     #     v1, v2, v3, v4 = self.indices
     #     p1, p2, p3, p4 = positions[v1], positions[v2], positions[v3], positions[v4]
@@ -803,7 +826,7 @@ class DeformableMesh:
 
         self.floor_height = 0
         self.foolr_collision = True
-        self.init_hight_shift = 3
+        self.init_hight_shift = 3    # 3 for cloth 1 for bar
 
         self.init_positions = np.array(positions)  # rest positions
         if self.foolr_collision:
@@ -1050,32 +1073,6 @@ class DeformableMesh:
     def immobilize(self):
         self.velocities[:] = 0
 
-    def tetrahedralize(self, V, F):
-        tetgen_options = "pq1.2Y"  # or "pq1.414a0.01"
-
-        TV, TT, TF = copyleft.tetgen.tetrahedralize(V, F, tetgen_options)
-
-        # if not success:
-        #     print("[ERROR] Tetrahedralization failed.")
-        #     return
-
-        TT = TT[:, ::-1]  # reverse rows
-        TF = TF[:, ::-1]
-
-        BC = barycenter(TV, TT)
-        W = winding_number(V, F, BC)
-
-        inside = (W > 0.5)
-        IT = TT[inside]
-
-        G = boundary_facets(IT)
-        G = G[:, ::-1]
-
-        self.positions = TV
-        self.init_positions = TV.copy()
-        self.elements = IT
-        self.faces = G
-        self.constraints.clear()
 
     def triangle_area(self, tri, positions):
         """
@@ -1367,7 +1364,7 @@ class DeformableMesh:
 
         new_vertices = vertices.copy()
         for vi, p in enumerate(vertices):
-            d, face_id = tree.query(p, k=5)  # only check k closest faces
+            d, face_id = tree.query(p, k=5)  # only check the k closest faces
             for fi in np.atleast_1d(face_id):
                 f = faces[fi]
                 if vi in f:

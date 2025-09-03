@@ -110,11 +110,20 @@ class Config_parameters:
         parser.add_argument("--tet_deformation_num_components", type=bool,
                             default=constrProj_basis["tet_deformation_num_components"])
 
+        parser.add_argument("--max_p_snapshots_num", type=bool,
+                            default=self.system_params["nonlinear_snapshots"]["max_p_snapshots_num"])
+        parser.add_argument("--recodr_p_snapshots_info", type=bool,
+                            default=self.system_params["nonlinear_snapshots"]["recodr_snapshots_info"])
+
     def add_directories_args(self, parser):
         directories = self.system_params ["directories"]
+        constrProj_basis_name = self.system_params["constraint_projetions_reduction"]["name"]
+        constrProj_basis_properties = self.system_params["constraint_projetions_reduction"]["properties"]
+
         parser.add_argument("--output_dir", type=str, default=directories['output'])
 
-        parser.add_argument("--geom_interpolation_basis_dir", type=str, default=directories['geom_interpolation_basis_dir'])
+        parser.add_argument("--geom_interpolation_basis_dir", type=str,
+                            default=directories['geom_interpolation_basis_dir']+ constrProj_basis_name+ constrProj_basis_properties)
         parser.add_argument("--geom_interpolation_basis_file", type=str, default=directories['geom_interpolation_basis_file'])
 
 

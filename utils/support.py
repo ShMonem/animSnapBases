@@ -38,6 +38,27 @@ def compute_edgeMasses(vertexMasses, edges, edgeSize, auxiliarySize):
     return masses
 
 
+def compute_lumped_mass_matrix(V, T, density=1.0):
+    from scipy.sparse import coo_matrix
+    def volume_of_tet(v0, v1, v2, v3):
+        return abs(np.dot(np.cross(v1 - v0, v2 - v0), v3 - v0)) / 6.0
+
+    n = V.shape[0]
+    mass_per_vertex = np.zeros(n)
+
+    for tet in T:
+        v0, v1, v2, v3 = V[tet]
+        vol = volume_of_tet(v0, v1, v2, v3)
+        lumped_mass = density * vol / 4.0  # equally divided over 4 verts
+        for i in tet:
+            mass_per_vertex[i] += lumped_mass
+        # Normalize: total mass becomes 1
+    total_mass = mass_per_vertex.sum()
+    if total_mass > 0:
+        mass_per_vertex /= total_mass
+    return coo_matrix((mass_per_vertex, (range(n), range(n))), shape=(n, n))
+
+
 def compute_triMasses(vertexMasses, triangles, triSize, auxiliarySize):
 
     assert auxiliarySize == 2

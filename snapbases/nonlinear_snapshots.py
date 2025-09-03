@@ -5,7 +5,7 @@ import sys
 import cProfile
 from utils.utils import log_time, read_sparse_matrix_from_bin, read_mesh_file, read_obj
 from utils.process import view_anim_file, view_components
-from utils.support import compute_tetMasses, compute_triMasses, compute_edgeMasses
+from utils.support import compute_tetMasses, compute_triMasses, compute_edgeMasses, compute_lumped_mass_matrix
 import h5py
 from config.config import Config_parameters
 import igl
@@ -193,12 +193,19 @@ class nonlinearSnapshots:
             try:
                 # # if no file given, use igl to compute masses
                 if self.constraintsSize == 1:
-                    self.verts, self.tris = igl.read_triangle_mesh(self.tri_mesh)
+                    if self.param.volumetric_mesh:
+                        self.verts, self.tets, self.tris = read_mesh_file(self.tet_mesh)
+                    else:
+                        self.verts, self.tris = igl.read_triangle_mesh(self.tri_mesh)
                     if self.verts is None:
                         print("ERROR: Failed to read tet mesh data.")
                         return
                     # self.edges = compute_edge_incidence_matrix_on_tris(self.tris)
-                    m = igl.massmatrix(self.verts, self.tris, igl.MASSMATRIX_TYPE_VORONOI)
+                    if self.param.volumetric_mesh:
+                        m = compute_lumped_mass_matrix(self.verts, self.tets) # check
+                        # m = igl.massmatrix(self.verts, self.tets, igl.MASSMATRIX_TYPE_VORONOI)
+                    else:
+                        m = igl.massmatrix(self.verts, self.tris, igl.MASSMATRIX_TYPE_VORONOI)
                     vertexMasses = np.diag(m.todense())
 
                     if self.param.constProj_snapshots_type == "verts_bending":
@@ -206,7 +213,7 @@ class nonlinearSnapshots:
                         self.mass = vertexMasses[verts]
                     elif self.param.constProj_snapshots_type == "edge_spring":
                         if self.param.volumetric_mesh:
-                            self.verts, self.tets, self.tris = read_mesh_file(self.tet_mesh)
+                            # self.verts, self.tets, self.tris = read_mesh_file(self.tet_mesh)
                             self.edges = igl.edges(self.tets)
                         else:
                             self.edges = igl.edges(self.tris)

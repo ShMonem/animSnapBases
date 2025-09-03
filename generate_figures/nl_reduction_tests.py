@@ -5,20 +5,20 @@ import matplotlib.pyplot as plt
 from utils.utils import log_time
 from config.config import Config_parameters
 import csv
-from utils.utils import testSparsity, test_linear_dependency
+from utils.utils import testSparsity, test_linear_dependency, read_mesh_file, read_obj, tetrahedralize
 from utils.support import compute_edge_incidence_matrix_on_tets, extract_sub_vertices_and_edges, extract_sub_vertices_and_tet_edges
 import os
 from snapbases.constraintsComponents import constraintsComponents
 
 import polyscope as ps
-
+import igl
 ps.init()
 
 angle = 0
 frame = 1
 
 
-def tets_plots_nonlinearity_basis(nlConst_bases: constraintsComponents, pca_tests= True, postProcess_tests=False, geom_tests=False, steps=5, visualize_geom_elements=False):
+def tets_plots_nonlinearity_basis(nlConst_bases: constraintsComponents, pca_tests= True, postProcess_tests=False, geom_tests=False, steps=1, visualize_geom_elements=False):
     """
     Plots different reconstruction errors for varying reduction dimensions "r".
     :param f: Original tensor (T, N, 3)
@@ -191,12 +191,15 @@ def tets_plots_nonlinearity_basis(nlConst_bases: constraintsComponents, pca_test
         # test convergence on training data
         f_train = nlConst_bases.nonlinearSnapshots.snapTensor
         file_train = os.path.join(nlConst_bases.param.constProj_output_directory, nlConst_bases.param.name + "_" +
-                                  nlConst_bases.param.constProj_name + "_geom_train_convergence_tests")
+                                  nlConst_bases.param.constProj_name + "_"+nlConst_bases.param.constProj_bases_interpolation_type + "_" +
+                                    nlConst_bases.param.constProj_basis_type +"_train_convergence_tests")
         reconstruction_test(f_train, nlConst_bases.geom_constructed, file_train, case="train")
         # store number of elements per bases blocks
         header = ['numPoints', 'num_elements']
         file_name = os.path.join(nlConst_bases.param.constProj_output_directory,
-                                 nlConst_bases.param.name + "_" + nlConst_bases.param.constProj_name + "_geom_num_interpol_elemnets")
+                                 nlConst_bases.param.name + "_" + nlConst_bases.param.constProj_name + "_"+
+                                 nlConst_bases.param.constProj_bases_interpolation_type + "_" +
+                                    nlConst_bases.param.constProj_basis_type +"_num_interpol_elemnets")
         with open(file_name + '.csv', 'w', encoding='UTF8') as dataFile2:
             writer = csv.writer(dataFile2)
             writer.writerow(header)
@@ -217,7 +220,8 @@ def tets_plots_nonlinearity_basis(nlConst_bases: constraintsComponents, pca_test
         #test convergence on unseen data
         f_test = nlConst_bases.nonlinearSnapshots.test_snapTensor
         file_test = os.path.join(nlConst_bases.param.constProj_output_directory, nlConst_bases.param.name + "_" +
-                                  nlConst_bases.param.constProj_name + "_geom_test_convergence_tests")
+                                  nlConst_bases.param.constProj_name + "_"+ nlConst_bases.param.constProj_bases_interpolation_type + "_" +
+                                    nlConst_bases.param.constProj_basis_type +"_test_convergence_tests")
         reconstruction_test(f_test, nlConst_bases.geom_constructed,  file_test, case="test")
 
 
@@ -280,8 +284,7 @@ def visualize_interpolation_elements(nlConst_bases: constraintsComponents, visua
     # Highlight edges
     elif highlight_type == "_triEdges":
         edges = nlConst_bases.nonlinearSnapshots.edges[highlight_elements]
-        sub_verts, sub_edges = extract_sub_vertices_and_edges(nlConst_bases.nonlinearSnapshots.verts, edges, transparency=0.8,
-                                color=ele_color)
+        sub_verts, sub_edges = extract_sub_vertices_and_edges(nlConst_bases.nonlinearSnapshots.verts, edges)
         ps.register_curve_network("Highlighted Tri- Edges", sub_verts, sub_edges)
 
     elif highlight_type == "_tetEdges":
@@ -337,3 +340,147 @@ def visualize_interpolation_elements(nlConst_bases: constraintsComponents, visua
     print(f"Captured {num_frames} frames in {output_dir}")
 
 
+
+def visualize_tet_mesh_elements(
+        mesh_path,
+        output_dir,
+        surface_vert_indices,
+        element_type="verts",
+        vertex_color=(1.0, 0.0, 0.0),  # red
+        element_color=(0.6, 0.2, 0.62)  # blue
+):
+    ps.set_ground_plane_mode("none")
+
+    def extract_surface_faces(tets):
+        from collections import Counter
+        faces = []
+        for tet in tets:
+            faces.extend([
+                tuple(sorted([tet[0], tet[1], tet[2]])),
+                tuple(sorted([tet[0], tet[1], tet[3]])),
+                tuple(sorted([tet[0], tet[2], tet[3]])),
+                tuple(sorted([tet[1], tet[2], tet[3]])),
+            ])
+        counter = Counter(faces)
+        surface_faces = [face for face, count in counter.items() if count == 1]
+        return np.array(surface_faces)
+
+    def extract_sub_vertices_and_edges(vertices, sub_edges):
+        unique_indices = np.unique(sub_edges)
+        index_map = {v: i for i, v in enumerate(unique_indices)}
+        remapped_edges = np.array([[index_map[e[0]], index_map[e[1]]] for e in sub_edges])
+        sub_vertices = vertices[unique_indices]
+        return sub_vertices, remapped_edges
+
+    def decimate_to_ratio(V, F, face_ratio=0.3):
+        goal = int(max(4, face_ratio * F.shape[0]))  # target #faces
+        _, new_V, new_F, _ , _= igl.decimate(V, F.astype(np.int32), goal)
+        return new_V, new_F
+
+    # Load mesh
+    verts, faces, tets,= read_obj(mesh_path)
+    verts, faces= decimate_to_ratio(verts, faces, face_ratio=0.1)
+
+    # surface_faces = extract_surface_faces(tets)
+    # surface_verts = np.unique(surface_faces)
+
+    # Init Polyscope
+    ps.init()
+    ps.remove_all_structures()
+
+    # 1. Register tet mesh with transparency
+    if tets is not None:
+        ps.register_volume_mesh("Tet Mesh", verts, tets, transparency=0.5)
+    else:
+        ps.register_surface_mesh("Tet Mesh", verts, faces, transparency=0.5)
+
+
+    # 2. Register surface points in red
+    surface_points = verts[surface_vert_indices]
+    ps.register_point_cloud("Selected Surface Verts", surface_points, color=vertex_color, radius=0.006)
+
+    if element_type == "verts":
+        # 3. Find neighbor verts on surface
+        face_map = {}
+        for face in faces:
+            for v in face:
+                face_map.setdefault(v, set()).update(face)
+
+        neighbor_indices = set()
+        for v in surface_vert_indices:
+            if v in face_map:
+                neighbor_indices.update(face_map[v])
+        neighbor_indices = list(set(neighbor_indices) - set(surface_vert_indices))
+        neighbor_points = verts[neighbor_indices]
+
+        ps.register_point_cloud("Neighbor Surface Verts", neighbor_points, color=element_color, radius=0.006)
+
+    elif element_type == "edges":
+        # 4. Find surface edges touching any selected vertex
+        surface_edges = set()
+        for face in faces:
+            edges = [
+                (face[0], face[1]),
+                (face[1], face[2]),
+                (face[2], face[0])
+            ]
+            for e in edges:
+                if e[0] in surface_vert_indices or e[1] in surface_vert_indices:
+                    surface_edges.add(tuple(sorted(e)))
+
+        surface_edges = list(surface_edges)
+        surface_edges = np.array(surface_edges)
+
+        sub_verts, sub_edges = extract_sub_vertices_and_edges(verts, surface_edges)
+        ps.register_curve_network("Highlighted Edges", sub_verts, sub_edges, color=element_color, radius=0.003)
+
+        # ---------- NEW: triangles touching any of the provided vertices ----------
+    elif element_type in ("tris", "faces"):
+        if faces is None:
+            raise ValueError("faces array required for element_type='tris'.")
+        if surface_vert_indices is None:
+            raise ValueError("Provide picked_verts: vertex indices driving the selection.")
+
+        picked_verts = np.atleast_1d(surface_vert_indices).astype(int)
+
+        # rows in `faces` that contain ANY of the picked vertices
+        touch_mask = np.any(np.isin(faces, picked_verts), axis=1)
+        sub_faces = faces[touch_mask]
+
+        # simplest: register using the full vertex array and the filtered faces
+        m = ps.register_surface_mesh("Highlighted Faces", verts, sub_faces, enabled=True)
+        m.set_color(element_color)  # dark blue-ish
+        m.set_edge_color((0.10, 0.45, 0.95))
+        m.set_transparency(0.9)
+
+        # If you prefer a compact submesh (only the referenced vertices), use this:
+        # keep = np.unique(sub_faces.ravel())
+        # remap = -np.ones(verts.shape[0], dtype=int); remap[keep] = np.arange(keep.size)
+        # Vsub  = verts[keep]
+        # Fsub  = remap[sub_faces]
+        # m = ps.register_surface_mesh(f"{name}-tris", Vsub, Fsub, enabled=True)
+    elif element_type in ("tets"):
+        if tets is None:
+            verts, tets, faces = tetrahedralize(verts, faces)
+        # Find tets that contain any of the selected surface vertices
+        selected_set = set(surface_vert_indices)
+        selected_tet_indices = [
+            i for i, tet in enumerate(tets)
+            if any(v in selected_set for v in tet)
+        ]
+
+        selected_tets = tets[selected_tet_indices]
+
+        ps.register_volume_mesh("Highlighted Tets", verts, selected_tets, color=element_color, transparency=0.8)
+
+    # Show the viewer
+    ps.show()
+
+
+# current_path = os.getcwd()
+# visualize_tet_mesh_elements(
+#     mesh_path=os.path.join(current_path, "../data/bunny.obj"),
+#     output_dir="screenshots/",
+#     surface_vert_indices=[246],
+#     element_type="tets"  # or "verts"
+# )

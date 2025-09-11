@@ -1,5 +1,5 @@
 
-## Code Navigation and Further Development 
+## Code Navigation and Further Information 
 
 - All parameters can be changed in `config/bases_config.json`. 
   - The code expects that a directory ``input_data/<name>/<experiment>`` exists in the root directory,
@@ -13,7 +13,7 @@
 		"experiment": "_gravitationalFall"
 		},
 	```
-
+### Vertex Positions Basis Computation
 - The folder containing the *snapshots*, in this case, is ``input_data/bunny/_gravitationalFall/FOM_snapshots_OFF``. You can change the paths in `.json`.
 - Currently, the algorithm accepts snapshots in ``.off`` or ``.ply`` format only.
 - The mass matrix, when available, should be inside `/input_data/<mesh_name>/`.
@@ -88,5 +88,35 @@
 		"testingComputations": "_Released"
 	}
   ```
-  
 
+### Constraints Projections Basis computation
+
+-The configuration `.json` file includes options to compute bases for nonlinear forces, enabling faster reduced simulations. To use this feature, the following parameters must be specified:
+
+- **Type of constraint** (e.g., bending, edge spring, strain)
+- **Constrained element type** (e.g., vertices, edges, triangles, tetrahedrons)
+- **Path to constraint projection snapshots**
+
+  ```json
+
+  "constraintType":
+          {
+              "name": "edge_spring",
+              "elements": "_edges",
+              "p_snaps_folder": "/constraint_projection/FOM/<specific_experiment>",
+              "pos_snaps_folder": "/position_snapshots/FOM/<specific_experiment>",
+              "geom_pos_snaps_folder": "/position_snapshots/deim/",
+              "assembly_file_name": "assembly_ST.npz",   # assembly matrix file
+              "assembly_key": "edge_spring",
+              "snaps_pattern_full_p": "/edge_spring_p.npz",   # snapshots matix file
+              "constrained_elements": "",
+              "rowSize": 1     # row size of per-element projection 
+          },
+  ```
+
+- **Type of basis to compute** (e.g., `pod_vectorized`, `pod`)
+- **Type of interpolation** (e.g., `deim` or `geom`)
+  ```json
+  "basis_type": "pod_vectorized",
+  "interpolation_type": "deim",
+  ```

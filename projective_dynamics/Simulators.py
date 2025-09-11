@@ -55,6 +55,7 @@ class animSnapBasesSolver:
         self.edge_spring_row_dim = 1
         self.reduced_edge_spring = args.edge_spring_reduced
         self.interpolation_alpha_edge_spring = None
+        self.interpolation_Pt_edge_spring = []
         self.projecting_mat_edge_spring = None
         self.cholesky_list_edge_spring  = []
 
@@ -62,6 +63,7 @@ class animSnapBasesSolver:
         self.tris_strain_row_dim = 2
         self.reduced_tris_strain = args.tri_strain_reduced
         self.interpolation_alpha_tris_strain = None
+        self.interpolation_Pt_tris_strain= []
         self.projecting_mat_tris_strain = None
         self.cholesky_list_tris_strain = []
 
@@ -69,6 +71,7 @@ class animSnapBasesSolver:
         self.tets_strain_row_dim = 3
         self.reduced_tets_strain = args.tet_strain_reduced
         self.interpolation_alpha_tets_strain = None
+        self.interpolation_Pt_tets_strain = []
         self.projecting_mat_tets_strain = None
         self.cholesky_list_tets_strain = []
 
@@ -76,6 +79,7 @@ class animSnapBasesSolver:
         self.tets_deformation_gradient_row_dim = 3
         self.reduced_tets_deformation_gradient = args.tet_deformation_reduced
         self.interpolation_alpha_tets_deformation_gradient = None
+        self.interpolation_Pt_tets_deformation_gradient = []
         self.projecting_mat_tets_deformation_gradient = None
         self.cholesky_list_tets_deformation_gradient = []
 
@@ -165,6 +169,9 @@ class animSnapBasesSolver:
         Returns:
 
         """
+        if self.constraint_projection_reduction_type in {"deim_pod", "deim_pod_vectorized"}:
+            row_dim = 1    # because these methods do not select a full block but only few row indices
+
         if has_group_constraints and reduced_group:
             solver_list = []
             upload_file = os.path.join(dir, group_name, file)
@@ -172,13 +179,17 @@ class animSnapBasesSolver:
             Vj = local_data["components"].swapaxes(0, 1)[:,
                  :num_components * row_dim, :]  # shape shold be (ep, mp, 3)
             alpha_range = local_data["interpol_alpha_ranges"][num_components - 1]
+
             interpolation_alpha= local_data["interpol_alphas"][:alpha_range]  # for verts bending we use Pt instead of alphas
 
             # building Pt
-            Pt = []
-            for alpha in interpolation_alpha:
-                for l in range(row_dim):
-                    Pt.append(alpha * row_dim + l)
+            if self.constraint_projection_reduction_type in {"deim_pod", "deim_pod_vectorized"}:
+                Pt = local_data["Pt"][:alpha_range]     # row indices between 0 and e.p-1
+            else:
+                Pt = []
+                for alpha in interpolation_alpha:
+                    for l in range(row_dim):
+                        Pt.append(alpha * row_dim + l)
 
             if not self.reduced_position:
                 # ST (N, ep) @ V (ep, mp, 3) --> S^T V: (N, mp, 3)
@@ -203,9 +214,9 @@ class animSnapBasesSolver:
 
             print(
                 group_name+f" basis file loaded with: \n Basis shape {Vj.shape} and {interpolation_alpha.shape} interpolation points.")
-            return interpolation_alpha, projecting_mat, solver_list
+            return interpolation_alpha, Pt, projecting_mat, solver_list
         else:
-            return None, None, []
+            return None, [], None, []
 
     def prepare_reduced_verts_bending(self, dir, file):
         if self.model.has_verts_bending_constraints and self.reduced_verts_bending:
@@ -243,32 +254,32 @@ class animSnapBasesSolver:
                 self.cholesky_list_verts_bending.append([lu_factor(AtA[:, :, d]), PtV_T[:, :, d]])
 
     def prepare_reduced_edge_spring(self,dir, file):
-        self.interpolation_alpha_edge_spring, self.projecting_mat_edge_spring, self.cholesky_list_edge_spring = \
+        self.interpolation_alpha_edge_spring, self.interpolation_Pt_edge_spring, self.projecting_mat_edge_spring, self.cholesky_list_edge_spring = \
         self.prepare_reduced_group(self.model.has_edge_spring_constraints, self.reduced_edge_spring,
                                    "edge_spring", self.edge_spring_num_components, self.edge_spring_row_dim,
                                    self.model.edge_spring_assembly_ST,  dir, file)
 
     def prepare_reduced_tris_strain(self, dir, file):
-        self.interpolation_alpha_tris_strain, self.projecting_mat_tris_strain, self.cholesky_list_tris_strain = \
+        self.interpolation_alpha_tris_strain, self.interpolation_Pt_tris_strain,  self.projecting_mat_tris_strain, self.cholesky_list_tris_strain = \
             self.prepare_reduced_group(self.model.has_tris_strain_constraints, self.reduced_tris_strain,
                                        "tris_strain", self.tris_strain_num_components, self.tris_strain_row_dim,
                                        self.model.tris_strain_assembly_ST, dir, file)
 
     def prepare_reduced_tet_strain(self, dir, file):
-        self.interpolation_alpha_tets_strain, self.projecting_mat_tets_strain, self.cholesky_list_tets_strain = \
+        self.interpolation_alpha_tets_strain, self.interpolation_Pt_tets_strain, self.projecting_mat_tets_strain, self.cholesky_list_tets_strain = \
             self.prepare_reduced_group(self.model.has_tets_strain_constraints, self.reduced_tets_strain,
                                        "tets_strain", self.tets_strain_num_components, self.tets_strain_row_dim,
                                        self.model.tets_strain_assembly_ST, dir, file)
 
     def prepare_reduced_tet_deformation_gradient(self, dir, file):
-        self.interpolation_alpha_tets_deformation_gradient, self.projecting_mat_tets_deformation_gradient, self.cholesky_list_tets_deformation_gradient = \
+        self.interpolation_alpha_tets_deformation_gradient, self.interpolation_Pt_tets_deformation_gradient, self.projecting_mat_tets_deformation_gradient, self.cholesky_list_tets_deformation_gradient = \
             self.prepare_reduced_group(self.model.has_tets_deformation_gradient_constraints, self.reduced_tets_deformation_gradient,
                                        "tets_deformation_gradient", self.tets_deformation_gradient_num_components, self.tets_deformation_gradient_row_dim,
                                        self.model.tets_deformation_gradient_assembly_ST, dir, file)
 
     def prepare_local_term(self, args):
 
-        if self.constraint_projection_reduction_type in {"deim_pod", "deim_pca_blocks", "geom_pca_blocks_withSt"}:
+        if self.constraint_projection_reduction_type in {"deim_pod", "deim_pod_vectorized", "deim_pca_blocks", "geom_pca_blocks_withSt"}:
             dir = args.geom_interpolation_basis_dir
             file = args.geom_interpolation_basis_file
         else:
@@ -351,8 +362,7 @@ class animSnapBasesSolver:
         # update constraints projection term
         return ST @ p
 
-    @staticmethod
-    def get_group_reduced_term(q_t, group_constraints, constraint_dim, constrained_alphas, projection_mat, solver_list):
+    def get_group_reduced_term(self, q_t, group_constraints, constraint_dim, constrained_alphas, constrained_Pt, projection_mat, solver_list):
         """
         Args:
             group_constraints:
@@ -368,11 +378,17 @@ class animSnapBasesSolver:
             S^T V p_tilde: otherwise
 
         """
-        p = np.zeros((len(constrained_alphas) * constraint_dim , 3))  # (m.p, 3)
+        if self.constraint_projection_reduction_type in {"deim_pod", "deim_pod_vectorized"}:
+            p = np.zeros((len(constrained_alphas) , 3))  # (m.p, 3)
+            for i, alpha in enumerate(constrained_alphas):
+                c = group_constraints[alpha]
+                p[i, :] = c.get_pi(q_t)[constrained_Pt[i]%constraint_dim, :]
+        else:
+            p = np.zeros((len(constrained_alphas) * constraint_dim , 3))  # (m.p, 3)
 
-        for i, alpha in enumerate(constrained_alphas):
-            c = group_constraints[alpha]
-            p[constraint_dim * i:constraint_dim * i + constraint_dim, :] = c.get_pi(q_t)
+            for i, alpha in enumerate(constrained_alphas):
+                c = group_constraints[alpha]
+                p[constraint_dim * i:constraint_dim * i + constraint_dim, :] = c.get_pi(q_t)
 
         def compute_rhs_column(d):
             return projection_mat[:, :, d] @ lu_solve(solver_list[d][0], solver_list[d][1] @p[:, d])
@@ -404,7 +420,7 @@ class animSnapBasesSolver:
                                       list=verts_bending_p)
             else:
                 return self.get_group_reduced_term(q_t, self.model.verts_bending_constraints, self.vert_bending_row_dim,
-                                              self.mapped_indices_verts_bending_Pt,
+                                              self.mapped_indices_verts_bending_Pt, self.mapped_indices_verts_bending_Pt,
                                               self.projecting_mat_verts_bending, self.cholesky_list_verts_bending)
         return np.zeros_like(unflatten(q_t))
 
@@ -416,7 +432,7 @@ class animSnapBasesSolver:
                                            list=edge_spring_p)
             else:
                 return self.get_group_reduced_term(q_t, self.model.edge_spring_constraints, self.edge_spring_row_dim,
-                                                   self.interpolation_alpha_edge_spring,
+                                                   self.interpolation_alpha_edge_spring, self.interpolation_Pt_edge_spring,
                                                    self.projecting_mat_edge_spring,
                                                    self.cholesky_list_edge_spring)
         return np.zeros_like(unflatten(q_t))
@@ -429,7 +445,7 @@ class animSnapBasesSolver:
                                            list=tris_strain_p)
             else:
                 return self.get_group_reduced_term(q_t, self.model.tris_strain_constraints, self.tris_strain_row_dim,
-                                                   self.interpolation_alpha_tris_strain,
+                                                   self.interpolation_alpha_tris_strain, self.interpolation_Pt_tris_strain,
                                                    self.projecting_mat_tris_strain,
                                                    self.cholesky_list_tris_strain)
         return np.zeros_like(unflatten(q_t))
@@ -442,7 +458,7 @@ class animSnapBasesSolver:
                                            list=tets_strain_p)
             else:
                 return self.get_group_reduced_term(q_t, self.model.tets_strain_constraints, self.tets_strain_row_dim,
-                                                   self.interpolation_alpha_tets_strain,
+                                                   self.interpolation_alpha_tets_strain, self.interpolation_Pt_tets_strain,
                                                    self.projecting_mat_tets_strain,
                                                    self.cholesky_list_tets_strain)
         return np.zeros_like(unflatten(q_t))
@@ -455,7 +471,7 @@ class animSnapBasesSolver:
                                            list=tets_deformation_gradient_p)
             else:
                 return self.get_group_reduced_term(q_t, self.model.tets_deformation_gradient_constraints, self.tets_deformation_gradient_row_dim,
-                                                   self.interpolation_alpha_tets_deformation_gradient,
+                                                   self.interpolation_alpha_tets_deformation_gradient, self.interpolation_Pt_tets_deformation_gradient,
                                                    self.projecting_mat_tets_deformation_gradient,
                                                    self.cholesky_list_tets_deformation_gradient)
         return np.zeros_like(unflatten(q_t))

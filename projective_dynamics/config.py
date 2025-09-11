@@ -84,8 +84,6 @@ class Config_parameters:
 
         parser.add_argument("--record_projection_data", type=str, default=constraints["record_projection_data"])
 
-
-
     def add_constraint_projections_reduction_args(self, parser):
         constrProj_basis = self.system_params["constraint_projetions_reduction"]
         parser.add_argument("--constraint_projection_basis_type", type=str, default=constrProj_basis["name"])

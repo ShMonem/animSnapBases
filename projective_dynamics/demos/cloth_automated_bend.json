@@ -56,9 +56,9 @@
     "record_projection_data": false
   },
   "constraint_projetions_reduction": {
-    "name": "deim_pod",
+    "name": "deim_pod_vectorized",
     "properties": "_noAlignement_Volkwein_Standarized_Global_Orthogonalized_Release25_Frames_2_increment",
-    "vert_bending_reduced": false,
+    "vert_bending_reduced": true,
     "num_verts_bending_components": 25,
     "edge_spring_reduced": false,
     "edge_spring_num_components": -1,

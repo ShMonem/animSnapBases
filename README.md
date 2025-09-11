@@ -11,7 +11,7 @@ This code generates reduced subspaces for physics-based simulations, including r
 
 For more details, refer to the following publication(s):
 - *Improved-Projective-Dynamics-Global-Using-Snapshots-based-Reduced-Bases* SIGGRAPH23 [1st place student competition award-winning paper](https://dl.acm.org/doi/10.1145/3588028.3603665).
-[Teaser](teasers/coloredComparisionBunny_PCA_SPLOCS_LBS.png)
+![Teaser](teasers/coloredComparisionBunny_PCA_SPLOCS_LBS.png)
 - *On DEIM Compatibility for Constraint Projection Reduction* **soon available**
 
 Developed by:

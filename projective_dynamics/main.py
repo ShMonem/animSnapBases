@@ -9,7 +9,6 @@ def main(args, record_fom_info = False, case=None, params=None):
     import demos.calbacks
     if case == "testing":
         callback = demos.calbacks.interacrive_testing_callback(args, record_fom_info, params)
-
     elif case == "cloth_automated_bend_spring_strain":
         callback = demos.calbacks.cloth_automated_bend_spring_strain_callback(args, record_fom_info, params)
     elif case == "cloth_automated_spring":

@@ -165,7 +165,7 @@ class PreDrawHandler:
             if ps.has_surface_mesh("model"):
                 ps.remove_surface_mesh("model")
 
-            ps.register_surface_mesh("model", model.positions, model.faces, color=color, enabled=True)
+            ps.register_surface_mesh("model", model.positions, model.faces, color=color, edge_width=1.0)
             # update_camera_to_mesh_center(model)
             ps.reset_camera_to_home_view()
 

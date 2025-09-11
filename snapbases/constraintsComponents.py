@@ -114,10 +114,15 @@ class constraintsComponents:  # Components == bases
         """
         constProj_bases_interpolation_type = self.param.constProj_bases_interpolation_type
         # compute_geodesic_distance = self.nonlinearSnapshots.compute_geodesic_distance
-        headerSing = ['component', 'idx', 'residual_matrix_norm']
-        p = self.nonlinearSnapshots.constraintsSize
-        for i in range(p):
-            headerSing.append('singVal'+str(i))
+
+        if  self.param.constProj_basis_type == "pca_blocks" or self.param.constProj_basis_type == "pca_blocks_with_St":
+            headerSing = ['component', 'idx', 'residual_matrix_norm']
+            p = self.nonlinearSnapshots.constraintsSize
+            for i in range(p):
+                headerSing.append('singVal'+str(i))
+        else:
+            headerSing = ['component', 'singVal']
+
 
         file_name = os.path.join(self.param.constProj_output_directory, self.param.name +"_"+self.param.constProj_name+self.file_name_sing)
         if self.storeSingVal:
@@ -126,6 +131,8 @@ class constraintsComponents:  # Components == bases
                 writer.writerow(headerSing)
                 if self.param.constProj_basis_type == "pod":
                     self.compute_pod_for_nonlinear_snapshots_tensor(writer)
+                elif self.param.constProj_basis_type == "pod_vectorized":
+                    self.compute_pod_for_vectorized_nonlinear_snapshots_tensor(writer)
                 elif self.param.constProj_basis_type == "pca_blocks":
                     self.compute_nonlinearity_bases_blocks(writer)
                 elif self.param.constProj_basis_type == "pca_blocks_with_St":
@@ -136,6 +143,8 @@ class constraintsComponents:  # Components == bases
         else:
             if self.param.constProj_basis_type == "pod":
                 self.compute_pod_for_nonlinear_snapshots_tensor(None)
+            elif self.param.constProj_basis_type == "pod_vectorized":
+                self.compute_pod_for_vectorized_nonlinear_snapshots_tensor(None)
             elif self.param.constProj_basis_type == "pca_blocks":
                 self.compute_nonlinearity_bases_blocks(None)
             elif self.param.constProj_basis_type == "pca_blocks_with_St":
@@ -276,6 +285,32 @@ class constraintsComponents:  # Components == bases
 
         C = np.moveaxis(C.detach().cpu().numpy(), [0, 1, 2, 3], [2, 3, 1, 0]) # reshape to ( e,p, F, 3)
         C = C.reshape( C.shape[0], e*p, C.shape[3])  # reshape to (F, e,p, 3)
+
+        if self.param.deim_desired_num_components < C.shape[0]:
+            self.comps = np.array(C[:self.param.deim_desired_num_components, :, :])
+        else:
+            self.comps= np.array(C)
+
+        self.numComp = self.comps.shape[0]
+
+
+    @log_time(constProj_output_directory)
+    def compute_pod_for_vectorized_nonlinear_snapshots_tensor(self, writer=None):
+
+        # inialized by a copy of the original snapshots tensor (F, ep, d)
+        R = copy.deepcopy(self.nonlinearSnapshots.snapTensor)
+        F = R.shape[0]
+        p = self.nonlinearSnapshots.constraintsSize  # p: row size of each constraint
+        e = self.nonlinearSnapshots.num_constained_elements  # numConstraints
+
+        R = R.reshape(F, -1).T  # (F, e.p.d).T --> (e.p.d, F)
+        U, S, Vh = svd(R , full_matrices=False)
+
+        indx = range(1, S.shape[0]+1, 1)
+        if writer is not None:
+            for ai, bi in zip(indx, S):
+                writer.writerow([ai, bi])
+        C = U.T.reshape((F, e*p, -1))  # (F, e.p, 3)
 
         if self.param.deim_desired_num_components < C.shape[0]:
             self.comps = np.array(C[:self.param.deim_desired_num_components, :, :])

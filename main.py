@@ -150,7 +150,7 @@ def main(param: Config_parameters):
             visualize_geom_elements = False
             steps = 5
 
-            if param.constProj_basis_type == "pod":
+            if param.constProj_basis_type == "pod_vectorized" or param.constProj_basis_type == "pod":
                 steps = 1
 
             if param.constProj_basis_type == "pca_blocks" or param.constProj_basis_type == "pca_blocks_with_St" :
@@ -165,26 +165,26 @@ def main(param: Config_parameters):
 if __name__ == '__main__':
     # -----------------------------------------------------------------------------------------------------------------
 
-    available_demos = {"cloth_automated_deim_vertBendingSubspace.json",
-                       "cloth_bendOnly_automated_deim_vertBendingSubspace.json"
-
-                       "cloth_automated_geom_vertBendingSubspace.json",
-
-                       "cloth_automated_deim_edgeSpringSubspace.json",
-                       "cloth_springOnly_automated_deim_edgeSpringSubspace.json",
-
-                       "cloth_automated_geom_edgeSpringSubspace.json",
-
-                       "cloth_automated_deim_triStrainSubspace.json",
-                       "cloth_strainOnly_automated_deim_triStrainSubspace.json"
-
-                       "cloth_automated_geom_triStrainSubspace.json",
-
-                       "bar_automated_deim_tetDeformationGradientSubspace.json"}
+    # available_demos = {"cloth_automated_deim_vertBendingSubspace.json",
+    #                    "cloth_bendOnly_automated_deim_vertBendingSubspace.json"
+    #
+    #                    "cloth_automated_geom_vertBendingSubspace.json",
+    #
+    #                    "cloth_automated_deim_edgeSpringSubspace.json",
+    #                    "cloth_springOnly_automated_deim_edgeSpringSubspace.json",
+    #
+    #                    "cloth_automated_geom_edgeSpringSubspace.json",
+    #
+    #                    "cloth_automated_deim_triStrainSubspace.json",
+    #                    "cloth_strainOnly_automated_deim_triStrainSubspace.json"
+    #
+    #                    "cloth_automated_geom_triStrainSubspace.json",
+    #
+    #                    "bar_automated_deim_tetDeformationGradientSubspace.json"}
 
     # mesh = "bar"
     # subspace = "vertbendSubspace"
-    json_file = "config/examples/cloth_springOnly_automated_deim_edgeSpringSubspace.json"
+    json_file = "config/examples/cloth_strainOnly_automated_deim_triStrainSubspace.json"
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
     parser.add_argument('--mesh', type=str, default="mesh", help='Give a character mesh')

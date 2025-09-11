@@ -57,14 +57,14 @@
     "record_projection_data": false
   },
   "constraint_projetions_reduction": {
-    "name": "deim_pod",
+    "name": "deim_pod_vectorized",
     "properties": "_noAlignement_Volkwein_Standarized_Global_Orthogonalized_Release100_Frames_2_increment",
     "vert_bending_reduced": false,
     "num_verts_bending_components": -1,
     "edge_spring_reduced": false,
     "edge_spring_num_components": -1,
-    "tri_strain_reduced": false,
-    "tri_strain_num_components": 100,
+    "tri_strain_reduced": true,
+    "tri_strain_num_components": 20,
     "tet_strain_reduced": false,
     "tet_strain_num_components": -1,
     "tet_deformation_reduced": false,

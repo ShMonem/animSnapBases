@@ -45,9 +45,10 @@ if __name__ == '__main__':
     # -----------------------------------------------------------------------------------------------------------------
     # available demos:
     #["cloth_automated_bend_spring_strain.json",
-    # "cloth_automated_strain.json",
     # "cloth_automated_bend.json",
-    # "demos/bar_automated_deformationgradient.json"]
+    # "cloth_automated_spring.json",
+    # "cloth_automated_strain.json",
+    # "bar_automated_deformationgradient.json"]
 
     # # ---------------- build parser argument ----------------
     parser = argparse.ArgumentParser()

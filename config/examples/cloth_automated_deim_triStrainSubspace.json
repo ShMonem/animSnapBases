@@ -46,7 +46,7 @@
 			"processed_snapshots_ready": false,
 			"reduced_snaps_available": false
 		},
-		"basis_type": "pca_blocks",
+		"basis_type": "pod_vectorized",
 		"interpolation_type": "deim",
 		"desired_num_components": 500,
 		"numComponents_verts": 5,

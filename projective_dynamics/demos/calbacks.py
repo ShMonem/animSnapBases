@@ -228,20 +228,28 @@ def interacrive_testing_callback(args, record_fom_info = False, params=None):
                 if record_fom_info:
                     specify_path = ""
                     if model.has_verts_bending_constraints:
-                        specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi)
+                        specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
+                        if args.vert_bending_reduced:
+                            specify_path = specify_path + "reduced_" + str(args.vert_bending_num_components) + "_"
 
                     if model.has_edge_spring_constraints:
-                        specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi)
+                        specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
+                        if args.edge_spring_reduced:
+                            specify_path = specify_path + "reduced_" + str(args.edge_spring_num_components) + "_"
 
                     if model.has_tris_strain_constraints:
-                        specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi)
-
+                        specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+                        if args.tri_strain_reduced:
+                            specify_path = specify_path + "reduced_" + str(args.tri_strain_num_components) + "_"
                     if model.has_tets_strain_constraints:
-                        specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi)
-
+                        specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+                        if args.tet_strain_reduced:
+                            specify_path = specify_path + "reduced_" + str(args.tet_strain_num_components) + "_"
                     if model.has_tets_deformation_gradient_constraints:
                         specify_path = specify_path + "tets_deformation_gradient_wi" + str(
-                            args.deformation_gradient_constraint_wi)
+                            args.deformation_gradient_constraint_wi) + "_"
+                        if args.tet_deformation_reduced:
+                            specify_path = specify_path + "reduced_" + str(args.tet_deformation_num_components)+ "_"
 
                     output_path += "/" + object_name + "/" + specify_path
 
@@ -328,18 +336,27 @@ def cloth_automated_bend_spring_strain_callback(args, record_fom_info = False, p
                 specify_path = ""
                 if model.has_verts_bending_constraints:
                     specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
-                    if args.vert_bending_reduced :
-                        specify_path = specify_path + "reduced_"
+                    if args.vert_bending_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.vert_bending_num_components) + "_"
 
                 if model.has_edge_spring_constraints:
                     specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
-                    if args.edge_spring_reduced :
-                        specify_path = specify_path + "reduced_"
+                    if args.edge_spring_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.edge_spring_num_components) + "_"
 
                 if model.has_tris_strain_constraints:
                     specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
-                    if args.tri_strain_reduced :
-                        specify_path = specify_path + "reduced_"
+                    if args.tri_strain_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.tri_strain_num_components) + "_"
+                if model.has_tets_strain_constraints:
+                    specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+                    if args.tet_strain_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.tet_strain_num_components) + "_"
+                if model.has_tets_deformation_gradient_constraints:
+                    specify_path = specify_path + "tets_deformation_gradient_wi" + str(
+                        args.deformation_gradient_constraint_wi) + "_"
+                    if args.tet_deformation_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.tet_deformation_num_components)+ "_"
 
                 output_path += "/" + object_name + "/" + experiment + "/" + "/" + constrproj_case + "/" + specify_path + "/"
                 check_dir_exists(output_path)
@@ -454,18 +471,27 @@ def cloth_automated_strain_callback(args, record_fom_info = False, params=None,e
                 specify_path = ""
                 if model.has_verts_bending_constraints:
                     specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
-                    if args.vert_bending_reduced :
-                        specify_path = specify_path + "reduced_"
+                    if args.vert_bending_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.vert_bending_num_components) + "_"
 
                 if model.has_edge_spring_constraints:
                     specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
-                    if args.edge_spring_reduced :
-                        specify_path = specify_path + "reduced_"
+                    if args.edge_spring_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.edge_spring_num_components) + "_"
 
                 if model.has_tris_strain_constraints:
                     specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
-                    if args.tri_strain_reduced :
-                        specify_path = specify_path + "reduced_"
+                    if args.tri_strain_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.tri_strain_num_components) + "_"
+                if model.has_tets_strain_constraints:
+                    specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+                    if args.tet_strain_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.tet_strain_num_components) + "_"
+                if model.has_tets_deformation_gradient_constraints:
+                    specify_path = specify_path + "tets_deformation_gradient_wi" + str(
+                        args.deformation_gradient_constraint_wi) + "_"
+                    if args.tet_deformation_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.tet_deformation_num_components)+ "_"
 
                 output_path += "/" + object_name + "/" + experiment + "/" + "/" + constrproj_case + "/" + specify_path + "/"
                 check_dir_exists(output_path)
@@ -570,18 +596,27 @@ def cloth_automated_bend_callback(args, record_fom_info = False, params=None,exp
                 specify_path = ""
                 if model.has_verts_bending_constraints:
                     specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
-                    if args.vert_bending_reduced :
-                        specify_path = specify_path + "reduced_"
+                    if args.vert_bending_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.vert_bending_num_components) + "_"
 
                 if model.has_edge_spring_constraints:
                     specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
-                    if args.edge_spring_reduced :
-                        specify_path = specify_path + "reduced_"
+                    if args.edge_spring_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.edge_spring_num_components) + "_"
 
                 if model.has_tris_strain_constraints:
                     specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
-                    if args.tri_strain_reduced :
-                        specify_path = specify_path + "reduced_"
+                    if args.tri_strain_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.tri_strain_num_components) + "_"
+                if model.has_tets_strain_constraints:
+                    specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+                    if args.tet_strain_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.tet_strain_num_components) + "_"
+                if model.has_tets_deformation_gradient_constraints:
+                    specify_path = specify_path + "tets_deformation_gradient_wi" + str(
+                        args.deformation_gradient_constraint_wi) + "_"
+                    if args.tet_deformation_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.tet_deformation_num_components)+ "_"
 
                 output_path += "/" + object_name + "/" + experiment + "/" + "/" + constrproj_case + "/" + specify_path + "/"
                 check_dir_exists(output_path)
@@ -700,25 +735,25 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
                 if model.has_verts_bending_constraints:
                     specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
                     if args.vert_bending_reduced :
-                        specify_path = specify_path + "reduced_"
+                        specify_path = specify_path + "reduced_" + str(args.vert_bending_num_components) +"_"
 
                 if model.has_edge_spring_constraints:
                     specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
                     if args.edge_spring_reduced :
-                        specify_path = specify_path + "reduced_"
+                        specify_path = specify_path + "reduced_" + str(args.edge_spring_num_components) +"_"
 
                 if model.has_tris_strain_constraints:
                     specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
                     if args.tri_strain_reduced :
-                        specify_path = specify_path + "reduced_"
+                        specify_path = specify_path + "reduced_" + str(args.tri_strain_num_components) +"_"
                 if model.has_tets_strain_constraints:
                     specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
                     if args.tet_strain_reduced :
-                        specify_path = specify_path + "reduced_"
+                        specify_path = specify_path + "reduced_" + str(args.tet_strain_num_components) +"_"
                 if model.has_tets_deformation_gradient_constraints:
                     specify_path = specify_path + "tets_deformation_gradient_wi" + str(args.deformation_gradient_constraint_wi) + "_"
                     if args.tet_deformation_reduced :
-                        specify_path = specify_path + "reduced_"
+                        specify_path = specify_path + "reduced_"+ str(args.tet_deformation_num_components)+"_"
 
 
                 output_path += "/" + object_name + "/" + experiment + "/" + "/" + constrproj_case + "/" + specify_path + "/"

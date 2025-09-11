@@ -57,7 +57,7 @@
     "record_projection_data": false
   },
   "constraint_projetions_reduction": {
-    "name": "deim_pca_blocks",
+    "name": "deim_pod_vectorized",
     "properties": "_noAlignement_Volkwein_Standarized_Global_Orthogonalized_Release70_Frames_2_increment",
     "vert_bending_reduced": false,
     "num_verts_bending_components": -1,
@@ -67,8 +67,8 @@
     "tri_strain_num_components": -1,
     "tet_strain_reduced": false,
     "tet_strain_num_components": -1,
-    "tet_deformation_reduced": false,
-    "tet_deformation_num_components": 200
+    "tet_deformation_reduced": true,
+    "tet_deformation_num_components": 70
   },
   "nonlinear_snapshots": {
     "max_p_snapshots_num": 140,

@@ -46,19 +46,23 @@ pip install -r venv_requirements.txt
 ## Code Structure
 Thank you for your interest in our code, which you all the fun trying it out :-). !The code id structured into main directories
 
-| Item         | sub-directories                       | data/code                |
-|:-------------|:--------------------------------------|:-------------------------|
-| `input_data` | ``<mesh>\<experiment>\FOM_snapshots`` | ``*.off/*.ply``          |
-| `snapbases`  |                                       | ``posSnapshots.py``      |
-|              |                                       | ``posComponents.py``     |
-|              |                                       | ``config.py ``           |
-|              |                                       | ``bases_config.json``    |
-| ``utils``    |                                       | ``utils.py``             |
-|              |                                       | ``process.py``           |
-|              |                                       | ``support.py``           |
-| ``test``     |                                       | ``compare_npy_files.py`` |
-| ``config``   |                                       | ``config.py``            |
-|              |                                       | ``bases_config.json``    |
+| Item                  | sub-directories                       | data/code                    |
+|:----------------------|:--------------------------------------|:-----------------------------|
+| `input_data`          | ``<mesh>\<experiment>\FOM_snapshots`` | ``*.off/*.ply``              |
+| `snapbases`           |                                       | ``posSnapshots.py``          |
+|                       |                                       | ``posComponents.py``         |
+|                       |                                       | ``nonlinear_snapshots.py``   |
+|                       |                                       | ``constraintsComponents.py`` |
+| `projective_dynamics` |                                       | ``demos``                    |
+|                       |                                       | ``main.py``                  |
+|                       |                                       | ``Simulators.py ``           |
+|                       |                                       | ``usr_interface.json``       |
+| ``utils``             |                                       | ``utils.py``                 |
+|                       |                                       | ``process.py``               |
+|                       |                                       | ``support.py``               |
+| ``test``              |                                       | ``compare_npy_files.py``     |
+| ``config``            |                                       | ``config.py``                |
+|                       |                                       | ``bases_config.json``        |
 
 1. `input_data` stores your snapshots or frames in `.off` or `.ply` format. If you use a different example or file format, update the inputs in `config/bases_config.json`.
 
@@ -84,8 +88,13 @@ Thank you for your interest in our code, which you all the fun trying it out :-)
 
 ## Reproducibility
 
-A repository [redPD](https://github.com/ShMonem/redPD) is provided in order to test and reproduce results from the mentioned paper.  
-  - Kindly refer to the dedicated [README.test.md](https://github.com/ShMonem/redPD/blob/main/README.test.md). It explains all steps starting from snapshots collections to bases testing.
+For vertex positions reduction, a repository [redPD](https://github.com/ShMonem/redPD) is provided in order to test and reproduce results from the mentioned paper.  
+  - Kindly refer to the dedicated [README.test.md](https://github.com/ShMonem/redPD/blob/main/README.test.md). 
+    It explains all steps starting from snapshots collections to bases testing.
+
+For constarints projection reduction, the directory `projective_dynamics/` 
+contains [README.pd.md](https://github.com/ShMonem/animSnapBases_mirror/blob/main/projective_dynamics/demos/README.pd.md)
+that explains all steps to collect nonlinear forces snapshots and basis computations, as well as running reduced simulations.
 
 1. Clone the repo.
 2. Install the virtual environment.

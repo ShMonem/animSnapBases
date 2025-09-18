@@ -30,7 +30,7 @@
     "sigma_max": 1.01
   },
   "constraints": {
-    "apply_constraints": false,
+    "apply_constraints": true,
     "vert_bending_constraint": true,
 
     "edge_spring_constraint": true,

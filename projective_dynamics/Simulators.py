@@ -34,6 +34,7 @@ class animSnapBasesSolver:
         self.dt = None
         self.frame = 0
 
+
         self.reduced_position = False
         self.U = None # animSnap positions basis U
         self.num_pos_basis_modes = -1
@@ -403,10 +404,10 @@ class animSnapBasesSolver:
             self.model.positional_stacked_p = np.zeros((self.model.positional_assembly_ST.shape[1], 3))
 
             for i, c in enumerate(self.model.positional_constraints):
-                self.model.positional_stacked_p[i, :] = c.get_pi(q_t)
-            if self.store_stacked_projections:
-                np.savez(os.path.join(self.record_path, "positional_p_" + str(self.frame) + ".npz"),
-                         self.model.positional_stacked_p)
+                self.model.positional_stacked_p[i, :] = c.get_pi(q_t, self.frame)
+            # if self.store_stacked_projections:
+            #     np.savez(os.path.join(self.record_path, "positional_p_" + str(self.frame) + ".npz"),
+            #              self.model.positional_stacked_p)
             # update constraints projection term
             return self.model.positional_assembly_ST @ self.model.positional_stacked_p
         return np.zeros_like(unflatten(q_t))

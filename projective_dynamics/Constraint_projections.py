@@ -50,7 +50,7 @@ class Constraint(ABC):
         pass
 
     @abstractmethod
-    def get_pi(self, position_dim):
+    def get_pi(self, position, frame):
         "compute constraint projection for element i"
         pass
 
@@ -75,7 +75,7 @@ class Constraint(ABC):
         pass
 
 class PositionalConstraint(Constraint):
-    def __init__(self, indices, wi, positions):
+    def __init__(self, indices, wi, positions, motion_type='fixed', frame_shift=None):
         super().__init__(indices, wi)
         self.name = "positional"
         assert len(indices) == 1
@@ -83,14 +83,21 @@ class PositionalConstraint(Constraint):
         self.p0 = positions[vi].reshape(3, 1)  # Column vector
         # build differential operator SiT
         self.build_SiT(positions.shape[0])
-        
+        self.type = motion_type
+        if self.type == "user_defined" and frame_shift is not None:
+            self.position_shift = frame_shift
 
     def build_SiT(self, position_dim):
         self._selection_matrix = lil_matrix((position_dim, 1))
         self._selection_matrix[self.indices[0]] = self.wi
 
-    def get_pi(self, q):
-        return self.p0.reshape(-1,3)
+    def get_pi(self, q, frame=0):
+        if self.type == 'fixed':
+            return self.p0.reshape(-1,3)
+        elif self.type == "user_defined":
+            return self.p0.reshape(-1, 3) + self.position_shift[frame]
+        else:
+            raise ValueError("Unknown positional constaint!")
 
     def project_wi_SiT_pi(self, q, rhs):
         rhs += self.selection_matrix @ self.get_pi(q)
@@ -187,7 +194,7 @@ class VertBendingConstraint(Constraint):
         for row, col, value in selection_matrix:
             self._selection_matrix[row, col] = value * self.wi
 
-    def get_pi(self, q):
+    def get_pi(self, q, frame=0):
 
         v = self.v_ind
         star_sum = np.zeros(3)
@@ -281,7 +288,7 @@ class EdgeSpringConstraint(Constraint):
         self._selection_matrix[self.indices[0]] = - self.wi
         self._selection_matrix[self.indices[1]] =  self.wi
 
-    def get_pi(self, q):
+    def get_pi(self, q, frame=0):
         """
         Args:
             q: np.ndarray of shape (3*N,) – flattened positions
@@ -397,7 +404,7 @@ class TriStrainConstraint(Constraint):
 
         self._selection_matrix = self._selection_matrix * self.wi * abs(self.A0) # Store for reuse
 
-    def get_pi(self, q):
+    def get_pi(self, q, frame=0):
         """
         Computes the projection target pi in 2D strain space (shape 2x3).
         """
@@ -524,7 +531,7 @@ class TetStrainConstraint(Constraint):
         # self.wi * abs(self.V0) # stiffness of the constraint, resists extreme stretch/
         self._selection_matrix = self._selection_matrix * self.wi * abs(self.V0)
 
-    def get_pi(self, q):
+    def get_pi(self, q, frame=0):
         """
         Computes the projected deformation gradient Fhat (3x3).
         """
@@ -659,7 +666,7 @@ class TetDeformationGradientConstraint(Constraint):
         # self.wi * abs(self.V0) # stiffness of the constraint, resists extreme stretch/
         self._selection_matrix = self._selection_matrix * self.wi * abs(self.V0)
 
-    def get_pi(self, q):
+    def get_pi(self, q, frame = 0):
         """
         Computes pi = Rᵀ Gᵀ ∈ ℝ^{4×3}
         """
@@ -826,7 +833,7 @@ class DeformableMesh:
 
         self.floor_height = 0
         self.foolr_collision = True
-        self.init_hight_shift = 3    # 3 for cloth 1 for bar
+        self.init_hight_shift = 2    # 3 for cloth 1 for bar
 
         self.init_positions = np.array(positions)  # rest positions
         if self.foolr_collision:
@@ -843,6 +850,7 @@ class DeformableMesh:
         self.velocities = np.zeros_like(self.positions)
 
         self.fixed_flags = [False] * n
+        self.picked_vert = [False] * n
         self.threshold_fixing_ration = 0.01
         # constraints attributes
         self.constraints = []   # list of all constrained elements each as Constraint class-instance
@@ -918,7 +926,8 @@ class DeformableMesh:
 
     def compute_cloth_corner_indices(self):
         """
-        Compute and cache the vertex indices of corners and side surfaces for each cloth side.
+        Compute and cache the vertex indices of corners and side surfaces for each cloth side:
+        "left", "right", "top", "bottom".
         """
         threshold_ratio = self.threshold_fixing_ration
         if self.positions is None:
@@ -927,7 +936,7 @@ class DeformableMesh:
         if not hasattr(self, "_cloth_corner_indices"):
             self._cloth_corner_indices = {}
 
-        positions = self.positions[:, :2] if self.positions.shape[1] == 3 else self.positions
+        positions = self.positions[:, :2]  # use only x and y
         x = positions[:, 0]
         y = positions[:, 1]
 
@@ -939,42 +948,30 @@ class DeformableMesh:
         x_thresh = threshold_ratio * width
         y_thresh = threshold_ratio * height
 
-        # Save corner indices
+        surface_verts = np.unique(self.faces.flatten()) if self.faces is not None else np.arange(len(x))
+
+        # Compute full surface vertices per side
+        self._side_surface_verts = {}
+
         for side in ["left", "right", "top", "bottom"]:
-            if side in ["left", "right"]:
-                is_side = x <= min_x + 1e-6 if side == "left" else x >= max_x - 1e-6
-                bottom = y <= min_y + y_thresh
-                top = y >= max_y - y_thresh
-            else:  # top or bottom
-                is_side = y <= min_y + 1e-6 if side == "bottom" else y >= max_y - 1e-6
-                left = x <= min_x + x_thresh
-                right = x >= max_x - x_thresh
+            if side == "left":
+                mask = x <= min_x + x_thresh
+            elif side == "right":
+                mask = x >= max_x - x_thresh
+            elif side == "bottom":
+                mask = y <= min_y + y_thresh
+            elif side == "top":
+                mask = y >= max_y - y_thresh
 
-            candidates = np.where(is_side)[0]
-
-            if side in ["left", "right"]:
-                indices = np.unique(np.concatenate([
-                    candidates[bottom[candidates]],
-                    candidates[top[candidates]]
-                ]))
-            else:
-                indices = np.unique(np.concatenate([
-                    candidates[left[candidates]],
-                    candidates[right[candidates]]
-                ]))
-
-            self._cloth_corner_indices[side] = indices
-
-        # Save full left/right surface vertices (not just corners)
-        if self.faces is not None:
-            surface_verts = np.unique(self.faces.flatten())
-            left_mask = x <= min_x + x_thresh
-            right_mask = x >= max_x - x_thresh
-            self._left_surface_verts = np.intersect1d(np.where(left_mask)[0], surface_verts)
-            self._right_surface_verts = np.intersect1d(np.where(right_mask)[0], surface_verts)
+            self._side_surface_verts[side] = np.intersect1d(np.where(mask)[0], surface_verts)
 
     def get_fixed_indices(self):
         return self.fixed_flags
+
+    def get_picked_verts(self):
+        return self.picked_vert
+    def toggle_picked(self, i):
+        self.picked_vert[i] = not self.picked_vert[i]
 
     def constraints_list(self):
         return self.constraints
@@ -1013,38 +1010,41 @@ class DeformableMesh:
         for i in range(V.shape[0]):
             if (side == "left" and V[i, axis] < threshold) or (side == "right" and V[i, axis] > threshold):
                 self.fix(i)
-                #self.add_positional_constraint(i, args.positional_constraint_wi)
+        #         if side == "left" :
+        #             self.add_positional_constraint(i, args.positional_constraint_wi, motion_type="linear", shift= 1)
+        #         if side == "right" :
+        #             self.add_positional_constraint(i, args.positional_constraint_wi, motion_type="linear", shift= -1)
 
-    def fix_surface_side_vertices(self, side="left"):
+    def fix_surface_side_vertices(self, side="left", return_target=False):
+        """
+        Fixes the surface vertices on the specified side of the cloth: "left", "right", "top", "bottom".
+        """
         if self.positions is None or self.faces is None:
             return
 
-        if not hasattr(self, "_left_surface_verts") or not hasattr(self, "_right_surface_verts"):
+        if not hasattr(self, "_side_surface_verts") or side not in self._side_surface_verts:
             self.compute_cloth_corner_indices()
 
-        if side == "left":
-            surface_targets = self._left_surface_verts
-        elif side == "right":
-            surface_targets = self._right_surface_verts
-        else:
-            return
-
+        surface_targets = self._side_surface_verts.get(side, [])
         for vi in surface_targets:
             self.fix(vi)
 
-    def release_surface_side_vertices(self, side="left"):
+        if return_target:
+            return surface_targets
+        else:
+            pass
 
-        if not hasattr(self, "_left_surface_verts") or not hasattr(self, "_right_surface_verts"):
-            print("[Warning] Surface side vertices not cached. Run compute_cloth_corner_indices() first.")
+    def release_surface_side_vertices(self, side="left"):
+        """
+        Releases (unfixes) all surface vertices on the specified cloth side.
+        Valid sides: "left", "right", "top", "bottom".
+        """
+        if not hasattr(self, "_side_surface_verts") or side not in self._side_surface_verts:
+            print(
+                f"[Warning] Surface side vertices not cached or side '{side}' missing. Run compute_cloth_corner_indices() first.")
             return
 
-        if side == "left":
-            verts = getattr(self, "_left_surface_verts", None)
-        elif side == "right":
-            verts = getattr(self, "_right_surface_verts", None)
-        else:
-            raise ValueError("Side must be either 'left' or 'right'.")
-
+        verts = self._side_surface_verts.get(side, None)
         if verts is None:
             print(f"[Warning] No cached vertices for side: {side}")
             return
@@ -1161,9 +1161,9 @@ class DeformableMesh:
 
         return vertex_stars
 
-    def add_positional_constraint(self, vi, wi=1e9):
+    def add_positional_constraint(self, vi, wi=1e9, motion_type='fixed', frame_shift=None):
         self.has_positional_constraints = True
-        c = PositionalConstraint([vi], wi, self.positions)
+        c = PositionalConstraint([vi], wi, self.positions, motion_type, frame_shift)
         self.constraints.append(c)
 
         # build assembly
@@ -1183,6 +1183,7 @@ class DeformableMesh:
             c for c in self.positional_constraints if c._indices[0] != vi
         ]
         self.constraints = [c for c in self.constraints if not (isinstance(c, PositionalConstraint) and c.indices[0] == vi)]
+
         if len(self.positional_constraints) == 0:
             self.has_positional_constraints = False
 

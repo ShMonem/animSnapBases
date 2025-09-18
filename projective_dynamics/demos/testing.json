@@ -21,19 +21,19 @@
     },
   "physics_params": {
     "mass_per_particle": 10.0,
-    "positional_constraint_wi": 0,
-    "edge_constraint_wi": 10000000.0,
-    "vert_bending_constraint_wi": 0.001,
+    "positional_constraint_wi": 1000000000,
+    "edge_constraint_wi": 1000000.0,
+    "vert_bending_constraint_wi": 0.1,
     "deformation_gradient_constraint_wi": 0,
-    "strain_limit_constraint_wi": 10000,
+    "strain_limit_constraint_wi": 0.1,
     "sigma_min": 0.99,
     "sigma_max": 1.01
   },
   "constraints": {
     "apply_constraints": true,
     "vert_bending_constraint": true,
-    "edge_spring_constraint": false,
-    "tri_strain_constraint": false,
+    "edge_spring_constraint": true,
+    "tri_strain_constraint": true,
     "tet_strain_constraint": false,
     "tet_deformation_constraint": false,
 

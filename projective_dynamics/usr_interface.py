@@ -3,7 +3,10 @@ import os.path
 import polyscope as ps
 import polyscope.imgui as psim
 import numpy as np
-
+import pygame
+import os
+pygame.init()
+info = pygame.display.Info()
 class PhysicsParams:
     def __init__(self):
         self.is_gravity_active = False
@@ -19,7 +22,7 @@ class PickingState:
     def __init__(self):
         self.is_picking = False
         self.vertex = 0
-        self.force = 400.0
+        self.force = 10000.0
         self.mouse_x = 0
         self.mouse_y = 0
 
@@ -30,7 +33,7 @@ class MouseDownHandler:
         self.solver = solver
         self.physics_params = args
 
-    def handle_click(self, button: str, modifier: str):
+    def handle_click(self, pick_result, button: str, modifier: str):
         """
         Handles a click in the UI or triggered event.
         Requires that a vertex has been picked in Polyscope.
@@ -43,21 +46,24 @@ class MouseDownHandler:
         if button != "left":
             return False
 
-        model = self.solver.model()
+        model = self.solver.model
         if model is None:
             return False
 
         # Polyscope picking
-        pick_result = ps.pick_vertex("mesh")  # Assuming "mesh" is the registered name
+        # pick_result = ps.pick_vertex("mesh")  # Assuming "mesh" is the registered name
         if pick_result is None:
             return False
 
-        clicked_v_id, picked_pos = pick_result
+        clicked_v_id, picked_pos = pick_result.local_index, pick_result.position
         if clicked_v_id is None:
             return False
 
         self.picking_state.vertex = clicked_v_id
         self.picking_state.is_picking = (modifier == "ctrl")
+
+        if self.picking_state.is_picking:
+            model.toggle_picked(clicked_v_id)
 
         if modifier == "shift":
             model.toggle_fixed(clicked_v_id, self.physics_params.mass_per_particle)
@@ -75,46 +81,53 @@ class MouseMoveHandler:
         self.model = model
         self.fext = fext
 
-    def handle_mouse_move(self, mouse_x, mouse_y):
-        """
-        Called when mouse moves. Applies force if dragging.
-        """
+    def handle_mouse_move(self):
         if not self.is_model_ready() or not self.picking_state.is_picking:
             return False
 
         v_id = self.picking_state.vertex
-        pos0 = self.model.positions[v_id]  # initial vertex pos
 
-        # Estimate force direction: simple screen delta projected into world space
-        dx = mouse_x - self.picking_state.mouse_x
-        dy = mouse_y - self.picking_state.mouse_y
+        # Estimate direction in screen-space
 
-        # Use camera right & up as basis (simplified interaction model)
-        cam = ps.get_camera_state()
-        cam_dir = np.array(cam["lookDirection"])
-        cam_up = np.array(cam["upDirection"])
-        cam_right = np.cross(cam_dir, cam_up)
-        cam_right /= np.linalg.norm(cam_right)
+        # 1. Get viewport dimensions
+        # viewport_width = info.current_w
+        viewport_height = info.current_h
 
-        cam_up /= np.linalg.norm(cam_up)
+        # 2. Get current and previous screen coordinates
+        x1 = self.picking_state.mouse_x
+        y1 = viewport_height - self.picking_state.mouse_y
 
-        move_3d = dx * cam_right + dy * cam_up
-        direction = move_3d / np.linalg.norm(move_3d + 1e-10)
+        io = psim.GetIO()
+        x2 = io.MousePos[0]
+        y2 = viewport_height - io.MousePos[1]
 
-        # Apply external force
-        self.fext[v_id] = direction * self.picking_state.force
+        # 4. Unproject 2D -> 3D
+        p1 = np.array([x1, y1, 0.5])
+        p2 = np.array([x2, y2, 0.5])
+        print(p1, p2)
+        # Map 2D delta to 3D dragging direction arbitrarily
+        # For example: use upward dragging to apply force along +Y, right dragging to +X
+        direction = p2 - p1
+        norm = np.linalg.norm(direction)
+        if norm > 1e-6:
+            direction /= norm
+        else:
+            direction[:] = 0.0
 
-        # Update mouse state
-        self.picking_state.mouse_x = mouse_x
-        self.picking_state.mouse_y = mouse_y
+        self.fext[v_id] += direction * self.picking_state.force
 
-        # Optionally show a point on the mesh
-        ps.remove_point_cloud("picked_point")
-        ps.register_point_cloud("picked_point", self.model.positions[[v_id]])
-        ps.get_point_cloud("picked_point").set_color((1.0, 0.0, 0.0))
-        ps.get_point_cloud("picked_point").set_point_radius(0.01, relative=True)
+        # Update stored mouse coords
+        self.picking_state.mouse_x = io.MousePos[0]
+        self.picking_state.mouse_y = io.MousePos[1]
+
+        # Visual feedback
+        # ps.remove_point_cloud("picked_point")
+        # ps.register_point_cloud("picked_point", self.model.positions[[v_id]])
+        # ps.get_point_cloud("picked_point").set_color((1.0, 1.0, 0.0))
+        # ps.get_point_cloud("picked_point").set_radius(0.01, relative=True)
 
         return True
+
 
 class PreDrawHandler:
     def __init__(self, is_model_ready, args, solver, fext, record_info=False, record_path=None):
@@ -166,6 +179,7 @@ class PreDrawHandler:
                 ps.remove_surface_mesh("model")
 
             ps.register_surface_mesh("model", model.positions, model.faces, color=color, edge_width=1.0)
+
             # update_camera_to_mesh_center(model)
             ps.reset_camera_to_home_view()
 
@@ -175,12 +189,25 @@ class PreDrawHandler:
 
         # -- 3. Show fixed points
         fixed_indices = [i for i, fix in enumerate(model.get_fixed_indices()) if fix]
+        picked_indices = [i for i, pick in enumerate(model.get_picked_verts()) if pick]
+
+
         if fixed_indices:
             fixed_positions = model.positions[fixed_indices]
             ps.register_point_cloud("fixed_points", fixed_positions, color=(1.0, 0.0, 0.0))
             # ps.register_point_cloud("fixed_points", model.positions[0:2], color=(1.0, 1.0, 0.0))
 
             ps.get_point_cloud("fixed_points").set_radius(0.01, relative=True)
+
+        if picked_indices:
+            picked_positions = model.positions[picked_indices]
+            ps.register_point_cloud("picked_points", picked_positions, color=(1.0, 0.0, 1.0))
+            ps.get_point_cloud("picked_points").set_radius(0.01, relative=True)
+        else:
+            if ps.has_point_cloud("picked_points"):
+                ps.remove_point_cloud("picked_points")
+
+
 
 
 def update_camera_to_mesh_center(model, distance=3.0, direction=np.array([0, 0, 1])):

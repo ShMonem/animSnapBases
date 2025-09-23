@@ -75,7 +75,7 @@ class Constraint(ABC):
         pass
 
 class PositionalConstraint(Constraint):
-    def __init__(self, indices, wi, positions, motion_type='fixed', frame_shift=None):
+    def __init__(self, indices, wi, positions, motion_type='fixed', frame_shift=None, frame_reset=0):
         super().__init__(indices, wi)
         self.name = "positional"
         assert len(indices) == 1
@@ -86,6 +86,7 @@ class PositionalConstraint(Constraint):
         self.type = motion_type
         if self.type == "user_defined" and frame_shift is not None:
             self.position_shift = frame_shift
+            self.frame_reset = frame_reset
 
     def build_SiT(self, position_dim):
         self._selection_matrix = lil_matrix((position_dim, 1))
@@ -95,7 +96,7 @@ class PositionalConstraint(Constraint):
         if self.type == 'fixed':
             return self.p0.reshape(-1,3)
         elif self.type == "user_defined":
-            return self.p0.reshape(-1, 3) + self.position_shift[frame]
+            return self.p0.reshape(-1, 3) + self.position_shift[frame- self.frame_reset]
         else:
             raise ValueError("Unknown positional constaint!")
 
@@ -924,7 +925,7 @@ class DeformableMesh:
         self.tets_deformation_gradient_assembly_ST = None
         self.tets_deformation_gradient_stacked_p = None
 
-    def compute_cloth_corner_indices(self):
+    def compute_sides_and_corner_indices(self):
         """
         Compute and cache the vertex indices of corners and side surfaces for each cloth side:
         "left", "right", "top", "bottom".
@@ -1023,7 +1024,7 @@ class DeformableMesh:
             return
 
         if not hasattr(self, "_side_surface_verts") or side not in self._side_surface_verts:
-            self.compute_cloth_corner_indices()
+            self.compute_sides_and_corner_indices()
 
         surface_targets = self._side_surface_verts.get(side, [])
         for vi in surface_targets:
@@ -1041,7 +1042,7 @@ class DeformableMesh:
         """
         if not hasattr(self, "_side_surface_verts") or side not in self._side_surface_verts:
             print(
-                f"[Warning] Surface side vertices not cached or side '{side}' missing. Run compute_cloth_corner_indices() first.")
+                f"[Warning] Surface side vertices not cached or side '{side}' missing. Run compute_sides_and_corner_indices() first.")
             return
 
         verts = self._side_surface_verts.get(side, None)
@@ -1055,7 +1056,7 @@ class DeformableMesh:
 
     def fix_cloth_corners(self, side="left"):
         if not hasattr(self, "_cloth_corner_indices") or side not in self._cloth_corner_indices:
-            self.compute_cloth_corner_indices()
+            self.compute_sides_and_corner_indices()
 
         indices = self._cloth_corner_indices.get(side, [])
         for vi in indices:
@@ -1064,7 +1065,7 @@ class DeformableMesh:
 
     def release_cloth_corners(self, side="left"):
         if not hasattr(self, "_cloth_corner_indices") or side not in self._cloth_corner_indices:
-            self.compute_cloth_corner_indices()
+            self.compute_sides_and_corner_indices()
 
         indices = self._cloth_corner_indices.get(side, [])
         for vi in indices:
@@ -1161,9 +1162,9 @@ class DeformableMesh:
 
         return vertex_stars
 
-    def add_positional_constraint(self, vi, wi=1e9, motion_type='fixed', frame_shift=None):
+    def add_positional_constraint(self, vi, wi=1e9, motion_type='fixed', frame_shift=None, frame_reset=0):
         self.has_positional_constraints = True
-        c = PositionalConstraint([vi], wi, self.positions, motion_type, frame_shift)
+        c = PositionalConstraint([vi], wi, self.positions, motion_type, frame_shift, frame_reset)
         self.constraints.append(c)
 
         # build assembly

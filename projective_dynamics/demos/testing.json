@@ -25,7 +25,7 @@
     "edge_constraint_wi": 1000000.0,
     "vert_bending_constraint_wi": 0.1,
     "deformation_gradient_constraint_wi": 0,
-    "strain_limit_constraint_wi": 0.1,
+    "strain_limit_constraint_wi": 0.01,
     "sigma_min": 0.99,
     "sigma_max": 1.01
   },
@@ -70,7 +70,7 @@
     "tet_deformation_num_components": -1
   },
     "nonlinear_snapshots": {
-    "max_p_snapshots_num": 200,
+    "max_p_snapshots_num": 360,
     "recodr_snapshots_info": true
   },
   "directories": {

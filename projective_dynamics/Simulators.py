@@ -96,6 +96,9 @@ class animSnapBasesSolver:
         self.record_path = ""
         self.max_p_snapshots_num = args.max_p_snapshots_num
 
+    def set_max_p_frames(self, value:int):
+        self.max_p_snapshots_num = value
+
     def set_record_path(self, path: str):
         self.record_path = path
     def set_store_p(self, value: bool):
@@ -327,6 +330,7 @@ class animSnapBasesSolver:
 
         if store_fom_info:
             store_assembly_matrices()
+            self.set_store_p(store_fom_info)
 
         if self.dirty:
             # global term computation is called every time mass matrix is changed
@@ -357,8 +361,10 @@ class animSnapBasesSolver:
 
         if self.store_stacked_projections:
             list[str(self.frame)] = p
-        if self.frame == self.max_p_snapshots_num:
-            np.savez(os.path.join(self.record_path, name + ".npz"), **list)
+            if self.frame == self.max_p_snapshots_num:
+                np.savez(os.path.join(self.record_path, name + ".npz"), **list)
+                self.set_store_p(False)
+                print(f"Frame {self.frame} : FOM snapshots stored to directory", os.path.join(self.record_path, name + ".npz") )
 
         # update constraints projection term
         return ST @ p
@@ -478,7 +484,7 @@ class animSnapBasesSolver:
         return np.zeros_like(unflatten(q_t))
 
     def step(self, fext, num_iterations=10, use_3d_rhs_form=True):
-        global  verts_bending_p, edge_spring_p, tris_strain_p, tets_strain_p, tet_deformation_gradient_p
+        # global  verts_bending_p, edge_spring_p, tris_strain_p, tets_strain_p, tet_deformation_gradient_p
 
         velocities = self.model.velocities
         mass = self.model.mass
@@ -614,7 +620,7 @@ class Solver:
 
 
     def step(self, fext, num_iterations=10, use_3d_rhs_form=True, store_stacked_projections=False, record_path=None):
-        global  verts_bending_p, edge_spring_p, tris_strain_p, tets_strain_p, tet_deformation_gradient_p
+        # global  verts_bending_p, edge_spring_p, tris_strain_p, tets_strain_p, tet_deformation_gradient_p
         velocities = self.model.velocities
         mass = self.model.mass
         constraints = self.model.constraints

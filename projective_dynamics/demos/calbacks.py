@@ -860,7 +860,7 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
             # Generate motion serise for poking
             # Generate z values: 0 → 1 ->> -1 linearly
             # poked_points, labels = get_voronoi_seeds_and_partition(V, F, number_pockes)
-            poked_points, lables = compute_voronoi_seeds_incremental(V, number_pockes)
+            poked_points, lables = compute_voronoi_seeds_incremental(V, number_pockes, visualize=False)
             poking_series = create_poke_z_motion_with_jumps(poking_frames_per_point, rest_frames_per_point, poked_points.shape[0], z_range=poking_half_width)
 
             # How many frames to record

@@ -936,4 +936,4 @@ def run_partitioning_example(k =2):
         "vtu": vtk_path if vtk_path else "VTU export unavailable (meshio not installed)"
     }
 
-run_partitioning_example(k=20)
+# run_partitioning_example(k=20)

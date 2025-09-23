@@ -165,26 +165,26 @@ def main(param: Config_parameters):
 if __name__ == '__main__':
     # -----------------------------------------------------------------------------------------------------------------
 
-    # available_demos = {"cloth_automated_deim_vertBendingSubspace.json",
-    #                    "cloth_bendOnly_automated_deim_vertBendingSubspace.json"
+    # available_demos = {"deim/cloth_automated_deim_vertBendingSubspace.json",
+    #                    "deim/cloth_bendOnly_automated_deim_vertBendingSubspace.json"
     #
-    #                    "cloth_automated_geom_vertBendingSubspace.json",
+    #                    "deim/cloth_automated_deim_edgeSpringSubspace.json",
+    #                    "deim/cloth_springOnly_automated_deim_edgeSpringSubspace.json",
+    #    #
+    #                    "deim/cloth_automated_deim_triStrainSubspace.json",
+    #                    "deim/cloth_strainOnly_automated_deim_triStrainSubspace.json"
     #
-    #                    "cloth_automated_deim_edgeSpringSubspace.json",
-    #                    "cloth_springOnly_automated_deim_edgeSpringSubspace.json",
-    #
-    #                    "cloth_automated_geom_edgeSpringSubspace.json",
-    #
-    #                    "cloth_automated_deim_triStrainSubspace.json",
-    #                    "cloth_strainOnly_automated_deim_triStrainSubspace.json"
-    #
-    #                    "cloth_automated_geom_triStrainSubspace.json",
-    #
-    #                    "bar_automated_deim_tetDeformationGradientSubspace.json"}
+    #                    "deim/bar_automated_deim_tetDeformationGradientSubspace.json"}
+
+    #                    "geom/cloth_automated_geom_vertBendingSubspace.json",
+    #                    "geom/cloth_automated_geom_edgeSpringSubspace.json",
+    #                    "geom/cloth_automated_geom_triStrainSubspace.json",
+
+
 
     # mesh = "bar"
     # subspace = "vertbendSubspace"
-    json_file = "config/examples/cloth_strainOnly_automated_deim_triStrainSubspace.json"
+    json_file = "config/examples/geom/cloth_automated_geom_vertBendingSubspace.json"
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
     parser.add_argument('--mesh', type=str, default="mesh", help='Give a character mesh')

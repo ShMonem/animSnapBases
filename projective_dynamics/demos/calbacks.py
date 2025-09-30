@@ -18,6 +18,9 @@ import trimesh
 import meshio
 from utils import check_dir_exists
 from scipy.spatial import cKDTree
+from scipy.spatial.transform import Rotation as R
+
+
 # declare global variables
 model = None
 fext = None
@@ -632,6 +635,317 @@ def cloth_automated_bend_callback(args, record_fom_info = False, params=None,exp
 
     return callback
 
+def cloth_test(args, record_fom_info = False, params=None,experiment="cloth_automated_bend_spring_strain_test"):
+    global model, fext, solver
+    solver = get_solver_class_from_name(args)
+    is_simulating = True
+    output_path = args.output_dir
+
+    start_frame = 0
+    bottom_side_verts = None
+    counter = 0
+    final_frame = 100
+
+    def create_single_axis_rotation_motion(
+            initial_pos,
+            axis='x',  # 'x', 'y', or 'z'
+            start_frame=0,
+            num_frames=30,
+            num_rotations=1,
+            total_frames=None
+    ):
+        """
+        Create a motion that rotates a point around a single axis.
+
+        Parameters:
+        - initial_pos: np.array(3,), initial 3D position of vertex
+        - axis: which axis to rotate around ('x', 'y', or 'z')
+        - start_frame: which frame the motion starts
+        - num_frames: number of frames for the rotation
+        - num_rotations: how many 360° rotations
+        - total_frames: total timeline length (if None, it will be start_frame + num_frames)
+
+        Returns:
+        - motion: (total_frames, 3) array of positions
+        """
+        assert axis in ['x', 'y', 'z'], "Axis must be one of 'x', 'y', 'z'"
+        initial_pos = np.asarray(initial_pos)
+
+        if total_frames is None:
+            total_frames = start_frame + num_frames
+
+        # Default: stationary positions
+        motion = np.tile(initial_pos, (total_frames, 1))
+
+        # Generate rotation angles
+        angles_deg = np.linspace(0, 360 * num_rotations, num_frames, endpoint=False)
+        angles_rad = np.radians(angles_deg)
+
+        # Rotation around axis
+        for i, theta in enumerate(angles_rad):
+            if axis == 'x':
+                R = np.array([[1, 0, 0],
+                              [0, np.cos(theta), -np.sin(theta)],
+                              [0, np.sin(theta), np.cos(theta)]])
+            elif axis == 'y':
+                R = np.array([[np.cos(theta), 0, np.sin(theta)],
+                              [0, 1, 0],
+                              [-np.sin(theta), 0, np.cos(theta)]])
+            else:  # 'z'
+                R = np.array([[np.cos(theta), -np.sin(theta), 0],
+                              [np.sin(theta), np.cos(theta), 0],
+                              [0, 0, 1]])
+
+            motion[start_frame + i] = R @ initial_pos
+
+        return motion
+
+    def create_rotated_motion_around_axis(
+            point,
+            center,
+            axis='x',
+            start_frame=0,
+            num_frames=30,
+            num_rotations=1,
+            total_frames=None
+    ):
+        """
+        Create motion of a point rotating around a given axis passing through a center point.
+
+        Parameters:
+        - point: np.array(3,), the vertex to rotate
+        - center: np.array(3,), the center of rotation (pivot)
+        - axis: 'x', 'y', or 'z'
+        - start_frame: frame index where motion starts
+        - num_frames: how many frames the motion lasts
+        - num_rotations: number of full 360° rotations
+        - total_frames: total simulation frames (if None, computed from start + num_frames)
+
+        Returns:
+        - motion: (total_frames, 3) trajectory of the rotating point
+        """
+        assert axis in ['x', 'y', 'z'], "Axis must be one of 'x', 'y', or 'z'"
+        # point = np.asarray(point)
+        # center = np.asarray(center)
+
+        if total_frames is None:
+            total_frames = start_frame + num_frames
+
+        motion = np.tile(point, (total_frames, 1))
+
+        angles = np.linspace(0, 360 * num_rotations, num_frames, endpoint=False)
+        angles = np.radians(angles)
+
+        for i, theta in enumerate(angles):
+            # Build rotation matrix
+            if axis == 'x':
+                R = np.array([
+                    [1, 0, 0],
+                    [0, np.cos(theta), -np.sin(theta)],
+                    [0, np.sin(theta), np.cos(theta)]
+                ])
+            elif axis == 'y':
+                R = np.array([
+                    [np.cos(theta), 0, np.sin(theta)],
+                    [0, 1, 0],
+                    [-np.sin(theta), 0, np.cos(theta)]
+                ])
+            else:  # axis == 'z'
+                R = np.array([
+                    [np.cos(theta), -np.sin(theta), 0],
+                    [np.sin(theta), np.cos(theta), 0],
+                    [0, 0, 1]
+                ])
+
+            # Translate point to origin (relative to center), rotate, translate back
+            rotated = R @ (point + center) - center
+            motion[start_frame + i] = rotated
+
+        return motion
+
+
+    def create_rotation_around_arbitrary_axis(
+            axis_vector,
+            axis_point=np.zeros(3),
+            start_frame=0,
+            num_frames=30,
+            num_rotations=1,
+            total_frames=None
+    ):
+        """
+        Rotate a point around an arbitrary axis in space over time.
+
+        Parameters:
+        - point: np.array(3,), the vertex to rotate
+        - axis_vector: np.array(3,), direction vector of the axis
+        - axis_point: np.array(3,), a point the axis passes through
+        - start_frame: int, first frame to apply rotation
+        - num_frames: int, number of frames over which rotation occurs
+        - num_rotations: int, how many full 360° rotations
+        - total_frames: int, total number of frames in animation
+
+        Returns:
+        - motion: (total_frames, 3) array of vertex positions over time
+        """
+
+        if total_frames is None:
+            total_frames = start_frame + num_frames
+
+        motion = np.zeros((total_frames, 3))
+
+        # Normalize the axis direction
+        axis_dir = axis_vector / np.linalg.norm(axis_vector)
+
+        # Generate rotation angles
+        angles = np.linspace(0, 2 * np.pi * num_rotations, num_frames, endpoint=False)
+
+        for i, theta in enumerate(angles):
+            # Rodrigues' rotation formula
+            v = -axis_point  # vector from axis_point to point
+            k = axis_dir
+
+            v_rot = (
+                    v * np.cos(theta)
+                    + np.cross(k, v) * np.sin(theta)
+                    + k * np.dot(k, v) * (1 - np.cos(theta))
+            )
+            rotated = axis_point + v_rot
+            motion[start_frame + i] = rotated
+
+        return motion
+
+    def callback():
+        nonlocal output_path, is_simulating, bottom_side_verts, counter
+        psim.TextUnformatted("== Projective Dynamics ==")
+        psim.Separator()
+        counter += 1
+        # Frame 0: create mesh and apply initial constraints
+        if solver.frame == 0:
+            print(f"Frame: {solver.frame} Creating cloth and generating poking fames")
+
+            params.edit_system_args(args, "Cloth")
+
+            V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
+            reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
+            object_name = "cloth"
+
+            check_dir_exists(os.path.join(output_path, object_name))
+            mesh = trimesh.Trimesh(vertices=V, faces=F)
+            mesh.export(os.path.join(output_path, object_name, object_name + ".obj"))
+
+            psim.PushItemWidth(200)
+            psim.TextUnformatted("== Projective Dynamics ==")
+            psim.Separator()
+
+            top_side_verts = model.fix_surface_side_vertices(side="top", fix_it = True, return_target = True)  # fix
+            # return indices and not fix
+            bottom_side_verts = model.fix_surface_side_vertices(side="bottom", fix_it = False, return_target = True)
+
+
+            # Apply any desired constraints
+            model.immobilize()
+            model.clear_constraints()
+            model.reset_constraints_attributes()
+
+            print("Poking - positional constraint added to center vertex")
+            for i in range(len(bottom_side_verts)):
+                center_i = top_side_verts[i]
+                initial_i = bottom_side_verts[i]  # point on x-axis
+                rotation_series = create_rotation_around_arbitrary_axis(
+                    axis_vector=np.array([-0.5, 0, 0]),
+                    axis_point=V[center_i],
+                    start_frame=10,
+                    num_frames=60,
+                    num_rotations=2,
+                    total_frames=100)
+                model.add_positional_constraint(initial_i, args.positional_constraint_wi,
+                                                motion_type="user_defined", frame_shift=rotation_series)
+
+                model.picked_vert[initial_i] = True
+
+            if args.vert_bending_constraint:
+                model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
+            if args.edge_constraint:
+                model.add_edge_spring_constrain(args.edge_constraint_wi)
+            if args.tri_strain_constraint:
+                model.add_tri_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
+
+            # if recording snapshots build output file name/ path
+            if record_fom_info:
+                constrproj_case = "constraint_projection/FOM"
+                if solver.has_reduced_constraint_projectios:
+                    constrproj_case = "constraint_projection/" + args.constraint_projection_basis_type
+
+                specify_path = ""
+                if model.has_verts_bending_constraints:
+                    specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
+                    if args.vert_bending_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.vert_bending_num_components) + "_"
+
+                if model.has_edge_spring_constraints:
+                    specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
+                    if args.edge_spring_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.edge_spring_num_components) + "_"
+
+                if model.has_tris_strain_constraints:
+                    specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+                    if args.tri_strain_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.tri_strain_num_components) + "_"
+                if model.has_tets_strain_constraints:
+                    specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+                    if args.tet_strain_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.tet_strain_num_components) + "_"
+                if model.has_tets_deformation_gradient_constraints:
+                    specify_path = specify_path + "tets_deformation_gradient_wi" + str(
+                        args.deformation_gradient_constraint_wi) + "_"
+                    if args.tet_deformation_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.tet_deformation_num_components) + "_"
+
+                output_path += "/" + object_name + "/" + experiment + "/" + "/" + constrproj_case + "/" + specify_path + "/"
+                check_dir_exists(output_path)
+
+                solver.set_record_path(output_path)
+                solver.set_store_p(record_fom_info)
+            solver.set_dirty()
+
+        if counter == final_frame:
+            print("Stopping simulation.")
+            is_simulating = False
+            ps.unshow()
+            return
+
+        # Run a single simulation step
+        if model is not None and is_simulating:
+            pre_draw_handler = PreDrawHandler(
+                lambda: model.positions.shape[0] > 0, args, solver, fext,
+                record_info=record_fom_info, record_path=output_path
+            )
+            pre_draw_handler.set_animating(True)
+            pre_draw_handler.handle()
+
+        if model is not None:
+            psim.BulletText(f"Vertices: {model.positions.shape[0]}")
+            psim.BulletText(f"Triangles: {model.faces.shape[0]}")
+            psim.BulletText(f"Edges: {model.count_edges(model.faces)}")
+            psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
+
+            if model.has_verts_bending_constraints:
+                psim.BulletText(f"Vertices bending constraint: {len(model.verts_bending_constraints)}")
+                psim.BulletText(f"wi: {str(args.vert_bending_constraint_wi)}")
+
+            if model.has_edge_spring_constraints:
+                psim.BulletText(f"Edge pring constraint: {len(model.edge_spring_constraints)}")
+                psim.BulletText(f"wi: {str(args.edge_constraint_wi)}")
+
+            if model.has_tris_strain_constraints:
+                psim.BulletText(f"Triangles strain constraint: {len(model.tris_strain_constraints)}")
+                psim.BulletText(f"wi: {str(args.strain_limit_constraint_wi)}")
+
+        psim.End()
+
+    return callback
+
+
 def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth_automated_bend_spring_strain_snapshots"):
     global model, fext, solver
     solver = get_solver_class_from_name(args)
@@ -940,7 +1254,6 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
                 model.picked_vert[poked_points[i]] = False
                 solver.set_dirty()
 
-
         elif solver.frame == total_frames_poking_frames:
             model.release_surface_side_vertices(side="top")
 
@@ -989,42 +1302,6 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
             if args.tri_strain_constraint:
                 model.add_tri_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
 
-            # if recording snapshots build output file name/ path
-            # if record_fom_info:
-            #     constrproj_case = "constraint_projection/FOM"
-            #     if solver.has_reduced_constraint_projectios:
-            #         constrproj_case = "constraint_projection/" + args.constraint_projection_basis_type
-            #
-            #     specify_path = ""
-            #     if model.has_verts_bending_constraints:
-            #         specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
-            #         if args.vert_bending_reduced:
-            #             specify_path = specify_path + "reduced_" + str(args.vert_bending_num_components) + "_"
-            #
-            #     if model.has_edge_spring_constraints:
-            #         specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
-            #         if args.edge_spring_reduced:
-            #             specify_path = specify_path + "reduced_" + str(args.edge_spring_num_components) + "_"
-            #
-            #     if model.has_tris_strain_constraints:
-            #         specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
-            #         if args.tri_strain_reduced:
-            #             specify_path = specify_path + "reduced_" + str(args.tri_strain_num_components) + "_"
-            #     if model.has_tets_strain_constraints:
-            #         specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
-            #         if args.tet_strain_reduced:
-            #             specify_path = specify_path + "reduced_" + str(args.tet_strain_num_components) + "_"
-            #     if model.has_tets_deformation_gradient_constraints:
-            #         specify_path = specify_path + "tets_deformation_gradient_wi" + str(
-            #             args.deformation_gradient_constraint_wi) + "_"
-            #         if args.tet_deformation_reduced:
-            #             specify_path = specify_path + "reduced_" + str(args.tet_deformation_num_components) + "_"
-            #
-            #     output_path += "/" + object_name + "/" + experiment + "/" + "/" + constrproj_case + "/" + specify_path + "/"
-            #     check_dir_exists(output_path)
-            #
-            #     solver.set_record_path(output_path)
-            #     solver.set_store_p(record_fom_info)
             solver.set_dirty()
 
         elif solver.frame == start_stretching_frame + stretching_frames:
@@ -1064,7 +1341,6 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
 
             solver.set_dirty()
             print("Stretching - positional constraint added to right and left sides.")
-
 
         elif solver.frame == start_stretching_frame + 2* stretching_frames:
 

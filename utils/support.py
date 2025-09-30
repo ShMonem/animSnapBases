@@ -5,9 +5,10 @@
 import numpy as np
 from scipy import sparse
 from scipy.sparse.linalg import splu
-
+from scipy.sparse import csr_matrix
 from utils.process import veclen, normalized
 
+import heapq  # for the heap queue algorithm
 
 def compute_tetMasses(vertexMasses, tetrahedrons, tetSize, auxiliarySize):
     assert auxiliarySize == 3
@@ -368,3 +369,98 @@ def extract_sub_vertices_and_tet_edges(vertices, sub_edges):
     sub_vertices = vertices[unique_vertex_indices]
 
     return sub_vertices, remapped_edges
+
+# TODO: chaeck
+def build_adjacency_graph(vertices, faces):
+    """
+    Builds a sparse graph from mesh vertices and triangle faces.
+    Returns: scipy.sparse.csr_matrix of geodesic distances (edge weights)
+    """
+    n_verts = vertices.shape[0]
+    rows, cols, data = [], [], []
+
+    for tri in faces:
+        for i in range(3):
+            vi = tri[i]
+            vj = tri[(i + 1) % 3]
+            d = np.linalg.norm(vertices[vi] - vertices[vj])
+            rows.append(vi)
+            cols.append(vj)
+            data.append(d)
+            rows.append(vj)
+            cols.append(vi)
+            data.append(d)
+
+    return csr_matrix((data, (rows, cols)), shape=(n_verts, n_verts))
+
+
+
+def dijkstra_sparse(graph, source):
+    """
+    Compute shortest-path distances from source to all other nodes in sparse graph.
+    """
+    n = graph.shape[0]
+    dist = np.full(n, np.inf)
+    dist[source] = 0
+    visited = np.zeros(n, dtype=bool)
+    queue = [(0, source)]
+
+    while queue:
+        d, u = heapq.heappop(queue)
+        if visited[u]:
+            continue
+        visited[u] = True
+
+        neighbors = graph[u].indices
+        weights = graph[u].data
+
+        for v, w in zip(neighbors, weights):
+            if not visited[v] and dist[u] + w < dist[v]:
+                dist[v] = dist[u] + w
+                heapq.heappush(queue, (dist[v], v))
+
+    return dist
+
+def compute_geodesic_voronoi_seeds(vertices, faces, k, start_idx=None, visualize=True):
+    """
+    Compute k Voronoi seeds using geodesic farthest point sampling on a mesh.
+    Returns a list of seed vertex indices.
+    """
+    graph = build_adjacency_graph(vertices, faces)
+
+    if start_idx is None:
+        start_idx = np.argmin(np.linalg.norm(vertices - vertices.mean(axis=0), axis=1))
+
+    seeds = [start_idx]
+    dist = dijkstra_sparse(graph, start_idx)
+
+    for _ in range(1, k):
+        min_dists = dist
+        next_seed = np.argmax(min_dists)
+        seeds.append(next_seed)
+        new_dist = dijkstra_sparse(graph, next_seed)
+        dist = np.minimum(dist, new_dist)
+
+    graph = build_adjacency_graph(vertices, faces)
+    k = len(seeds)
+    n = vertices.shape[0]
+    dist_mat = np.zeros((n, k))
+
+    for i, s in enumerate(seeds):
+        dist_mat[:, i] = dijkstra_sparse(graph, s)
+
+    labels = np.argmin(dist_mat, axis=1)
+
+
+    if visualize:
+        # Visualize with matplotlib
+        import matplotlib.pyplot as plt
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(vertices[:, 0], vertices[:, 1], vertices[:, 2], c=labels, cmap='tab10', s=5)
+        ax.scatter(vertices[seeds, 0], vertices[seeds, 1], vertices[seeds, 2], c='black', s=20, label='Seeds')
+        ax.set_title("Geodesic Voronoi Partitioning")
+        plt.legend()
+        plt.show()
+
+    return seeds, labels

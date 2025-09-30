@@ -834,7 +834,7 @@ class DeformableMesh:
 
         self.floor_height = 0
         self.foolr_collision = True
-        self.init_hight_shift = 2    # 3 for cloth 1 for bar
+        self.init_hight_shift = 0.5    # 3 for cloth 1 for bar
 
         self.init_positions = np.array(positions)  # rest positions
         if self.foolr_collision:
@@ -1016,7 +1016,7 @@ class DeformableMesh:
         #         if side == "right" :
         #             self.add_positional_constraint(i, args.positional_constraint_wi, motion_type="linear", shift= -1)
 
-    def fix_surface_side_vertices(self, side="left", return_target=False):
+    def fix_surface_side_vertices(self, side="left", fix_it = True, return_target=False):
         """
         Fixes the surface vertices on the specified side of the cloth: "left", "right", "top", "bottom".
         """
@@ -1027,8 +1027,9 @@ class DeformableMesh:
             self.compute_sides_and_corner_indices()
 
         surface_targets = self._side_surface_verts.get(side, [])
-        for vi in surface_targets:
-            self.fix(vi)
+        if fix_it:
+            for vi in surface_targets:
+                self.fix(vi)
 
         if return_target:
             return surface_targets

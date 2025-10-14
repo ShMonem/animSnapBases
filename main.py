@@ -127,6 +127,10 @@ def main(param: Config_parameters):
         elif param.constProj_bases_interpolation_type == "geom":
             geom_interpolation_in_pos_space = True
             nonlinearBases.geom_block_form_utilizing_differential_operator(geom_interpolation_in_pos_space)
+        elif param.constProj_bases_interpolation_type == "adv":
+            geom_interpolation_in_pos_space = True
+            interpolate_wrt_partitioning = True
+            nonlinearBases.geom_block_form_utilizing_differential_operator(geom_interpolation_in_pos_space, interpolate_wrt_partitioning)
 
         # copy time log file to correct directory
         copy_and_delete_file("function_timings.txt", os.path.join(param.vertPos_output_directory,"time_logs.txt"))
@@ -153,10 +157,10 @@ def main(param: Config_parameters):
             if param.constProj_basis_type == "pod_vectorized" or param.constProj_basis_type == "pod":
                 steps = 1
 
-            if param.constProj_basis_type == "pca_blocks" or param.constProj_basis_type == "pca_blocks_with_St" :
+            if param.constProj_basis_type in {"pca_blocks" , "pca_blocks_with_St" , "pca_blocks_with_St_partitioning"}:
                 pca_tests = True
 
-            if param.constProj_bases_interpolation_type == "geom":
+            if param.constProj_bases_interpolation_type in { "geom"}:
                 visualize_geom_elements = param.reduced_constProj_snapshots_available
 
             tets_plots_nonlinearity_basis(nonlinearBases, pca_tests=pca_tests, postProcess_tests=postProcess_tests,
@@ -184,7 +188,7 @@ if __name__ == '__main__':
 
     # mesh = "bar"
     # subspace = "vertbendSubspace"
-    json_file = "config/examples/geom/cloth_automated_geom_vertBendingSubspace.json"
+    json_file = "config/examples/advanced/cloth_automated_adv_edgeSpringSubspace.json"
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
     parser.add_argument('--mesh', type=str, default="mesh", help='Give a character mesh')

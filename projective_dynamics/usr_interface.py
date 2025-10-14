@@ -170,7 +170,7 @@ class PreDrawHandler:
             # Reset fext and update mesh
             self.fext[:] = 0.0
 
-            if self.solver.has_reduced_constraint_projectios:
+            if self.solver.has_reduced_constraint_projections:
                 color = (64 / 255, 224 / 255, 208 / 255)  # turquoise
             else:
                 color = (0.4, 0.4, 0.9)  # light_purple
@@ -181,7 +181,7 @@ class PreDrawHandler:
             ps.register_surface_mesh("model", model.positions, model.faces, color=color, edge_width=1.0)
 
             # update_camera_to_mesh_center(model)
-            ps.reset_camera_to_home_view()
+            # ps.reset_camera_to_home_view()
 
             if self.record_info:
                 filename = os.path.join(self.record_path, "frame"+str(self.solver.frame)+".png")

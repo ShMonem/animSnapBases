@@ -1,4 +1,8 @@
 import os
+import gdist  # for geodesics on tri mesh
+import skfmm  # for geodesics on tet mesh
+import numpy as np
+import polyscope as ps
 
 def save_off_mesh(V, F, filename):
     with open(filename, 'w') as f:
@@ -68,3 +72,132 @@ def delete_matching_column(matrix_lil, target_col_vector):
 
     matrix_new = matrix[:, cols_to_keep].tolil()
     return matrix_new
+
+
+def compute_surface_geodesics(vertices, faces, source_indices):
+    # vertices: (n, 3) float64
+    # faces: (m, 3) int32 (indices into vertices)
+    # source_indices: 1D array of vertex indices where geodesics start
+
+    distances = gdist.compute_gdist(
+        np.ascontiguousarray(vertices, dtype=np.float64),
+        np.ascontiguousarray(faces, dtype=np.int32),
+        np.ascontiguousarray(source_indices, dtype=np.int32)
+    )
+    return distances  # shape (n,)
+
+# Create a signed distance grid or binary mask
+def compute_tet_geodesics(grid, source_coords):
+    """
+    grid: 3D binary volume (1: inside, 0: outside)
+    source_coords: coordinates of the geodesic source point in voxel indices
+    """
+    phi = np.ones_like(grid, dtype=float)
+    phi[source_coords] = -1  # set source
+    phi = np.ma.MaskedArray(phi, mask=(grid == 0))  # mask outside
+
+    dist = skfmm.distance(phi)
+    return dist  # same shape as grid
+
+def read_mesh_file(file_path):
+    """
+    Reads a .mesh file and returns vertices, tetrahedra, and triangles as NumPy arrays.
+
+    Parameters:
+        file_path (str): Path to the .mesh file.
+
+    Returns:
+        tuple: Numpy arrays of vertices, tetrahedra, and triangles.
+               Returns None if there is an error in reading the file.
+    """
+    try:
+        vertices, tets, tris = [], [], []
+        current_array = None
+
+        with open(file_path, 'r') as file:
+            for line in file:
+                line = line.strip()
+
+                # Identify the section and prepare to read the corresponding data
+                if line.startswith('Vertices'):
+                    current_array = vertices
+                    num_expected = int(next(file).strip())  # The next line should state the number of vertices
+                    continue
+                elif line.startswith('Tetrahedra'):
+                    current_array = tets
+                    num_expected = int(next(file).strip())
+                    continue
+                elif line.startswith('Triangles'):
+                    current_array = tris
+                    num_expected = int(next(file).strip())
+                    continue
+
+                # Skip empty lines or any line that doesn't fit into the above categories
+                if not line or current_array is None:
+                    continue
+
+                # Parse and store data
+                parts = line.split()
+                if current_array is vertices:
+                    # Expect x, y, z coordinates and one attribute (usually ignored)
+                    if len(parts) >= 4:
+                        current_array.append([float(parts[0]), float(parts[1]), float(parts[2])])
+                else:
+                    # For tets or tris, expect vertex indices and one attribute (usually ignored)
+                    if len(parts) >= 4:
+                        current_array.append([int(p) - 1 for p in parts[:-1]])  # Convert to zero-based index
+
+        # Convert lists to numpy arrays
+        vertices = np.array(vertices, dtype=float) if vertices else np.array([], dtype=float)
+        tets = np.array(tets, dtype=int) if tets else np.array([], dtype=int)
+        tris = np.array(tris, dtype=int) if tris else np.array([], dtype=int)
+
+        return vertices, tets, tris
+
+    except Exception as e:
+        print(f"An error occurred while reading the file: {e}")
+        return None
+
+def visualize_samples(V, F=None, T=None, samples=None, show_wireframe=False, point_radius=0.006):
+    """
+    Visualize mesh (tri or tet) and highlight sampled vertices using Polyscope.
+
+    Parameters
+    ----------
+    V : (N, 3) array
+        Vertex positions
+    F : (M, 3) array or None
+        Triangle faces (for surface meshes)
+    T : (K, 4) array or None
+        Tetrahedral cells (for volumetric meshes)
+    samples : list[int] or np.ndarray
+        Indices of sampled vertices
+    show_wireframe : bool
+        If True, show mesh in wireframe mode
+    point_radius : float
+        Display size of sampled points
+    """
+
+    ps.init()
+    ps.set_up_dir("z_up")
+
+    # Register the mesh (surface or volume)
+    if F is not None:
+        mesh = ps.register_surface_mesh("Mesh Surface", V, F, smooth_shade=True)
+    elif T is not None:
+        mesh = ps.register_volume_mesh("Tetrahedral Mesh", V, T)
+    else:
+        raise ValueError("You must provide either F (triangles) or T (tets).")
+
+    # Show mesh in wireframe if requested
+    if show_wireframe:
+        mesh.set_edge_color((0.2, 0.2, 0.2))
+        mesh.set_transparency(0.7)
+        mesh.add_scalar_quantity("wireframe", np.zeros(len(V)), enabled=False)
+
+    # Highlight sampled vertices
+    if samples is not None and len(samples) > 0:
+        samples = np.asarray(samples, dtype=int)
+        sampled_positions = V[samples]
+        ps.register_point_cloud("Sampled Vertices", sampled_positions, radius=point_radius, color=(1, 0, 0))
+        print(f"✅ Displaying {len(samples)} sampled vertices out of {len(V)} total.")

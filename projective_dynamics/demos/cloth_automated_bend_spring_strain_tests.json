@@ -56,12 +56,12 @@
     "record_projection_data": false
   },
   "constraint_projetions_reduction": {
-    "name": "geom_pca_blocks_with_St",
+    "name": "adv_pca_blocks",
     "properties": "_noAlignement_Volkwein_Standarized_Global_Orthogonalized_Release220_Frames_2_increment",
     "vert_bending_reduced": false,
     "num_verts_bending_components": 2,
     "edge_spring_reduced": false,
-    "edge_spring_num_components": 30,
+    "edge_spring_num_components": 330,
     "tri_strain_reduced": false,
     "tri_strain_num_components": 5,
     "tet_strain_reduced": false,

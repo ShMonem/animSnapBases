@@ -421,7 +421,7 @@ def dijkstra_sparse(graph, source):
 
     return dist
 
-def compute_geodesic_voronoi_seeds(vertices, faces, k, start_idx=None, visualize=True):
+def compute_geodesic_voronoi_seeds(vertices, faces, k, start_idx=None, visualize=False):
     """
     Compute k Voronoi seeds using geodesic farthest point sampling on a mesh.
     Returns a list of seed vertex indices.
@@ -464,3 +464,19 @@ def compute_geodesic_voronoi_seeds(vertices, faces, k, start_idx=None, visualize
         plt.show()
 
     return seeds, labels
+
+def visualize_partitioning(vertices, seeds, labels, extra_points_list =None, visualize_seeds=True, projection="3d"):
+    # Visualize with matplotlib
+    import matplotlib.pyplot as plt
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection=projection)
+    ax.scatter(vertices[:, 0], vertices[:, 1], vertices[:, 2], c=labels, cmap='tab10', s=5)
+    if visualize_seeds:
+        ax.scatter(vertices[seeds, 0], vertices[seeds, 1], vertices[seeds, 2], c='black', s=30, label='Seeds')
+    if extra_points_list:
+        for i, _list in enumerate(extra_points_list):
+            ax.scatter(vertices[_list, 0], vertices[_list, 1], vertices[_list, 2], s=20, label=f'Points{i+1}')
+
+    ax.set_title("Geodesic Voronoi Partitioning")
+    plt.legend()
+    plt.show()

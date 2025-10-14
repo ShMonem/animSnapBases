@@ -128,18 +128,21 @@ def compute_lumped_mass_matrix(V, T, density=1.0):
 
 def get_simple_bar_model(width, height, depth):
     """
-    Generate a simple 3D bar mesh made of tetrahedra.
+    Generate a simple 3D bar mesh made of tetrahedra, normalized to fit inside [-0.5, 0.5]^3.
 
     Parameters:
     - width, height, depth: Dimensions of the bar in grid units
 
     Returns:
-    - V: (N, 3) all vertex positions
+    - V: (N, 3) normalized vertex positions in [-0.5, 0.5]^3
     - T: (M, 4) tetrahedral elements
     - F: (K, 3) boundary triangle facets (surface)
     - V_surface: (S, 3) surface vertex positions (subset of V)
     """
-    # Generate vertex grid
+
+    # ---------------------------------------------------------------------
+    # 1. Generate vertex grid
+    # ---------------------------------------------------------------------
     V = np.zeros((width * height * depth, 3))
     for i in range(width):
         for j in range(height):
@@ -147,10 +150,13 @@ def get_simple_bar_model(width, height, depth):
                 row = i * height * depth + j * depth + k
                 V[row] = [float(i), float(j), float(k)]
 
-    # Build tetrahedra
+    # ---------------------------------------------------------------------
+    # 2. Build tetrahedra (5 per cube)
+    # ---------------------------------------------------------------------
     tet_count = (width - 1) * (height - 1) * (depth - 1) * 5
     T = np.zeros((tet_count, 4), dtype=int)
     index = 0
+
     for i in range(width - 1):
         for j in range(height - 1):
             for k in range(depth - 1):
@@ -177,15 +183,29 @@ def get_simple_bar_model(width, height, depth):
                     T[index + 4] = [p3, p1, p6, p4]
                 index += 5
 
-    # Get boundary triangle faces
+    # ---------------------------------------------------------------------
+    # 3. Get boundary facets
+    # ---------------------------------------------------------------------
     F = igl.boundary_facets(T)
-    T = T[:, ::-1]  # Reverse winding order
+    T = T[:, ::-1]  # Reverse winding order (right-hand rule)
     F = F[:, ::-1]
 
-    # Extract unique vertex indices used in surface triangles
+    # Surface vertices
     surface_vertex_indices = np.unique(F.flatten())
     V_surface = V[surface_vertex_indices]
 
+    # ---------------------------------------------------------------------
+    # 4. Normalize vertex positions to fit in [-0.5, 0.5]^3
+    # ---------------------------------------------------------------------
+    min_bounds = V.min(axis=0)
+    max_bounds = V.max(axis=0)
+    center = (max_bounds + min_bounds) / 2.0
+    scale = (max_bounds - min_bounds).max()
+
+    V = (V - center) / scale
+    V_surface = (V_surface - center) / scale
+
+    # Now V ∈ [-0.5, 0.5]^3 approximately
     return V, T, F, V_surface
 
 

@@ -57,7 +57,7 @@ if __name__ == '__main__':
     from config import Config_parameters
 
     param = Config_parameters()
-    example = "cloth_automated_bend_spring_strain_tests"
+    example = "cloth_automated_bend_spring_strain_snapshots"
 
     param.reset_parameters("demos/"+example+".json")
 
@@ -70,7 +70,11 @@ if __name__ == '__main__':
     # Physics parameters
     param.add_physics_args(parser)
 
+
     # Model reduction parameters
+    # positions
+    param.add_position_reduction_args(parser)
+    # constraints projections
     param.add_constraint_projections_reduction_args(parser)
 
     # Important output and input directories

@@ -16,7 +16,7 @@ from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler, Pi
 from Simulators import animSnapBasesSolver, Solver
 import trimesh
 import meshio
-from utils import check_dir_exists
+from utils import check_dir_exists, read_mesh_file
 from scipy.spatial import cKDTree
 from scipy.spatial.transform import Rotation as R
 
@@ -117,7 +117,9 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
 
             params.edit_system_args(args, "Bar")
 
-            V, T, F, _ = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
+            V, T, F = read_mesh_file("../data/bar.mesh")
+
+            # V, T, F, _ = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
 
             reset_simulation_model(V, F, T, should_rescale=True)
             object_name = "bar"
@@ -646,123 +648,6 @@ def cloth_test(args, record_fom_info = False, params=None,experiment="cloth_auto
     counter = 0
     final_frame = 100
 
-    def create_single_axis_rotation_motion(
-            initial_pos,
-            axis='x',  # 'x', 'y', or 'z'
-            start_frame=0,
-            num_frames=30,
-            num_rotations=1,
-            total_frames=None
-    ):
-        """
-        Create a motion that rotates a point around a single axis.
-
-        Parameters:
-        - initial_pos: np.array(3,), initial 3D position of vertex
-        - axis: which axis to rotate around ('x', 'y', or 'z')
-        - start_frame: which frame the motion starts
-        - num_frames: number of frames for the rotation
-        - num_rotations: how many 360° rotations
-        - total_frames: total timeline length (if None, it will be start_frame + num_frames)
-
-        Returns:
-        - motion: (total_frames, 3) array of positions
-        """
-        assert axis in ['x', 'y', 'z'], "Axis must be one of 'x', 'y', 'z'"
-        initial_pos = np.asarray(initial_pos)
-
-        if total_frames is None:
-            total_frames = start_frame + num_frames
-
-        # Default: stationary positions
-        motion = np.tile(initial_pos, (total_frames, 1))
-
-        # Generate rotation angles
-        angles_deg = np.linspace(0, 360 * num_rotations, num_frames, endpoint=False)
-        angles_rad = np.radians(angles_deg)
-
-        # Rotation around axis
-        for i, theta in enumerate(angles_rad):
-            if axis == 'x':
-                R = np.array([[1, 0, 0],
-                              [0, np.cos(theta), -np.sin(theta)],
-                              [0, np.sin(theta), np.cos(theta)]])
-            elif axis == 'y':
-                R = np.array([[np.cos(theta), 0, np.sin(theta)],
-                              [0, 1, 0],
-                              [-np.sin(theta), 0, np.cos(theta)]])
-            else:  # 'z'
-                R = np.array([[np.cos(theta), -np.sin(theta), 0],
-                              [np.sin(theta), np.cos(theta), 0],
-                              [0, 0, 1]])
-
-            motion[start_frame + i] = R @ initial_pos
-
-        return motion
-
-    def create_rotated_motion_around_axis(
-            point,
-            center,
-            axis='x',
-            start_frame=0,
-            num_frames=30,
-            num_rotations=1,
-            total_frames=None
-    ):
-        """
-        Create motion of a point rotating around a given axis passing through a center point.
-
-        Parameters:
-        - point: np.array(3,), the vertex to rotate
-        - center: np.array(3,), the center of rotation (pivot)
-        - axis: 'x', 'y', or 'z'
-        - start_frame: frame index where motion starts
-        - num_frames: how many frames the motion lasts
-        - num_rotations: number of full 360° rotations
-        - total_frames: total simulation frames (if None, computed from start + num_frames)
-
-        Returns:
-        - motion: (total_frames, 3) trajectory of the rotating point
-        """
-        assert axis in ['x', 'y', 'z'], "Axis must be one of 'x', 'y', or 'z'"
-        # point = np.asarray(point)
-        # center = np.asarray(center)
-
-        if total_frames is None:
-            total_frames = start_frame + num_frames
-
-        motion = np.tile(point, (total_frames, 1))
-
-        angles = np.linspace(0, 360 * num_rotations, num_frames, endpoint=False)
-        angles = np.radians(angles)
-
-        for i, theta in enumerate(angles):
-            # Build rotation matrix
-            if axis == 'x':
-                R = np.array([
-                    [1, 0, 0],
-                    [0, np.cos(theta), -np.sin(theta)],
-                    [0, np.sin(theta), np.cos(theta)]
-                ])
-            elif axis == 'y':
-                R = np.array([
-                    [np.cos(theta), 0, np.sin(theta)],
-                    [0, 1, 0],
-                    [-np.sin(theta), 0, np.cos(theta)]
-                ])
-            else:  # axis == 'z'
-                R = np.array([
-                    [np.cos(theta), -np.sin(theta), 0],
-                    [np.sin(theta), np.cos(theta), 0],
-                    [0, 0, 1]
-                ])
-
-            # Translate point to origin (relative to center), rotate, translate back
-            rotated = R @ (point + center) - center
-            motion[start_frame + i] = rotated
-
-        return motion
-
 
     def create_rotation_around_arbitrary_axis(
             axis_vector,
@@ -852,11 +737,11 @@ def cloth_test(args, record_fom_info = False, params=None,experiment="cloth_auto
                 center_i = top_side_verts[i]
                 initial_i = bottom_side_verts[i]  # point on x-axis
                 rotation_series = create_rotation_around_arbitrary_axis(
-                    axis_vector=np.array([-0.5, 0, 0]),
+                    axis_vector=np.array([1.5, 0, 0]),
                     axis_point=V[center_i],
                     start_frame=10,
                     num_frames=60,
-                    num_rotations=2,
+                    num_rotations=1,
                     total_frames=100)
                 model.add_positional_constraint(initial_i, args.positional_constraint_wi,
                                                 motion_type="user_defined", frame_shift=rotation_series)
@@ -964,15 +849,18 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
     left_side_verts = None
     number_pockes = 10
     total_frames_poking_frames = number_pockes *(rest_frames_per_point + poking_frames_per_point)
-    free_fall_frames = 30
+    free_fall_frames = 5
     start_stretching_frame = total_frames_poking_frames + free_fall_frames
-    stretching_frames = 50
+    stretching_frames = 20
     number_stretches = 2
     rest_frames_per_stretch = 10
+    release_stretching_frame = start_stretching_frame + 2* stretching_frames
+    start_bottom_top_rolling_frame = release_stretching_frame + rest_frames_per_stretch
+    rolling_frames = 100
 
 
     counter = 0
-    final_frame = 444 #total_frames_poking_frames +free_fall_frames + stretching_frames
+    final_frame = 600 #total_frames_poking_frames +free_fall_frames + stretching_frames
     number_recorded_frames = final_frame - 4
 
     def create_poke_z_motion_with_jumps(f_l, f_j, k, z_range=1.0):
@@ -1142,6 +1030,56 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
         motion_array = np.concatenate(motion, axis=0)  # shape: (k * (f_l + f_j), 3)
         return motion_array
 
+    def create_rotation_around_arbitrary_axis(
+            axis_vector,
+            axis_point=np.zeros(3),
+            start_frame=0,
+            num_frames=30,
+            num_rotations=1,
+            total_frames=None
+    ):
+        """
+        Rotate a point around an arbitrary axis in space over time.
+
+        Parameters:
+        - point: np.array(3,), the vertex to rotate
+        - axis_vector: np.array(3,), direction vector of the axis
+        - axis_point: np.array(3,), a point the axis passes through
+        - start_frame: int, first frame to apply rotation
+        - num_frames: int, number of frames over which rotation occurs
+        - num_rotations: int, how many full 360° rotations
+        - total_frames: int, total number of frames in animation
+
+        Returns:
+        - motion: (total_frames, 3) array of vertex positions over time
+        """
+
+        if total_frames is None:
+            total_frames = start_frame + num_frames
+
+        motion = np.zeros((total_frames, 3))
+
+        # Normalize the axis direction
+        axis_dir = axis_vector / np.linalg.norm(axis_vector)
+
+        # Generate rotation angles
+        angles = np.linspace(0, 2 * np.pi * num_rotations, num_frames, endpoint=False)
+
+        for i, theta in enumerate(angles):
+            # Rodrigues' rotation formula
+            v = -axis_point  # vector from axis_point to point
+            k = axis_dir
+
+            v_rot = (
+                    v * np.cos(theta)
+                    + np.cross(k, v) * np.sin(theta)
+                    + k * np.dot(k, v) * (1 - np.cos(theta))
+            )
+            rotated = axis_point + v_rot
+            motion[start_frame + i] = rotated
+
+        return motion
+
     def callback():
         nonlocal output_path, is_simulating, poking_series, poked_points, poking_frames_per_point, rest_frames_per_point, number_pockes, counter,\
             top_side_verts, bottom_side_verts, right_side_verts, left_side_verts
@@ -1269,14 +1207,14 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
 
             # Generate serise for streatching
             stretch_motion_top = create_xyz_stretch_motion_with_jumps(stretching_frames, rest_frames_per_stretch,
-                                                                      number_stretches, displacement_xyz=(0.0, 2.0, 0.0))
+                                                                      number_stretches, displacement_xyz=(0.0, 0.4, 0.0))
             stretch_motion_bottom = - stretch_motion_top
 
             # Apply any desired constraints
             model.immobilize()
             model.clear_constraints()
             model.reset_constraints_attributes()
-
+            #
             model.compute_sides_and_corner_indices()
             top_side_verts = model._side_surface_verts["top"]
             bottom_side_verts = model._side_surface_verts["bottom"]
@@ -1327,7 +1265,7 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
             # Generate serise for streatching
             stretch_motion_right = create_xyz_stretch_motion_with_jumps(stretching_frames, rest_frames_per_stretch,
                                                                       number_stretches,
-                                                                      displacement_xyz=(2.0, 0.0, 0.0))
+                                                                      displacement_xyz=(0.4, 0.0, 0.0))
             stretch_motion_left = - stretch_motion_right
             for v in right_side_verts:
                 model.add_positional_constraint(v, args.positional_constraint_wi,
@@ -1342,7 +1280,7 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
             solver.set_dirty()
             print("Stretching - positional constraint added to right and left sides.")
 
-        elif solver.frame == start_stretching_frame + 2* stretching_frames:
+        elif solver.frame == release_stretching_frame:
 
             print(f"Removing - positional constraint remover from top-bottom sides.")
             for v in right_side_verts:
@@ -1352,6 +1290,57 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
             for v in left_side_verts:
                 model.remove_positional_constraint(v)
                 model.picked_vert[v] = False
+            solver.set_dirty()
+
+        elif solver.frame == start_bottom_top_rolling_frame:
+            print(f"Frame: {solver.frame} Creating cloth and generating poking fames")
+
+            params.edit_system_args(args, "Cloth")
+
+            V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
+            reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
+            object_name = "cloth"
+
+            check_dir_exists(os.path.join(output_path, object_name))
+            mesh = trimesh.Trimesh(vertices=V, faces=F)
+            mesh.export(os.path.join(output_path, object_name, object_name + ".obj"))
+
+            psim.PushItemWidth(200)
+            psim.TextUnformatted("== Projective Dynamics ==")
+            psim.Separator()
+
+            top_side_verts = model.fix_surface_side_vertices(side="top", fix_it=True, return_target=True)  # fix
+            # return indices and not fix
+            bottom_side_verts = model.fix_surface_side_vertices(side="bottom", fix_it=False, return_target=True)
+
+            # Apply any desired constraints
+            model.immobilize()
+            model.clear_constraints()
+            model.reset_constraints_attributes()
+
+            print("Poking - positional constraint added to center vertex")
+            for i in range(len(bottom_side_verts)):
+                center_i = top_side_verts[i]
+                initial_i = bottom_side_verts[i]  # point on x-axis
+                rotation_series = create_rotation_around_arbitrary_axis(
+                    axis_vector=np.array([1.5, 0, 0]),
+                    axis_point=V[center_i],
+                    start_frame=10,
+                    num_frames=60,
+                    num_rotations=1,
+                    total_frames=100)
+                model.add_positional_constraint(initial_i, args.positional_constraint_wi,
+                                                motion_type="user_defined", frame_shift=rotation_series, frame_reset=solver.frame)
+
+                model.picked_vert[initial_i] = True
+
+            if args.vert_bending_constraint:
+                model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
+            if args.edge_constraint:
+                model.add_edge_spring_constrain(args.edge_constraint_wi)
+            if args.tri_strain_constraint:
+                model.add_tri_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
+
             solver.set_dirty()
 
         if counter == final_frame:

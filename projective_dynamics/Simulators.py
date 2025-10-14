@@ -1,18 +1,20 @@
-# pd/solver.py
-
 import numpy as np
-import scipy.sparse
-import scipy.sparse.linalg
-from scipy.sparse import lil_matrix
-from scipy.linalg import lu_factor, lu_solve
-from utils import check_dir_exists
+import scipy.sparse as sp
+from scipy.sparse import diags, issparse
+from scipy.linalg import lu_factor, lu_solve, eigh, solve_triangular
+from utils import check_dir_exists, compute_surface_geodesics, visualize_samples
+from lbs import ConstraintsProjectionSubspace, PositionsSubspace
 import os
 from joblib import Parallel, delayed
+from scipy.spatial import KDTree
+
 verts_bending_p = {}
 edge_spring_p = {}
 tris_strain_p = {}
 tets_strain_p = {}
 tets_deformation_gradient_p = {}
+
+
 def flatten(p: np.ndarray) -> np.ndarray:
     """
     Converts an (N, 3) matrix to a (3N,) vector by stacking rows.
@@ -25,6 +27,7 @@ def unflatten(q: np.ndarray) -> np.ndarray:
     """
     return q.reshape(-1, 3)
 
+
 class constraintProjection:
     def __init__(self, row_dim, reduced, num_components):
         self.row_dim = row_dim   # p in (px3)
@@ -35,7 +38,7 @@ class constraintProjection:
         self.solver_list = []
         self.mapped_indices_Pt = None #  when mesh is not closed, not all verts are constrained
         self.interpolation_alpha = None
-        
+
         
 class animSnapBasesSolver:
     def __init__(self, args):
@@ -46,17 +49,20 @@ class animSnapBasesSolver:
         self.dt = None
         self.frame = 0
 
-        self.reduced_position = False
+        # Positions reduction
         self.U = None # animSnap positions basis U
-        self.num_pos_basis_modes = -1
-        self.V = None # animSnap constraints projection basis V
-        self.num_constrproj_basis_blocks = -1
+        self.reduced_position = args.positions_reduced
+        if self.reduced_position:
+            self.position_reduction_type = args.position_basis_type
+            self.position_basis_num_components = args.num_position_components
+        else:
+            self.position_reduction_type = ""
+            self.position_basis_num_components = -1
 
-        # Constraint projections are reduced
+        # Constraint projections
         self.bending = constraintProjection(1, args.vert_bending_reduced, args.vert_bending_num_components)
         self.spring = constraintProjection(1, args.edge_spring_reduced, args.edge_spring_num_components)
         self.tris_strain = constraintProjection(2, args.tri_strain_reduced, args.tri_strain_num_components)
-
         self.tets_strain = constraintProjection(3, args.tet_strain_reduced, args.tet_strain_num_components)
         self.tets_deformation_gradient = constraintProjection(3, args.tet_deformation_reduced, args.tet_deformation_num_components)
 
@@ -73,6 +79,9 @@ class animSnapBasesSolver:
         self.store_stacked_projections = False
         self.record_path = ""
         self.max_p_snapshots_num = args.max_p_snapshots_num
+
+        self.snapBases_interpolation_list = {"deim_pod", "deim_pod_vectorized", "deim_pca_blocks",
+                                             "geom_pca_blocks_with_St", "adv_pca_blocks_with_St_partitioning", "adv_pca_blocks"}
 
     def set_max_p_frames(self, value:int):
         self.max_p_snapshots_num = value
@@ -120,22 +129,106 @@ class animSnapBasesSolver:
             A_triplets.append((3 * i + 2, 3 * i + 2, mass[i] * dt2_inv))
 
         rows, cols, data = zip(*A_triplets)
-        full_global_mat = scipy.sparse.csc_matrix((data, (rows, cols)), shape=(3 * N, 3 * N))   # (mass/dt^2)+ Sum_i wi SiT Si
+        full_global_mat = sp.csc_matrix((data, (rows, cols)), shape=(3 * N, 3 * N))   # (mass/dt^2)+ Sum_i wi SiT Si
 
         if not self.reduced_position:
-            self.cholesky = scipy.sparse.linalg.factorized(full_global_mat)
+            self.cholesky = sp.linalg.factorized(full_global_mat)
         else:
-            raise ValueError("animSnapBases position reduction not yet implemented")
-            # read components/basis from file
-            # global_data = np.load(basis_file)
-            #
 
-            #
-            # print("something!")
-            #
-            # self.cholesky = scipy.linalg.factorized(Ut full_global_mat U)
+            if self.position_reduction_type not in {"LBS"}:
+                raise ValueError("Position reduction not yet implemented")
+            else:
+                if self.position_reduction_type == "LBS":
+                    # self.U = compute_position_skinning_subspace(self.model.positions, self.model.faces, k = self.position_basis_num_components)
+                    pos_subspace = PositionsSubspace(self.model.positions, faces=self.model.faces,
+                                                     tets=self.model.elements, num_samples=self.position_basis_num_components)
+                    pos_subspace.create_basis_via_skinning_weights()
+                    self.U = pos_subspace.U
 
-    def prepare_reduced_group(self, has_group_constraints, reduced_group, group_name, num_components, row_dim, assembly_ST,dir, file):
+
+                    full_global_mat = self.U.T @ full_global_mat @ self.U
+                    if issparse(full_global_mat):
+                        tr = full_global_mat.diagonal().sum()
+                    else:
+                        tr = np.trace(full_global_mat)
+                    la = 1e-8 * tr / full_global_mat.shape[0]  # scale-aware lambda (to add Tikhonov regularization)
+
+                    self.cholesky = sp.linalg.factorized(full_global_mat + la * np.eye(full_global_mat.shape[0]))
+
+    def prepare_lbs_reduced_group(self, has_group_constraints, reduced_group, group_name,
+                                  group_constraints, group_aux_size, assembly_ST, num_components, specify_verts=[]):
+
+        if has_group_constraints and reduced_group:
+            group_subspace = ConstraintsProjectionSubspace(group_name,
+                                                           self.model.positions,
+                                                           self.model.faces,
+                                                           self.model.elements,
+                                                           num_components)
+            # compute skinning weights
+            group_subspace.compute_skinning_weights()
+            # compute constraint group mass matrix
+            group_subspace.compute_constraint_mass_matrix(group_name, group_constraints, self.model.mass, group_aux_size)
+
+            # compute lbs basis "V" for the constraint group
+            group_subspace.create_basis_via_skinning_weights(self.model.positions, assembly_ST, group_constraints, group_aux_size,
+                                              use_pca=False, specify_verts= specify_verts)
+
+            if not self.reduced_position or self.position_reduction_type == "LBS":
+                projecting_mat = np.einsum('ne,em->nm',assembly_ST.toarray(), group_subspace.V)
+            else:
+                raise ValueError(
+                    "LBS reduced constraint projections can be combined only with similar position reduction.")
+
+            # create a list of constrained elements and alpha points
+            # compute interpolation solvers for lbs subspace
+            group_subspace.init_constraint_group_interpolation(group_constraints,
+                                                               assembly_ST,
+                                                               aux_size=group_aux_size)
+
+            print(f"Created LBS interpolation basis via skinning weights for {group_name} of size {group_subspace.V.shape}.")
+
+            return group_subspace.alpha_points, group_subspace.sampled_constraints, projecting_mat, group_subspace.interpol_solver
+        else:
+            return [],[], None, []
+
+    def prepare_lbs_reduced_verts_bending(self):
+        self.bending.interpolation_alpha, self.bending.sampled_constraints, self.bending.projection_matrix, self.bending.solver_list = \
+            self.prepare_lbs_reduced_group(self.model.has_verts_bending_constraints, self.bending.is_reduced,
+                                       "verts_bending", self.model.verts_bending_constraints,
+                                       self.bending.row_dim, self.model.verts_bending_assembly_ST,
+                                       self.bending.num_components, specify_verts=self.model.verts_bending_indicies)
+
+    def prepare_lbs_reduced_edge_spring(self):
+        self.spring.interpolation_alpha, self.spring.sampled_constraints, self.spring.projection_matrix, self.spring.solver_list = \
+            self.prepare_lbs_reduced_group(self.model.has_edge_spring_constraints, self.spring.is_reduced,
+                                       "edge_spring", self.model.edge_spring_constraints,
+                                       self.spring.row_dim, self.model.edge_spring_assembly_ST,
+                                       self.spring.num_components)
+
+    def prepare_lbs_reduced_tris_strain(self):
+        self.tris_strain.interpolation_alpha, self.tris_strain.sampled_constraints, self.tris_strain.projection_matrix, self.tris_strain.solver_list = \
+            self.prepare_lbs_reduced_group(self.model.has_tris_strain_constraints, self.tris_strain.is_reduced,
+                                       "tris_strain", self.model.tris_strain_constraints,
+                                       self.tris_strain.row_dim, self.model.tris_strain_assembly_ST,
+                                       self.tris_strain.num_components)
+
+    def prepare_lbs_reduced_tets_strain(self):
+        self.tets_strain.interpolation_alpha, self.tets_strain.sampled_constraints, self.tets_strain.projection_matrix, self.tets_strain.solver_list = \
+            self.prepare_lbs_reduced_group(self.model.has_tets_strain_constraints, self.tets_strain.is_reduced,
+                                       "tets_strain", self.model.tets_strain_constraints,
+                                       self.tets_strain.row_dim, self.model.tets_strain_assembly_ST,
+                                       self.tets_strain.num_components)
+
+    def prepare_lbs_reduced_tets_deformation_gradient(self):
+        (self.tets_deformation_gradient.interpolation_alpha, self.tets_deformation_gradient.sampled_constraints,
+         self.tets_deformation_gradient.projection_matrix, self.tets_deformation_gradient.solver_list) = \
+            self.prepare_lbs_reduced_group(self.model.has_tets_deformation_gradient_constraints, self.tets_deformation_gradient.is_reduced,
+                                       "tets_deformation_gradient", self.model.tets_deformation_gradient_constraints,
+                                       self.tets_deformation_gradient.row_dim, self.model.tets_deformation_gradient_assembly_ST,
+                                       self.tets_deformation_gradient.num_components)
+
+    def prepare_snapshots_reduced_group(self, has_group_constraints, reduced_group, group_name, num_components,
+                                        row_dim, assembly_ST, dir, file):
         """
             # generic constraints reduction preparation for all groups except verts bending
         Args:
@@ -185,7 +278,7 @@ class animSnapBasesSolver:
 
             PtV = Vj[Pt, :, :]  # (num_interpolation_alphas > m, mp, 3)
             PtV_T = Vj[Pt, :, :].swapaxes(0, 1)  # TODO : check (m.p, m.p, 3)
-            AtA = np.einsum('nai,ami->nmi', PtV_T, PtV)
+            AtA = np.einsum('nai,ami->nmi', PtV_T, PtV)  # for normal equation solve
 
             la = 1e-8 * np.trace(AtA) / AtA.shape[0]  # scale-aware lambda (to add Tikhonov regularization)
 
@@ -200,7 +293,7 @@ class animSnapBasesSolver:
         else:
             return None, [], None, []
 
-    def prepare_reduced_verts_bending(self, dir, file):
+    def prepare_snapshots_reduced_verts_bending(self, dir, file):
         if self.model.has_verts_bending_constraints and self.bending.is_reduced:
             upload_file = os.path.join(dir, "verts_bending", file)
             local_data = np.load(upload_file)
@@ -215,6 +308,7 @@ class animSnapBasesSolver:
 
             alpha_range = local_data["interpol_alpha_ranges"][self.bending.num_components-1]
             self.bending.mapped_indices_Pt = local_data["Pt"][:alpha_range]
+            self.bending.interpolation_alpha = local_data["Pt"][:alpha_range]
             print(f"Verts bending basis file loaded with: \n Basis shape {Vj.shape} and {self.bending.mapped_indices_Pt.shape} interpolation points.")
 
             if not self.reduced_position:
@@ -235,46 +329,56 @@ class animSnapBasesSolver:
                 # for each dim store [(lu_factor(AtA), At)]
                 self.bending.solver_list.append([lu_factor(AtA[:, :, d]), PtV_T[:, :, d]])
 
-    def prepare_reduced_edge_spring(self,dir, file):
+    def prepare_snapshots_reduced_edge_spring(self,dir, file):
         self.spring.interpolation_alpha, self.spring.Pt, self.spring.projection_matrix, self.spring.solver_list = \
-        self.prepare_reduced_group(self.model.has_edge_spring_constraints, self.spring.is_reduced,
+        self.prepare_snapshots_reduced_group(self.model.has_edge_spring_constraints, self.spring.is_reduced,
                                    "edge_spring", self.spring.num_components, self.spring.row_dim,
                                    self.model.edge_spring_assembly_ST,  dir, file)
 
-    def prepare_reduced_tris_strain(self, dir, file):
+    def prepare_snapshots_reduced_tris_strain(self, dir, file):
         self.tris_strain.interpolation_alpha, self.tris_strain.Pt,  self.tris_strain.projection_matrix, self.tris_strain.solver_list = \
-            self.prepare_reduced_group(self.model.has_tris_strain_constraints, self.tris_strain.is_reduced,
+            self.prepare_snapshots_reduced_group(self.model.has_tris_strain_constraints, self.tris_strain.is_reduced,
                                        "tris_strain", self.tris_strain.num_components, self.tris_strain.row_dim,
                                        self.model.tris_strain_assembly_ST, dir, file)
 
-    def prepare_reduced_tet_strain(self, dir, file):
+    def prepare_snapshots_reduced_tets_strain(self, dir, file):
         self.tets_strain.interpolation_alpha, self.tets_strain.Pt, self.tets_strain.projection_matrix, self.tets_strain.solver_list = \
-            self.prepare_reduced_group(self.model.has_tets_strain_constraints, self.tets_strain.is_reduced,
+            self.prepare_snapshots_reduced_group(self.model.has_tets_strain_constraints, self.tets_strain.is_reduced,
                                        "tets_strain", self.tets_strain.num_components, self.tets_strain.row_dim,
                                        self.model.tets_strain_assembly_ST, dir, file)
 
-    def prepare_reduced_tet_deformation_gradient(self, dir, file):
+    def prepare_snapshots_reduced_tets_deformation_gradient(self, dir, file):
         self.tets_deformation_gradient.interpolation_alpha, self.tets_deformation_gradient.Pt, self.tets_deformation_gradient.projection_matrix, self.tets_deformation_gradient.solver_list = \
-            self.prepare_reduced_group(self.model.has_tets_deformation_gradient_constraints, self.tets_deformation_gradient.is_reduced,
+            self.prepare_snapshots_reduced_group(self.model.has_tets_deformation_gradient_constraints, self.tets_deformation_gradient.is_reduced,
                                        "tets_deformation_gradient", self.tets_deformation_gradient.num_components, self.tets_deformation_gradient.row_dim,
                                        self.model.tets_deformation_gradient_assembly_ST, dir, file)
 
     def prepare_local_term(self, args):
 
-        if self.constraint_projection_reduction_type in {"deim_pod", "deim_pod_vectorized", "deim_pca_blocks",
-                                                         "geom_pca_blocks_with_St", "adv_pca_blocks_with_St_partitioning", "adv_pca_blocks"}:
+        if self.constraint_projection_reduction_type in self.snapBases_interpolation_list:
             dir = args.geom_interpolation_basis_dir
             file = args.geom_interpolation_basis_file
+
+            Parallel(n_jobs=3, backend="threading")(
+                delayed(f)(dir, file) for f in [self.prepare_snapshots_reduced_verts_bending,
+                                                self.prepare_snapshots_reduced_edge_spring,
+                                                self.prepare_snapshots_reduced_tris_strain,
+                                                self.prepare_snapshots_reduced_tets_strain,
+                                                self.prepare_snapshots_reduced_tets_deformation_gradient]
+            )
+        elif self.constraint_projection_reduction_type in {"LBS"}:
+
+            Parallel(n_jobs=3, backend="threading")(
+                delayed(f)() for f in [self.prepare_lbs_reduced_verts_bending,
+                                    self.prepare_lbs_reduced_edge_spring,
+                                    self.prepare_lbs_reduced_tris_strain,
+                                    self.prepare_lbs_reduced_tets_strain,
+                                    self.prepare_lbs_reduced_tets_deformation_gradient]
+                )
         else:
             raise ValueError("Unknown reduction type for constraint projections")
 
-        Parallel(n_jobs=3, backend="threading")(
-            delayed(f)(dir, file) for f in [self.prepare_reduced_verts_bending,
-                                            self.prepare_reduced_edge_spring,
-                                            self.prepare_reduced_tris_strain,
-                                            self.prepare_reduced_tet_strain,
-                                            self.prepare_reduced_tet_deformation_gradient]
-        )
+
 
     def prepare(self, args, store_fom_info=False, record_path=None):
 
@@ -348,7 +452,8 @@ class animSnapBasesSolver:
         # update constraints projection term
         return ST @ p
 
-    def get_group_reduced_term(self, q_t, group_constraints, constraint_dim, constrained_alphas, constrained_Pt, projection_mat, solver_list):
+    def get_group_reduced_term(self, q_t, group_constraints, constraint_dim, constrained_alphas, constrained_Pt,
+                               projection_mat, solver_list):
         """
         Args:
             group_constraints:
@@ -364,24 +469,45 @@ class animSnapBasesSolver:
             S^T V p_tilde: otherwise
 
         """
-        if self.constraint_projection_reduction_type in {"deim_pod", "deim_pod_vectorized"}:
-            p = np.zeros((len(constrained_alphas) , 3))  # (m.p, 3)
-            for i, alpha in enumerate(constrained_alphas):
-                c = group_constraints[alpha]
-                p[i, :] = c.get_pi(q_t)[constrained_Pt[i]%constraint_dim, :]
-        else:
-            p = np.zeros((len(constrained_alphas) * constraint_dim , 3))  # (m.p, 3)
 
+        if self.constraint_projection_reduction_type in self.snapBases_interpolation_list:
+
+            if self.constraint_projection_reduction_type in {"deim_pod", "deim_pod_vectorized"}:
+                p = np.zeros((len(constrained_alphas) , 3))  # (m.p, 3)
+                for i, alpha in enumerate(constrained_alphas):
+                    c = group_constraints[alpha]
+                    p[i, :] = c.get_pi(q_t)[constrained_Pt[i]%constraint_dim, :]
+            else:
+                p = np.zeros((len(constrained_alphas) * constraint_dim , 3))  # (m.p, 3)
+
+                for i, alpha in enumerate(constrained_alphas):
+                    c = group_constraints[alpha]
+                    p[constraint_dim * i:constraint_dim * i + constraint_dim, :] = c.get_pi(q_t)
+
+            def compute_rhs_column(d):
+                return projection_mat[:, :, d] @ lu_solve(solver_list[d][0], solver_list[d][1] @p[:, d])
+
+            rhs_cols = Parallel(n_jobs=3)(delayed(compute_rhs_column)(d) for d in range(3))
+            temp = np.column_stack(rhs_cols)
+            return temp
+        elif self.constraint_projection_reduction_type in {"LBS"}:
+            p = np.zeros((len(constrained_alphas) * constraint_dim, 3))  # (m.p, 3)
             for i, alpha in enumerate(constrained_alphas):
                 c = group_constraints[alpha]
                 p[constraint_dim * i:constraint_dim * i + constraint_dim, :] = c.get_pi(q_t)
 
-        def compute_rhs_column(d):
-            return projection_mat[:, :, d] @ lu_solve(solver_list[d][0], solver_list[d][1] @p[:, d])
+                def compute_rhs_column(d):
+                    # in this case projection is only two dim mat
+                    return projection_mat @ solve_triangular(solver_list[0], solver_list[1] @ p[:, d])
 
-        rhs_cols = Parallel(n_jobs=3)(delayed(compute_rhs_column)(d) for d in range(3))
-        temp = np.column_stack(rhs_cols)
-        return temp
+                rhs_cols = Parallel(n_jobs=3)(delayed(compute_rhs_column)(d) for d in range(3))
+                temp = np.column_stack(rhs_cols)
+                return temp
+
+        else:
+            raise  ValueError("Unknown constraint projection interpolation method")
+
+
 
     def project_to_positional_constraint_manifold(self, q_t):
         if self.model.has_positional_constraints:
@@ -406,7 +532,7 @@ class animSnapBasesSolver:
                                       list=verts_bending_p)
             else:
                 return self.get_group_reduced_term(q_t, self.model.verts_bending_constraints, self.bending.row_dim,
-                                              self.bending.mapped_indices_Pt, self.bending.mapped_indices_Pt,
+                                              self.bending.interpolation_alpha, self.bending.mapped_indices_Pt,
                                               self.bending.projection_matrix, self.bending.solver_list)
         return np.zeros_like(unflatten(q_t))
 
@@ -462,12 +588,10 @@ class animSnapBasesSolver:
                                                    self.tets_deformation_gradient.solver_list)
         return np.zeros_like(unflatten(q_t))
 
-    def step(self, fext, num_iterations=10, use_3d_rhs_form=True):
+    def step(self, fext, num_iterations=1, use_3d_rhs_form=True):
         # global  verts_bending_p, edge_spring_p, tris_strain_p, tets_strain_p, tet_deformation_gradient_p
 
-        velocities = self.model.velocities
-        mass = self.model.mass
-        constraints = self.model.constraints
+
         N = self.model.positions.shape[0]
         self.model.positions_corrections = np.zeros_like(self.model.positions)
 
@@ -476,8 +600,8 @@ class animSnapBasesSolver:
         dt2 = dt * dt
         dt2_inv = 1.0 / dt2
 
-        a = fext / mass[:, None]  # elementwise divide
-        explicit = self.model.positions + dt * velocities + dt2 * a
+        a = fext / self.model.mass[:, None]  # elementwise divide
+        explicit = self.model.positions + dt * self.model.velocities + dt2 * a
 
         for v in range(self.model.positions.shape[0]):
             self.model.resolve_collision(v, explicit, self.model.positions_corrections)
@@ -486,7 +610,8 @@ class animSnapBasesSolver:
 
         masses = np.zeros(3 * N)
         for i in range(N):
-            masses[3 * i:3 * i + 3] = dt2_inv * mass[i] * sn[3 * i:3 * i + 3]
+            masses[3 * i:3 * i + 3] = dt2_inv * self.model.mass[i] * sn[3 * i:3 * i + 3]
+
 
         q = sn.copy()
 
@@ -503,12 +628,22 @@ class animSnapBasesSolver:
                                               self.project_to_tetrahedrons_strain_manifold,
                                               self.project_to_tetrahedrons_deformation_gradient_manifold])
                 b += sum(result)  # much faster and more efficient
-            else:
-                for constraint in constraints:
+
+            else:  # can be used for full sim only
+                for constraint in self.model.constraints:
                     constraint.project_wi_SiT_pi(q, b)
             b += unflatten(masses)
 
-            q = self.cholesky(b.flatten())
+
+            if self.reduced_position:
+                if self.position_reduction_type == "LBS":
+                    b = self.U.T @ b.reshape(-1)
+                    q = self.U @ self.cholesky(b.flatten())
+                else:
+                    raise ValueError("unknown position reductoin")
+
+            else:
+                q = self.cholesky(b.flatten())
 
         q_next = unflatten(q)
         q_next = self.model.resolve_self_collision_fast(q_next)
@@ -591,9 +726,9 @@ class Solver:
             A_triplets.append((3 * i + 2, 3 * i + 2, mass[i] * dt2_inv))
 
         rows, cols, data = zip(*A_triplets)
-        A = scipy.sparse.csc_matrix((data, (rows, cols)), shape=(3 * N, 3 * N))
+        A = sp.csc_matrix((data, (rows, cols)), shape=(3 * N, 3 * N))
 
-        self.cholesky = scipy.sparse.linalg.factorized(A)
+        self.cholesky = sp.linalg.factorized(A)
 
         self.set_clean()
 

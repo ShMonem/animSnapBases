@@ -90,6 +90,7 @@ class Config_parameters:
 
         parser.add_argument("--position_basis_type", type=str, default=positions_basis["name"])
         parser.add_argument("--num_position_components", type=str, default=positions_basis["num_components"])
+        parser.add_argument("--pos_radial_r_muliplier", type=str, default=positions_basis["r_muliplier"])
 
 
 
@@ -116,6 +117,10 @@ class Config_parameters:
         parser.add_argument("--tet_deformation_reduced", type=bool, default=constrProj_basis["tet_deformation_reduced"])
         parser.add_argument("--tet_deformation_num_components", type=bool,
                             default=constrProj_basis["tet_deformation_num_components"])
+
+        parser.add_argument("--constraint_radial_r_muliplier", type=str, default=constrProj_basis["r_muliplier"])
+        parser.add_argument("--constraint_basis_scale", type=str, default=constrProj_basis["basis_scale"])
+
 
         parser.add_argument("--max_p_snapshots_num", type=bool,
                             default=self.system_params["nonlinear_snapshots"]["max_p_snapshots_num"])

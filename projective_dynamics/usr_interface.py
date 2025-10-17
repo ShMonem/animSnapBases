@@ -178,8 +178,6 @@ class PreDrawHandler:
             if ps.has_surface_mesh("model"):
                 ps.remove_surface_mesh("model")
 
-            ps.register_surface_mesh("model", model.positions, model.faces, color=color, edge_width=1.0)
-
             # update_camera_to_mesh_center(model)
             # ps.reset_camera_to_home_view()
 
@@ -193,7 +191,9 @@ class PreDrawHandler:
 
 
         if fixed_indices:
+            # model.positions[fixed_indices] = model.init_positions[fixed_indices]
             fixed_positions = model.positions[fixed_indices]
+
             ps.register_point_cloud("fixed_points", fixed_positions, color=(1.0, 0.0, 0.0))
             # ps.register_point_cloud("fixed_points", model.positions[0:2], color=(1.0, 1.0, 0.0))
             ps.get_point_cloud("fixed_points").set_radius(0.01, relative=True)
@@ -209,6 +209,8 @@ class PreDrawHandler:
         else:
             if ps.has_point_cloud("picked_points"):
                 ps.remove_point_cloud("picked_points")
+
+        ps.register_surface_mesh("model", model.positions, model.faces, color=color, edge_width=1.0)
 
 
 

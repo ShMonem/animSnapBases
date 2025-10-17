@@ -57,9 +57,10 @@
     "record_projection_data": false
   },
   "position_reduction": {
-    "positions_reduced": true,
+    "positions_reduced": false,
     "name": "LBS",
-    "num_components": 70
+    "num_components": 300,
+    "r_muliplier": 8.0
   },
   "constraint_projetions_reduction": {
     "name": "LBS",
@@ -72,8 +73,10 @@
     "tri_strain_num_components": -1,
     "tet_strain_reduced": false,
     "tet_strain_num_components": 400,
-    "tet_deformation_reduced": false,
-    "tet_deformation_num_components": 70
+    "tet_deformation_reduced": true,
+    "tet_deformation_num_components": 500,
+    "r_muliplier": 8000,
+    "basis_scale": 0.08
   },
   "nonlinear_snapshots": {
     "max_p_snapshots_num": 140,

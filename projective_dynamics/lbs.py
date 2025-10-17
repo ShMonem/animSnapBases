@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.sparse as sp
 from scipy.sparse import csr_matrix, diags, vstack
-from scipy.linalg import cholesky, solve, eigh, svd
+from scipy.linalg import cholesky, solve, eigh, svd, lu_factor
 try:
     import gdist
     USE_GDIST = True
@@ -44,52 +44,19 @@ def create_skinning_space(
     tets=None,
     flat_space=False,
 ):
-    """
-    Equivalent to PD::createSkinningSpace from C++ HRPD code.
-    Builds either the position subspace (U) or constraint projection subspace (V),
-    depending on whether 'for_constraints' is provided.
-
-    Parameters
-    ----------
-    rest_positions : (N, D) np.ndarray
-        Rest-state vertex or auxiliary positions (usually 3D).
-    weights : (N, G) np.ndarray
-        Skinning weights matrix (each vertex/element's weight for G groups).
-    for_constraints : list or None
-        If provided, list of constraint objects (each has .main_vertex,
-        .main_triangle, .main_tet attributes or similar getters).
-        If None → positional subspace construction (U).
-    lines_per_constraint : int
-        Number of rows per constraint in rest_positions (auxiliary size).
-    tris : (M, 3) np.ndarray or None
-        Triangle connectivity (optional, only needed if constraints are triangle-based).
-    tets : (L, 4) np.ndarray or None
-        Tetrahedral connectivity (optional, only needed if constraints are tet-based).
-    flat_space : bool
-        If True, uses D-1 dimension (for 2D projections / flat embeddings).
-
-    Returns
-    -------
-    skinning_space : (N, G*(D+1) + 1) np.ndarray
-        The constructed skinning space matrix.
-    """
 
     if np.isnan(weights).any() or np.isnan(rest_positions).any():
-        print(" Warning: NaN detected in weights or rest positions.")
+        raise ValueError(" Warning: NaN detected in weights or rest positions.")
 
     k = weights.shape[1]
     num_rows = rest_positions.shape[0]
     dim = rest_positions.shape[1] - (1 if flat_space else 0)
-    if for_constraints is not None:
-        skinning_space = np.zeros((num_rows,(dim + 1)* k + 1), dtype=float)
-    else:
-        skinning_space = np.zeros((3*num_rows, 4 * k+1) , dtype=float)
+    skinning_space = np.zeros((num_rows, (dim + 1) * k ), dtype=float)
 
     error = False
 
     for v in range(num_rows):
         for g in range(k):
-            cur_weight = 0.0
 
             # -----------------------------
             #  Case 1: constraint-based mode (constraint projection space)
@@ -121,7 +88,7 @@ def create_skinning_space(
         return np.zeros((0, 0))
 
     # Add constant column of 1s (for affine term)
-    skinning_space[:, -1] = 1.0
+    # skinning_space[:, -1] = 1.0
 
     if np.isnan(skinning_space).any():
         print(" Warning: NaN entries in constructed skinning space!")
@@ -151,6 +118,7 @@ class Sampler:
 
     def add_source(self, index):
         self.stvd.add_source(index)
+        self.stvd.is_updated = False
         self.up_to_date = False
 
     def compute_distances(self, max_dist=-1.0, accurate=False):
@@ -180,14 +148,10 @@ class Sampler:
         for _ in range(num_samples):
             self.compute_distances()
             best_vert = np.argmax(self.distances)
-            attempt = 0
-            while best_vert in samples and attempt < self.n_vertices:
-                self.distances[best_vert] = -np.inf
+            max_dist = 0
+            for v in range(self.n_vertices):
                 best_vert = np.argmax(self.distances)
-                attempt += 1
-            if attempt >= self.n_vertices:
-                print("Sampling terminated early.")
-                return
+
             samples.append(best_vert)
             self.add_source(best_vert)
 
@@ -257,7 +221,7 @@ class Sampler:
 
 
 class PositionsSubspace:
-    def __init__(self, vertices, faces=None, tets=None, num_samples=-1):
+    def __init__(self, r_multiplier, vertices, faces=None, tets=None, num_samples=-1):
         self.U = None
         self.rest_pos = vertices
         self.faces = faces
@@ -266,21 +230,10 @@ class PositionsSubspace:
         self.vert_samples = self.sampler.get_samples(num_samples)
         self.num_components = num_samples
         self.weights = None
+        self.r_multiplier =r_multiplier
 
-    def compute_skinning_weights(self, r_factor=4.0):
+    def compute_skinning_weights(self):
         # Functions to compute LBS-subspace for positions
-        def br_cubic(t, r):
-            """Compactly supported cubic radial basis function."""
-            t = np.clip(t, 0, r)
-            return (1 - (t / r) ** 3) ** 3
-
-        def quartic_rbf(dist, r):
-            a = 1 / r ** 4
-            b = -2 / r ** 2
-            val = a * dist ** 4 + b * dist ** 2 + 1
-            val[dist >= r] = 0
-            return val
-
         """
         Compute subspace matrix U ∈ R^{n×4k} for position encoding.
 
@@ -292,38 +245,14 @@ class PositionsSubspace:
         Returns:
             U: (n, 4k) sparse matrix
         """
-        vertices = self.rest_pos
-        n = vertices.shape[0]
+        # === Step 1: Furthest Point Sampling ===
 
-        # === Step 1: Furthest Point Sampling (Euclidean approximation) ===
-        samples = [np.random.randint(n)]
-        for _ in range(1, self.num_components):
-            dists = np.min(np.linalg.norm(vertices[samples][:, None] - vertices[None, :], axis=2), axis=0)
-            next_sample = np.argmax(dists)
-            samples.append(next_sample)
-
-        samples = np.array(samples)
-
-        # === Step 2: Compute RBF weights ===
-        # Use gdist to compute distances from all samples
-        geo_dists = np.zeros((vertices.shape[0], len(samples)))
-        for i, s in enumerate(samples):
-            geo_dists[:, i] = compute_surface_geodesics(vertices, self.faces, [s])
-
-        r = r_factor * np.max(np.min(geo_dists, axis=1))
-
-        weights = quartic_rbf(geo_dists, r)
+        max_distance = self.sampler.get_sample_diameter(self.vert_samples)
+        weights = self.sampler.get_radial_base_functions(self.vert_samples, r = max_distance * self.r_multiplier, partition_of_one=True)
 
         # Normalize weights so that they sum to 1 per vertex
         weight_sums = np.sum(weights, axis=1, keepdims=True) + 1e-8
         weights /=weight_sums
-
-        # Handling Uncovered Vertices
-        for i in range(n):
-            if np.sum(weights[i, :]) < 1e-6:
-                max_idx = np.argmin(geo_dists[i, :])
-                weights[i, :] = 0
-                weights[i, max_idx] = 1
 
         return weights
 
@@ -360,7 +289,7 @@ class PositionsSubspace:
 
 
 class ConstraintsProjectionSubspace:
-    def __init__(self, constraint_name, vertices, faces=None, tets=None, num_samples=-1):
+    def __init__(self, r_multiplier, basis_scale, constraint_name, vertices, faces=None, tets=None, num_samples=-1):
         self.V = None
         self.vertices = vertices
         self.faces = faces
@@ -374,6 +303,8 @@ class ConstraintsProjectionSubspace:
         self.sampled_constraints_ids = []
         self.interpol_solver = {}
         self.alpha_points = []
+        self.r_multiplier =r_multiplier
+        self.basis_scale = basis_scale
 
     def get_sampled_constrained_elements(self):
 
@@ -494,43 +425,53 @@ class ConstraintsProjectionSubspace:
         for t in range(n_tets):
             # Average vertex weights for this tetrahedron
             tet_weights[t, :] = np.mean(vertex_weights[self.tets[t, :], :], axis=0)
-
             # Normalize (partition of unity)
             row_sum = np.sum(tet_weights[t, :])
-            if row_sum > 1e-8:
+            if row_sum > 1e-10:
                 tet_weights[t, :] /= row_sum
-            else:
-                # fallback: assign all weight to the strongest RBF
-                max_idx = np.argmax(tet_weights[t, :])
-                tet_weights[t, :] = 0.0
-                tet_weights[t, max_idx] = 1.0
+            # else:
+            #     # fallback: assign all weight to the strongest RBF
+            #     max_idx = np.argmax(tet_weights[t, :])
+            #     tet_weights[t, :] = 0.0
+            #     tet_weights[t, max_idx] = 1.0
 
         return tet_weights
 
-    def compute_skinning_weights(self, r_multiplier=1.1):
-        max_distance= self.sampler.get_sample_diameter(self.vert_samples)
+    def compute_skinning_weights(self):
+        max_distance = self.sampler.get_sample_diameter(self.vert_samples)
+        weights = self.sampler.get_radial_base_functions(self.vert_samples, r=max_distance * self.r_multiplier,
+                                                         partition_of_one=True)
+        #
+        # # Normalize weights so that they sum to 1 per vertex
+        weight_sums = np.sum(weights, axis=1, keepdims=True) + 1e-8
+        weights /= weight_sums
 
-        weights = self.sampler.get_radial_base_functions(self.vert_samples, r = max_distance*r_multiplier, partition_of_one=True)
+        # r = 4.0
+        # def br_cubic(t, r):
+        #     """Compactly supported cubic radial basis function."""
+        #     t = np.clip(t, 0, r)
+        #     return (1 - (t / r) ** 3) ** 3
 
-        # r her
         # def quartic_rbf(dist, r):
         #     a = 1 / r ** 4
         #     b = -2 / r ** 2
         #     val = a * dist ** 4 + b * dist ** 2 + 1
+        #     if val == np.nan:
+        #         fgt=0
         #     val[dist >= r] = 0
         #     return val
-        #
-        # """
-        # Compute subspace matrix U ∈ R^{n×4k} for position encoding.
-        #
-        # Parameters:
-        #     vertices: (n, 3) array of vertex positions
-        #     k: number of sample points (i.e. handles)
-        #     r_factor: scaling for support radius r
-        #
-        # Returns:
-        #     U: (n, 4k) sparse matrix
-        # """
+
+        """
+        Compute subspace matrix U ∈ R^{n×4k} for position encoding.
+
+        Parameters:
+            vertices: (n, 3) array of vertex positions
+            k: number of sample points (i.e. handles)
+            r_factor: scaling for support radius r
+
+        Returns:
+            U: (n, 4k) sparse matrix
+        """
         # vertices = self.vertices
         # n = vertices.shape[0]
         #
@@ -551,7 +492,7 @@ class ConstraintsProjectionSubspace:
         #
         # r = r_multiplier * np.max(np.min(geo_dists, axis=1))
         #
-        # weights = quartic_rbf(geo_dists, r)
+        # weights = br_cubic(geo_dists, r)
         #
         # # Normalize weights so that they sum to 1 per vertex
         # weight_sums = np.sum(weights, axis=1, keepdims=True) + 1e-8
@@ -591,6 +532,8 @@ class ConstraintsProjectionSubspace:
         Returns:
             M_diag: (len(constraints)*aux_size,) numpy array of diagonal mass entries
         """
+
+
         num_constraints = len(constraints)
         M_diag = np.zeros(num_constraints * aux_size)
 
@@ -606,11 +549,10 @@ class ConstraintsProjectionSubspace:
 
     def snapshot_pca(self, Y, specify_verts):
         """
-        Perform mass-weighted PCA (Method of Snapshots) equivalent to PD::snapshotPCA.
-
+        Perform mass-weighted PCA
         Args:
             Y: (m, s) snapshot matrix (each column = constraint-space feature)
-            masses_diag: (m,) mass weights vector
+            masses_diag: (m, ) mass weights vector
             size: number of principal components to keep
 
         Returns:
@@ -618,6 +560,8 @@ class ConstraintsProjectionSubspace:
         """
         # Step 1: remove column-wise mean
         Y_centered = Y - Y.mean(axis=0, keepdims=True)
+        factor =1 / (np.std(Y_centered))
+        Y_centered *=factor
 
         # Step 2: compute A = Y^T M Y
         if specify_verts:
@@ -629,20 +573,18 @@ class ConstraintsProjectionSubspace:
         # Step 3: eigendecomposition
         vals, vecs = eigh(A)
 
+        temp =vals/ np.max(vals)
+        # pick eigenvalues above tol
+        mask = temp > 1e-14
+        valid_indices = np.where(mask)[0]
+        vals, vecs = vals[valid_indices], vecs[:, valid_indices]
         # Sort in descending order
         idx = np.argsort(vals)[::-1]
         vals, vecs = vals[idx], vecs[:, idx]
 
-        # # Step 4: keep top 'size' modes
-        # vals, vecs = vals[:self.num_components], vecs[:, :self.num_components]
-
         # Step 5: compute PCA basis = Y * u / sqrt(lambda)
-        base = Y_centered @ (vecs / np.sqrt(vals + 1e-12))
-
-        # Step 6: add global translation vector
-        base[:, -1] = 1.0
-
-        self.V = base
+        base = Y_centered @ (vecs / np.sqrt(vals))
+        return base
 
     def create_skinning_space_constraints(self, rest_state_aux, skinning_weights, constraints, aux_size):
 
@@ -652,19 +594,20 @@ class ConstraintsProjectionSubspace:
         """
         num_basis = skinning_weights.shape[1]
         num_rows, dim = rest_state_aux.shape
-        Y = np.zeros((num_rows, num_basis * (dim + 1) + 1))
+        Y = np.zeros((num_rows, num_basis * (dim + 1)))
 
         for i, c in enumerate(constraints):
             for g in range(num_basis):
                 # Find which element the constraint refers to
                 cur_weight = skinning_weights[c.id, g]
+                if cur_weight < 1e-8:
+                    continue
                 for v in range(aux_size):
+                    row = i * aux_size + v
                     for d in range(dim):
-                        Y[i*aux_size+ v, g * (dim + 1) + d] = rest_state_aux[i*aux_size+ v, d] * cur_weight
-                    Y[i*aux_size+ v, g * (dim + 1) + dim] = cur_weight
+                        Y[row, g * (dim + 1) + d] = rest_state_aux[row, d] * cur_weight
+                    Y[row, g * (dim + 1) + dim] = cur_weight
 
-        # Final column = constant 1
-        Y[:, -1] = 1.0
         return Y
 
     def create_basis_via_skinning_weights(self, rest_positions, assembly_ST, constraints, aux_size,
@@ -682,39 +625,57 @@ class ConstraintsProjectionSubspace:
         Y = self.create_skinning_space_constraints(rest_state_aux, self.weights, constraints, aux_size)
         # Y = create_skinning_space(rest_state_aux, self.weights, constraints, aux_size, self.faces, self.tets)
 
-        # n = rest_state_aux.shape[0]
+        n = rest_state_aux.shape[0]
         # # === Step 3: Build U matrix ===
         # row_idx = []
         # col_idx = []
         # data = []
         #
-        # for i in range(n//aux_size):  # row
+        # for i , c in enumerate(constraints):  # row
         #     for pi in range(aux_size):  # for each vertex in the element
         #         row = i * aux_size + pi
-        #         for j in range(self.num_components): # col
-        #             w = self.weights[i//aux_size, j]
+        #         # print(f"row {row}", end="")
+        #         for j in range(self.num_components): #
+        #             w = self.weights[c.id, j]  # weight at constraint i for basis j
         #             if w < 1e-6:
         #                 continue
         #
         #             row_idx.append(row)
+        #             # print(f" col {j * 4 + 3} --w,", end="")
         #             col_idx.append(j * 4 + 3)
         #             data.append(w)
         #
         #             # === Extra affine/shear component ===
         #             for d in range(3):
+        #                 val = w * rest_state_aux[row,d]
+        #
+        #                 # if val < 1e-6:
+        #                 #      continue
+        #                 # print(val)
         #                 row_idx.append(row)
         #                 col_idx.append(j * 4 + d)
-        #                 data.append(w * rest_state_aux[row,d])  # simplified dot with [1,1,1]
+        #                 # print(f" col {j * 4 + d}--w.pos", end="")
+        #                 data.append(val)
         #
-        # Y = sp.coo_matrix((data, (row_idx, col_idx)), shape=(n, 4 * self.num_components)).tocsr()
-        #
+        # Y = sp.csr_matrix((np.array(data), (np.array(row_idx), np.array(col_idx))),
+        #               shape=(n, 4 * self.num_components)).toarray()
+
+        check_matrix_health(Y, "constraint projection basis")
+        # print(Y)
+
         # (4) Perform PCA or not
         if use_pca:
-            self.V = self.snapshot_pca(Y, specify_verts)
-        else:
-            self.V = Y
+            Y = self.snapshot_pca(Y, specify_verts)
+            # Final column is constant
+            # factor = 1/(np.std(Y) *Y.shape[1])
+            self.V = self.basis_scale * np.hstack((Y, np.ones((n, 1))))   # TODO: understand it!
 
-        check_matrix_health(self.V, "constraint projection basis")
+        else:
+            # Final column is constant
+            self.V = np.hstack((Y, np.ones((n, 1))))
+
+        print("")
+
 
     def init_constraint_group_interpolation(self,
                            constraints,
@@ -736,7 +697,7 @@ class ConstraintsProjectionSubspace:
             for j in range(aux_size):
                 idx = i * aux_size + j
                 weights[idx] = c.wi   # constraint weight
-        # W = diags(weights)
+        W = diags(weights)
 
         # Selection matrix (sampled constraints only)
         rows, cols, vals = [], [], []
@@ -745,8 +706,7 @@ class ConstraintsProjectionSubspace:
 
         # get ids of elements that touch any of the sampled verts
         self.get_sampled_constrained_elements()
-
-        included_samples = []
+        assert len(self.sampled_constraints_ids) == len(set(self.sampled_constraints_ids))
         for i, c in enumerate(constraints):
             if c.id in self.sampled_constraints_ids and len(sampled_constraints) < len(self.vert_samples) :
                 sampled_constraints.append(c)
@@ -758,25 +718,21 @@ class ConstraintsProjectionSubspace:
                     vals.append(1.0)
 
         J_sel = csr_matrix((vals, (rows, cols)),
-                           shape=(aux_size*len(self.sampled_constraints_ids), aux_size*n_constraints))
+                           shape=(aux_size*len(self.sampled_constraints_ids), aux_size*n_constraints)).toarray()
         self.sampled_constraints = sampled_constraints
         # --------------------------------------------------------
-        # Compute linear interpolation matrices
+        # Compute interpolation matrices
         # --------------------------------------------------------
-        # S = assembly_matrix.tocsr()
         JTJ = J_sel.T @ J_sel
 
-
-        if regularization_weight > 0 and self.mass is not None:
-            lhs = self.V.T @ ((JTJ + regularization_weight * self.mass) @ self.V)
-        else:
-            lhs = self.V.T @ (JTJ @ self.V)
+        lhs = self.V.T @ (JTJ @ self.V)
 
         rhs = self.V.T @ J_sel.T
 
         # Factorize LHS
-        chol_L = cholesky(lhs + 1e-12 * np.eye(lhs.shape[0]), lower=True)
+        chol_L = cholesky(lhs + 1e-8 * np.eye(lhs.shape[0]), lower=True)
 
         # Store solver data
         self.interpol_solver = [chol_L, rhs]
         self.alpha_points = alpha
+        # self.V = W @ self.V

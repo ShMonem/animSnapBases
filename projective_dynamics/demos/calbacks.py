@@ -205,7 +205,7 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
         elif solver.frame == 80:
             print("Frame 10: Releasing right side")
             model.release_surface_side_vertices(side="right")
-        #
+
         # elif solver.frame == 140:
         #     print("Frame 30: Releasing all corners")
         #     model.release_cloth_corners(side="top")

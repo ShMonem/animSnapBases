@@ -857,7 +857,11 @@ class DeformableMesh:
         self.elements = np.array(elements) if elements is not None else np.empty((0, 4), dtype=int)
 
         n = self.positions.shape[0]
-        self.mass = np.ones(n) if masses is None else np.array(masses)
+        import igl
+        m = igl.massmatrix(self.positions, self.faces, igl.MASSMATRIX_TYPE_VORONOI)
+        # vertex_masses = np.diag(m.todense())
+
+        self.mass = np.diag(m.todense()).copy() if masses is None else np.array(masses)
         self.mass_init = self.mass.copy()
         self.velocities = np.zeros_like(self.positions)
 

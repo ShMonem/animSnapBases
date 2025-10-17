@@ -48,6 +48,7 @@ class animSnapBasesSolver:
         self.cholesky = None
         self.dt = None
         self.frame = 0
+        self.args = args
 
         # Positions reduction
         self.U = None # animSnap positions basis U
@@ -140,7 +141,7 @@ class animSnapBasesSolver:
             else:
                 if self.position_reduction_type == "LBS":
                     # self.U = compute_position_skinning_subspace(self.model.positions, self.model.faces, k = self.position_basis_num_components)
-                    pos_subspace = PositionsSubspace(self.model.positions, faces=self.model.faces,
+                    pos_subspace = PositionsSubspace(self.args.pos_radial_r_muliplier,self.model.positions, faces=self.model.faces,
                                                      tets=self.model.elements, num_samples=self.position_basis_num_components)
                     pos_subspace.create_basis_via_skinning_weights()
                     self.U = pos_subspace.U
@@ -159,7 +160,9 @@ class animSnapBasesSolver:
                                   group_constraints, group_aux_size, assembly_ST, num_components, specify_verts=[]):
 
         if has_group_constraints and reduced_group:
-            group_subspace = ConstraintsProjectionSubspace(group_name,
+            group_subspace = ConstraintsProjectionSubspace(self.args.constraint_radial_r_muliplier,
+                                                           self.args.constraint_basis_scale,
+                                                           group_name,
                                                            self.model.positions,
                                                            self.model.faces,
                                                            self.model.elements,
@@ -167,11 +170,11 @@ class animSnapBasesSolver:
             # compute skinning weights
             group_subspace.compute_skinning_weights()
             # compute constraint group mass matrix
-            group_subspace.compute_constraint_mass_matrix(group_name, group_constraints, self.model.mass, group_aux_size)
+            group_subspace.compute_constraint_mass_matrix(group_name, group_constraints, self.model.mass_init, group_aux_size)
 
             # compute lbs basis "V" for the constraint group
             group_subspace.create_basis_via_skinning_weights(self.model.positions, assembly_ST, group_constraints, group_aux_size,
-                                              use_pca=False, specify_verts= specify_verts)
+                                              use_pca=True, specify_verts= specify_verts)
 
             if not self.reduced_position or self.position_reduction_type == "LBS":
                 projecting_mat = np.einsum('ne,em->nm',assembly_ST.toarray(), group_subspace.V)
@@ -496,13 +499,13 @@ class animSnapBasesSolver:
                 c = group_constraints[alpha]
                 p[constraint_dim * i:constraint_dim * i + constraint_dim, :] = c.get_pi(q_t)
 
-                def compute_rhs_column(d):
-                    # in this case projection is only two dim mat
-                    return projection_mat @ solve_triangular(solver_list[0], solver_list[1] @ p[:, d])
+            def compute_rhs_column(d):
+                # in this case projection is only two dim mat
+                return solve_triangular(solver_list[0], solver_list[1] @ p[:, d])
 
-                rhs_cols = Parallel(n_jobs=3)(delayed(compute_rhs_column)(d) for d in range(3))
-                temp = np.column_stack(rhs_cols)
-                return temp
+            rhs_cols = Parallel(n_jobs=3)(delayed(compute_rhs_column)(d) for d in range(3))
+            temp = np.column_stack(rhs_cols)
+            return projection_mat @ temp
 
         else:
             raise  ValueError("Unknown constraint projection interpolation method")

@@ -617,7 +617,7 @@ class ConstraintsProjectionSubspace:
         PD::RHSInterpolationGroup::createBasisViaSkinningWeights
         """
         # (1) Compute rest-state auxiliaries (simplified, assuming S = identity if constraints already map properly)
-        rest_state_aux = assembly_ST.T @ rest_positions.copy()
+        rest_state_aux = assembly_ST.to_dense().cpu().detach().numpy().T @ rest_positions.copy()
 
         check_matrix_health(rest_state_aux, "aux_rest")
         # (2) Build constraint-space skinning matrix Y
@@ -672,7 +672,11 @@ class ConstraintsProjectionSubspace:
 
         else:
             # Final column is constant
-            self.V = np.hstack((Y, np.ones((n, 1))))
+            # Y_centered = Y - Y.mean(axis=0, keepdims=True)
+            # factor = self.basis_scale / (np.std(Y_centered))
+            # Y_centered *= factor
+            print(1/Y.max()**2, 1/(Y.std()**2) )
+            self.V = self.basis_scale *np.hstack((Y, np.ones((n, 1))))
 
         print("")
 
@@ -702,7 +706,6 @@ class ConstraintsProjectionSubspace:
         # Selection matrix (sampled constraints only)
         rows, cols, vals = [], [], []
         sampled_constraints = []
-        alpha = []
 
         # get ids of elements that touch any of the sampled verts
         self.get_sampled_constrained_elements()
@@ -710,7 +713,6 @@ class ConstraintsProjectionSubspace:
         for i, c in enumerate(constraints):
             if c.id in self.sampled_constraints_ids and len(sampled_constraints) < len(self.vert_samples) :
                 sampled_constraints.append(c)
-                alpha.append(c.id)
                 r = len(sampled_constraints) - 1
                 for d in range(aux_size):
                     rows.append(r*aux_size+d)
@@ -734,5 +736,4 @@ class ConstraintsProjectionSubspace:
 
         # Store solver data
         self.interpol_solver = [chol_L, rhs]
-        self.alpha_points = alpha
         # self.V = W @ self.V

@@ -13,7 +13,7 @@ from Constraint_projections import DeformableMesh
 from geometry import get_simple_bar_model, get_simple_cloth_model, get_simple_bar_model_with_surface_points_only, compute_lumped_mass_matrix
 from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler, PickingState
 
-from Simulators import animSnapBasesSolver, Solver
+from Simulators import animSnapBasesSolver, animSnapSolverTorch, Solver
 import trimesh
 import meshio
 from utils import check_dir_exists, read_mesh_file
@@ -70,6 +70,8 @@ def get_solver_class_from_name(args):
         return animSnapBasesSolver(args)
     elif args.solver == "Solver":
         return Solver()
+    elif args.solver == "animSnapSolverTorch":
+        return animSnapSolverTorch(args)
     else:
         raise ValueError("Unknown solver name")
 
@@ -91,7 +93,8 @@ def reset_simulation_model(V, F, T, should_rescale=False, params=None):
     fext = np.zeros_like(V)
 
     ps.remove_all_structures()
-    ps.register_surface_mesh("model", model.positions, model.faces, enabled=True)
+    ps.register_surface_mesh("model", model.positions,
+                             model.faces, enabled=True)
     ps.get_surface_mesh("model").set_selection_mode("vertices_only")  # or "vertex_only"
 
     ps.set_ground_plane_mode("shadow_only")  # set +Z as up direction
@@ -144,22 +147,19 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
             model.fix_surface_side_vertices(side="left")
             model.fix_surface_side_vertices(side="right")
 
-            # Apply any desired constraints
-            model.immobilize()
-            model.clear_constraints()
-            model.reset_constraints_attributes()
 
-            if args.vert_bending_constraint:
-                model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
-            if args.edge_constraint:
-                model.add_edge_spring_constrain(args.edge_constraint_wi)
-            if args.tri_strain_constraint:
-                model.add_tri_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
-            if args.tet_strain_constraint:
-                model.add_tet_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
-            if args.tet_deformation_constraint:
-                model.add_tet_constrain_deformation_gradient(args.deformation_gradient_constraint_wi)
-            # if recording snapshots build output file name/ path
+
+            # if args.vert_bending_constraint:
+            #     model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
+            # if args.edge_constraint:
+            #     model.add_edge_spring_constrain(args.edge_constraint_wi)
+            # if args.tri_strain_constraint:
+            #     model.add_tri_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
+            # if args.tet_strain_constraint:
+            #     model.add_tet_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
+            # if args.tet_deformation_constraint:
+            #     model.add_tet_constrain_deformation_gradient(args.deformation_gradient_constraint_wi)
+            # # if recording snapshots build output file name/ path
             if record_fom_info:
                 constrproj_case = "constraint_projection/FOM"
                 if solver.has_reduced_constraint_projectios:
@@ -1400,9 +1400,9 @@ def interacrive_testing_callback(args, record_fom_info = False, params=None):
                 params.edit_system_args(args, "Bar")
 
                 if psim.Button("Compute##Bar"):
-                    V, T, F, _ = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
+                    V, T, F = read_mesh_file("../data/bar.mesh")
                     reset_simulation_model(V, F, T, should_rescale=True)
-                    object_name = "Bar"
+                    object_name = "bar"
 
                 psim.TreePop()
             if psim.TreeNode("Cloth"):
@@ -1411,15 +1411,21 @@ def interacrive_testing_callback(args, record_fom_info = False, params=None):
 
                 if psim.Button("Compute##Cloth"):
                     V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
-                    reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
+                    reset_simulation_model(V, F, None, should_rescale=True)
                     object_name = "Cloth"
+
+                psim.TreePop()
+
+            if psim.TreeNode("Bunny"):
+                if psim.Button("Compute##Bunny"):
+                    V, T, F = read_mesh_file("../data/spot.mesh")
+                    reset_simulation_model(V, F, T, should_rescale=True)
+                    object_name = "Bunny"
 
                 psim.TreePop()
 
             if model is not None:
                 set_up_mouse_handler(args, model, fext)
-
-
                 psim.BulletText(f"Vertices: {model.positions.shape[0]}")
                 psim.BulletText(f"Triangles: {model.faces.shape[0]}")
                 psim.BulletText(f"Edges: {model.count_edges(model.faces)}")
@@ -1466,20 +1472,20 @@ def interacrive_testing_callback(args, record_fom_info = False, params=None):
                 if psim.Button("Apply##Constraints"):
                     model.immobilize()
                     model.clear_constraints()
-                    model.reset_constraints_attributes()
+                    # model.reset_constraints_attributes()
                     solver.set_dirty()
                     # ---------------------------------------------------------------------------------------------------
 
                     # used for Bar
                     if args.fix_left_side and not args._fix_left_triggered:
-                        model.fix_surface_side_vertices(side="left", args=args)
+                        model.fix_surface_side_vertices(side="left")
                         args._fix_left_triggered = True
                     elif args._fix_left_triggered and not args.fix_left_side:
                         model.release_surface_side_vertices(side="left")
                         args._fix_left_triggered = False
 
                     if args.fix_right_side and not args._fix_right_triggered:
-                        model.fix_surface_side_vertices(side="right", args=args)
+                        model.fix_surface_side_vertices(side="right")
                         args._fix_right_triggered = True
                     elif args._fix_right_triggered and not args.fix_right_side:
                         model.release_surface_side_vertices(side="right")
@@ -1515,24 +1521,6 @@ def interacrive_testing_callback(args, record_fom_info = False, params=None):
                         model.release_cloth_corners(side="left")
                         args._fix_left_corners_triggered = False
                     # ---------------------------------------------------------------------------------------------------
-                    if args.vert_bending_constraint:
-                        model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
-                    if args.edge_constraint:
-                        model.add_edge_spring_constrain(args.edge_constraint_wi)
-
-                    if args.tri_strain_constraint:
-                        model.add_tri_constrain_strain(
-                            args.sigma_min,
-                            args.sigma_max,
-                            args.strain_limit_constraint_wi)
-
-                    if args.tet_deformation_constraint:
-                        model.add_tet_constrain_deformation_gradient(args.deformation_gradient_constraint_wi)
-                    if args.tet_strain_constraint:
-                        model.add_tet_constrain_strain(
-                            args.sigma_min,
-                            args.sigma_max,
-                            args.strain_limit_constraint_wi)
 
                 psim.BulletText(f"no. Constraints: {len(model.constraints)}")
                 psim.TreePop()

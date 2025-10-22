@@ -32,7 +32,6 @@
   "constraints": {
     "apply_constraints": false,
     "vert_bending_constraint": false,
-
     "edge_spring_constraint": false,
     "tri_strain_constraint": false,
     "tet_strain_constraint": false,
@@ -74,9 +73,9 @@
     "tet_strain_reduced": false,
     "tet_strain_num_components": 400,
     "tet_deformation_reduced": true,
-    "tet_deformation_num_components": 500,
-    "r_muliplier": 8000,
-    "basis_scale": 0.08
+    "tet_deformation_num_components": 600,
+    "r_muliplier": 20,
+    "basis_scale": 0.00002
   },
   "nonlinear_snapshots": {
     "max_p_snapshots_num": 140,

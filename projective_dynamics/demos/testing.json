@@ -19,23 +19,23 @@
       "dt": 0.016,
     "solver_iterations": 10
     },
-  "physics_params": {
+   "physics_params": {
     "mass_per_particle": 10.0,
-    "positional_constraint_wi": 1000000000,
-    "edge_constraint_wi": 1000000.0,
+    "positional_constraint_wi": 0,
+    "edge_constraint_wi": 1000.0,
     "vert_bending_constraint_wi": 0.1,
-    "deformation_gradient_constraint_wi": 0,
-    "strain_limit_constraint_wi": 0.01,
+    "deformation_gradient_constraint_wi": 100000000.0,
+    "strain_limit_constraint_wi": 1000000,
     "sigma_min": 0.99,
     "sigma_max": 1.01
   },
   "constraints": {
-    "apply_constraints": true,
-    "vert_bending_constraint": true,
-    "edge_spring_constraint": true,
-    "tri_strain_constraint": true,
+    "apply_constraints": false,
+    "vert_bending_constraint": false,
+    "edge_spring_constraint": false,
+    "tri_strain_constraint": false,
     "tet_strain_constraint": false,
-    "tet_deformation_constraint": false,
+    "tet_deformation_constraint": true,
 
     "is_gravity_active": true,
 
@@ -55,8 +55,14 @@
     "_fix_bottom_corners_triggered": false,
     "record_projection_data": false
   },
+  "position_reduction": {
+    "positions_reduced": false,
+    "name": "LBS",
+    "num_components": 300,
+    "r_muliplier": 6.1
+  },
   "constraint_projetions_reduction": {
-    "name": "",
+    "name": "LBS",
     "properties": "",
     "vert_bending_reduced": false,
     "num_verts_bending_components": -1,
@@ -66,8 +72,10 @@
     "tri_strain_num_components": -1,
     "tet_strain_reduced": false,
     "tet_strain_num_components": -1,
-    "tet_deformation_reduced": false,
-    "tet_deformation_num_components": -1
+    "tet_deformation_reduced": true,
+    "tet_deformation_num_components": 600,
+    "r_muliplier": 20,
+    "basis_scale": 0.08
   },
     "nonlinear_snapshots": {
     "max_p_snapshots_num": 360,

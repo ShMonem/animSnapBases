@@ -3,7 +3,8 @@ import polyscope as ps
 import config
 import argparse
 
-
+import cProfile
+import pstats
 def main(args, record_fom_info = False, case=None, params=None):
 
     import demos.calbacks
@@ -57,7 +58,7 @@ if __name__ == '__main__':
     from config import Config_parameters
 
     param = Config_parameters()
-    example = "cloth_automated_bend_spring_strain_snapshots"
+    example = "bar_automated_deformationgradient"
 
     param.reset_parameters("demos/"+example+".json")
 
@@ -83,7 +84,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     record_projection_data = False #args.record_projection_data
-    main(args,
-         record_fom_info = record_projection_data,
-         case = example,
-         params = param)
+    with cProfile.Profile() as pr:
+        main(args,
+             record_fom_info = record_projection_data,
+             case = example,
+             params = param)
+
+    stats = pstats.Stats(pr)
+    stats.sort_stats(pstats.SortKey.TIME).print_stats(100)

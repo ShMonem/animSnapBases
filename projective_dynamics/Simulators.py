@@ -7,6 +7,8 @@ from lbs import ConstraintsProjectionSubspace, PositionsSubspace
 import os
 from joblib import Parallel, delayed
 from scipy.spatial import KDTree
+import torch
+
 
 verts_bending_p = {}
 edge_spring_p = {}
@@ -76,6 +78,7 @@ class animSnapBasesSolver:
         self.constraint_projection_reduction_type = args.constraint_projection_basis_type
 
         self.constraint_projection_ready = False
+        self.constraints_ready = False
 
         self.store_stacked_projections = False
         self.record_path = ""
@@ -104,6 +107,28 @@ class animSnapBasesSolver:
 
     def ready(self):
         return not self.dirty
+
+    def set_model_constraints(self):
+
+        if self.args.vert_bending_constraint:
+            self.model.add_vertex_bending_constraint(self.args.vert_bending_constraint_wi)
+        if self.args.edge_constraint:
+            self.model.add_edge_spring_constrain(self.args.edge_constraint_wi)
+
+        if self.args.tri_strain_constraint:
+            self.model.add_tri_constrain_strain(
+                self.args.sigma_min,
+                self.args.sigma_max,
+                self.args.strain_limit_constraint_wi)
+
+        if self.args.tet_deformation_constraint:
+            self.model.add_tet_constrain_deformation_gradient(self.args.deformation_gradient_constraint_wi)
+        if self.args.tet_strain_constraint:
+            self.model.add_tet_constrain_strain(
+                self.args.sigma_min,
+                self.args.sigma_max,
+                self.args.strain_limit_constraint_wi)
+
 
     def prepare_global_matrix(self, args):
         """
@@ -170,14 +195,14 @@ class animSnapBasesSolver:
             # compute skinning weights
             group_subspace.compute_skinning_weights()
             # compute constraint group mass matrix
-            group_subspace.compute_constraint_mass_matrix(group_name, group_constraints, self.model.mass_init, group_aux_size)
+            group_subspace.compute_constraint_mass_matrix(group_name, group_constraints, self.model.mass, group_aux_size)
 
             # compute lbs basis "V" for the constraint group
             group_subspace.create_basis_via_skinning_weights(self.model.positions, assembly_ST, group_constraints, group_aux_size,
-                                              use_pca=True, specify_verts= specify_verts)
+                                              use_pca=False, specify_verts= specify_verts)
 
             if not self.reduced_position or self.position_reduction_type == "LBS":
-                projecting_mat = np.einsum('ne,em->nm',assembly_ST.toarray(), group_subspace.V)
+                projecting_mat = np.einsum('ne,em->nm',assembly_ST.to_dense().cpu().detach().numpy(), group_subspace.V)
             else:
                 raise ValueError(
                     "LBS reduced constraint projections can be combined only with similar position reduction.")
@@ -190,7 +215,7 @@ class animSnapBasesSolver:
 
             print(f"Created LBS interpolation basis via skinning weights for {group_name} of size {group_subspace.V.shape}.")
 
-            return group_subspace.alpha_points, group_subspace.sampled_constraints, projecting_mat, group_subspace.interpol_solver
+            return group_subspace.sampled_constraints_ids, group_subspace.sampled_constraints, projecting_mat, group_subspace.interpol_solver
         else:
             return [],[], None, []
 
@@ -385,6 +410,8 @@ class animSnapBasesSolver:
 
     def prepare(self, args, store_fom_info=False, record_path=None):
 
+
+
         def store_assembly_matrices():
             """store a .npz contains assembly matrices for all used constraint types"""
             if store_fom_info:
@@ -414,18 +441,30 @@ class animSnapBasesSolver:
 
             np.savez(os.path.join(record_path , file_name+".npz") , **matrices)
 
+
         if store_fom_info:
             store_assembly_matrices()
             self.set_store_p(store_fom_info)
+
+        if not self.constraints_ready:
+            # called only once
+            # Apply any desired constraints
+            self.model.immobilize()
+            self.model.clear_constraints()
+            self.model.reset_constraints_attributes()
+            # sets constraints from args
+            self.set_model_constraints()
+            self.constraints_ready = True
+
+        if self.has_reduced_constraint_projections and not self.constraint_projection_ready:
+            self.prepare_local_term(args)
+            self.constraint_projection_ready = True
 
         if self.dirty:
             # global term computation is called every time mass matrix is changed
             self.prepare_global_matrix(args)
 
-        if self.has_reduced_constraint_projections and not self.constraint_projection_ready:
-            # called only once
-            self.prepare_local_term(args)
-            self.constraint_projection_ready = True
+
 
         self.set_clean()
     #-------------------------------------------------------------------------------------------------------------------
@@ -441,9 +480,15 @@ class animSnapBasesSolver:
         Returns:
             ST p: full "non-reduced" constraint projection computation for one constraint group
         """
-        p = np.zeros((ST.shape[1], 3))
+        # p = np.zeros((ST.shape[1], 3))
+        # for i, c in enumerate(group_constraints):
+        #     p[constraint_dim * i:constraint_dim * i + constraint_dim, :]  = c.get_pi(q_t)
+
+        p = torch.zeros((ST.shape[1], 3), dtype=torch.float32, device=ST.device)
         for i, c in enumerate(group_constraints):
-            p[constraint_dim * i:constraint_dim * i + constraint_dim, :]  = c.get_pi(q_t)
+            p[constraint_dim * i:constraint_dim * i + constraint_dim, :] = torch.as_tensor(c.get_pi(q_t),
+                                                                                           dtype=torch.float32,
+                                                                                           device=ST.device)
 
         if self.store_stacked_projections:
             list[str(self.frame)] = p
@@ -453,12 +498,15 @@ class animSnapBasesSolver:
                 print(f"Frame {self.frame} : FOM snapshots stored to directory", os.path.join(self.record_path, name + ".npz") )
 
         # update constraints projection term
-        return ST @ p
+        # if ST is sparse:
+        result = torch.sparse.mm(ST, p).cpu().detach().numpy()
+        return result #ST @ p
 
     def get_group_reduced_term(self, q_t, group_constraints, constraint_dim, constrained_alphas, constrained_Pt,
-                               projection_mat, solver_list):
+                               projection_mat, solver_list, constrained_samples=None):
         """
         Args:
+            constrained_samples:
             group_constraints:
             constraint_dim:
             constrained_alphas:
@@ -495,9 +543,14 @@ class animSnapBasesSolver:
             return temp
         elif self.constraint_projection_reduction_type in {"LBS"}:
             p = np.zeros((len(constrained_alphas) * constraint_dim, 3))  # (m.p, 3)
-            for i, alpha in enumerate(constrained_alphas):
-                c = group_constraints[alpha]
-                p[constraint_dim * i:constraint_dim * i + constraint_dim, :] = c.get_pi(q_t)
+
+            if constrained_samples is not None:
+                for i, c in enumerate(constrained_samples):
+                    p[constraint_dim * i:constraint_dim * i + constraint_dim, :] = c.get_pi(q_t)
+            else:
+                for i, alpha in enumerate(constrained_alphas):
+                    c = group_constraints[alpha]
+                    p[constraint_dim * i:constraint_dim * i + constraint_dim, :] = c.get_pi(q_t)
 
             def compute_rhs_column(d):
                 # in this case projection is only two dim mat
@@ -588,12 +641,10 @@ class animSnapBasesSolver:
                 return self.get_group_reduced_term(q_t, self.model.tets_deformation_gradient_constraints, self.tets_deformation_gradient.row_dim,
                                                    self.tets_deformation_gradient.interpolation_alpha, self.tets_deformation_gradient.Pt,
                                                    self.tets_deformation_gradient.projection_matrix,
-                                                   self.tets_deformation_gradient.solver_list)
+                                                   self.tets_deformation_gradient.solver_list, )
         return np.zeros_like(unflatten(q_t))
 
     def step(self, fext, num_iterations=1, use_3d_rhs_form=True):
-        # global  verts_bending_p, edge_spring_p, tris_strain_p, tets_strain_p, tet_deformation_gradient_p
-
 
         N = self.model.positions.shape[0]
         self.model.positions_corrections = np.zeros_like(self.model.positions)
@@ -655,6 +706,184 @@ class animSnapBasesSolver:
         self.model.positions = q_next
         print(self.frame)
         self.frame += 1
+
+
+class animSnapSolverTorch:
+    """
+    GPU-accelerated version of animSnapBasesSolver.
+    Uses PyTorch tensors and CUDA acceleration automatically if available.
+    """
+
+    def __init__(self, args, dt=1e-2, device=None, dtype=torch.float32):
+        self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.dtype = dtype
+
+        self.model = None
+        self.dt = dt
+        self.frame = 0
+
+        self.A_torch = None     # global system matrix (sparse)
+        self.mass = None
+        self.velocities = None
+        self.positions = None
+        self.args = args
+
+        self.has_reduced_constraint_projections = False
+
+    def set_max_p_frames(self, value:int):
+        self.max_p_snapshots_num = value
+
+    def set_record_path(self, path: str):
+        self.record_path = path
+    def set_store_p(self, value: bool):
+        self.store_stacked_projections = value
+
+    def set_dirty(self):
+        self.dirty = True
+
+    def set_clean(self):
+        self.dirty = False
+
+    def ready(self):
+        return not self.dirty
+
+    def set_model_constraints(self):
+
+        if self.args.vert_bending_constraint:
+            self.model.add_vertex_bending_constraint(self.args.vert_bending_constraint_wi)
+        if self.args.edge_constraint:
+            self.model.add_edge_spring_constrain(self.args.edge_constraint_wi)
+
+        if self.args.tri_strain_constraint:
+            self.model.add_tri_constrain_strain(
+                self.args.sigma_min,
+                self.args.sigma_max,
+                self.args.strain_limit_constraint_wi)
+
+        if self.args.tet_deformation_constraint:
+            self.model.add_tet_deformation_gradient_constraint(self.args.deformation_gradient_constraint_wi)
+        if self.args.tet_strain_constraint:
+            self.model.add_tet_constrain_strain(
+                self.args.sigma_min,
+                self.args.sigma_max,
+                self.args.strain_limit_constraint_wi)
+
+
+    # --------------------------------------------------------
+    def set_model(self, model):
+        """Attach a DeformableMeshTorch model."""
+        self.model = model
+        self.mass = model.mass.to(self.device)
+        self.velocities = model.velocities.to(self.device)
+        self.positions = model.positions.to(self.device)
+        self.set_dirty()
+
+    # --------------------------------------------------------
+    def _collect_A_triplets(self):
+        """Collects triplets for system matrix A = M/dt^2 + Σ_i w_i S_i^T S_i."""
+        N = self.model.num_vertices
+        dt2_inv = 1.0 / (self.dt * self.dt)
+        triplets = []
+
+        for c in self.model.constraints:
+            triplets += c.get_wi_SiT_AiT_Ai_Si()
+
+        m = self.mass
+        for i in range(N):
+            base = 3 * i
+            v = m[i].item() * dt2_inv
+            triplets.append((base+0, base+0, v))
+            triplets.append((base+1, base+1, v))
+            triplets.append((base+2, base+2, v))
+        return triplets, 3 * N
+
+    # --------------------------------------------------------
+    def prepare_global_matrix(self):
+        """Build global sparse matrix A on GPU."""
+        self.set_model_constraints()
+
+        triplets, dim = self._collect_A_triplets()
+        rows, cols, vals = zip(*triplets)
+        idx = torch.tensor([rows, cols], dtype=torch.long, device=self.device)
+        val = torch.tensor(vals, dtype=self.dtype, device=self.device)
+        self.A_torch = torch.sparse_coo_tensor(idx, val, size=(dim, dim), device=self.device).coalesce()
+
+    # --------------------------------------------------------
+    def _apply_A(self, x):
+        """Applies the global system matrix A to a flattened vector x."""
+        return torch.sparse.mm(self.A_torch, x.unsqueeze(1)).squeeze(1)
+
+    # --------------------------------------------------------
+    def cg(self, A_apply, b, x0=None, tol=1e-7, maxit=200):
+        """Conjugate gradient solver (GPU)."""
+        x = torch.zeros_like(b) if x0 is None else x0.clone()
+        r = b - A_apply(x)
+        p = r.clone()
+        rs_old = torch.dot(r, r)
+        for _ in range(maxit):
+            Ap = A_apply(p)
+            alpha = rs_old / (torch.dot(p, Ap) + 1e-20)
+            x = x + alpha * p
+            r = r - alpha * Ap
+            rs_new = torch.dot(r, r)
+            if torch.sqrt(rs_new) < tol:
+                break
+            p = r + (rs_new / (rs_old + 1e-20)) * p
+            rs_old = rs_new
+        return x
+
+    # --------------------------------------------------------
+    def build_rhs(self, q):
+        """Accumulate constraint projections into RHS (Σ_i S_i^T p_i)."""
+        rhs = torch.zeros_like(self.positions)
+        for c in self.model.constraints:
+            c.project_wi_SiT_pi(q, rhs)
+        return rhs
+
+    # --------------------------------------------------------
+    def step(self, fext, num_iterations=1):
+        """Perform one Projective Dynamics step on GPU."""
+        if self.A_torch is None:
+            self.prepare_global_matrix()
+
+        N = self.model.num_vertices
+        pos = self.positions
+        vel = self.velocities
+        mass = self.mass
+        dt = self.dt
+
+        dt_inv = 1.0 / dt
+        dt2 = dt * dt
+        dt2_inv = 1.0 / dt2
+
+        # Explicit prediction
+        a = fext / mass[:, None]
+        explicit = pos + dt * vel + dt2 * a
+
+        # Flatten for solver
+        sn_flat = explicit.reshape(-1)
+        m_flat = (mass.repeat_interleave(3) * dt2_inv) * sn_flat
+
+        q_flat = sn_flat.clone()
+
+        # Iterative PD solve
+        for _ in range(num_iterations):
+            rhs = torch.zeros_like(self.positions)
+            for c in self.model.constraints:
+                c.project_wi_SiT_pi(q_flat.view(-1, 3), rhs)
+            b = rhs + m_flat.view(-1, 3)
+            b_flat = b.reshape(-1)
+            q_flat = self.cg(self._apply_A, b_flat, tol=1e-6, maxit=200)
+
+        # Reshape & update
+        q_next = q_flat.view(N, 3)
+        self.velocities = (q_next - pos) * dt_inv
+        self.positions = q_next
+        self.model.positions = q_next
+        self.model.velocities = self.velocities
+
+        self.frame += 1
+        return q_next
 
 
 class Solver:

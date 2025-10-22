@@ -7,6 +7,9 @@ import pygame
 import os
 pygame.init()
 info = pygame.display.Info()
+# import torch
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 class PhysicsParams:
     def __init__(self):
         self.is_gravity_active = False
@@ -153,6 +156,7 @@ class PreDrawHandler:
         for i in range(model.mass.shape[0]):
             if model.is_fixed(i):
                 continue
+            # if not np.isclose(model.mass[i].detach().cpu().item(), mass_value, atol=1e-5): #CUDA
             if not np.isclose(model.mass[i], mass_value, atol=1e-5):
                 model.mass[i] = mass_value
                 self.solver.set_dirty()
@@ -161,10 +165,11 @@ class PreDrawHandler:
         if self._animating:
             gravity = 9.81 if self.physics_params.is_gravity_active else 0.0
             self.fext[:, 1] -= gravity * self.physics_params.mass_per_particle
+            # self.fext = torch.as_tensor(self.fext, dtype=torch.float32, device=device)  #cuda
 
             if not self.solver.ready():
                 self.solver.prepare(self.physics_params, store_fom_info=self.record_info, record_path=self.record_path)
-
+                # self.solver.prepare_global_matrix() #CUDA
             self.solver.step(self.fext, self.physics_params.solver_iterations)
 
             # Reset fext and update mesh
@@ -210,6 +215,8 @@ class PreDrawHandler:
             if ps.has_point_cloud("picked_points"):
                 ps.remove_point_cloud("picked_points")
 
+        # ps.register_surface_mesh("model", model.positions.detach().cpu().numpy().astype(np.float32),
+        #                          model.faces.detach().cpu().numpy().astype(np.float32), color=color, edge_width=1.0) #CUDA
         ps.register_surface_mesh("model", model.positions, model.faces, color=color, edge_width=1.0)
 
 

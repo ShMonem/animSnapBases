@@ -56,7 +56,7 @@
     "record_projection_data": false
   },
   "position_reduction": {
-    "positions_reduced": false,
+    "positions_reduced": true,
     "name": "LBS",
     "num_components": 300,
     "r_muliplier": 8.0

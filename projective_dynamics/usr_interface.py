@@ -157,7 +157,7 @@ class PreDrawHandler:
             if model.is_fixed(i):
                 continue
             # if not np.isclose(model.mass[i].detach().cpu().item(), mass_value, atol=1e-5): #CUDA
-            if not np.isclose(model.mass[i], mass_value, atol=1e-5):
+            if not np.isclose(model.mass[i], mass_value, atol=1e-10):
                 model.mass[i] = mass_value
                 self.solver.set_dirty()
 

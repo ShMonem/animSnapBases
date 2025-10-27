@@ -13,7 +13,7 @@ from Constraint_projections import DeformableMesh
 from geometry import get_simple_bar_model, get_simple_cloth_model, get_simple_bar_model_with_surface_points_only, compute_lumped_mass_matrix
 from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler, PickingState
 
-from Simulators import animSnapBasesSolver, animSnapSolverTorch, Solver
+from Simulators import animSnapBasesSolver, Solver
 import trimesh
 import meshio
 from utils import check_dir_exists, read_mesh_file

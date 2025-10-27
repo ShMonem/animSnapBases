@@ -9,7 +9,7 @@ except ImportError:
     USE_GDIST = False
     from pygeodesic import geodesic
 
-
+import torch
 from stvd import STVD, STVD_MODE_ST_DIJKSTRA, STVD_MODE_GRAPH_DIJKSTRA
 import math
 from utils import compute_surface_geodesics
@@ -287,16 +287,16 @@ class PositionsSubspace:
 
         self.U = sp.coo_matrix((data, (row_idx, col_idx)), shape=(n * 3, 4 * self.num_components)).tocsr()
 
-
 class ConstraintsProjectionSubspace:
-    def __init__(self, r_multiplier, basis_scale, constraint_name, vertices, faces=None, tets=None, num_samples=-1):
+    def __init__(self, r_multiplier, basis_scale, constraint_name, vertices, faces=None, tets=None, num_components=-1, num_samples=-1):
         self.V = None
         self.vertices = vertices
         self.faces = faces
         self.tets = tets
         self.sampler = Sampler(vertices, faces, tets)
-        self.vert_samples = self.sampler.get_samples(num_samples)
-        self.num_components = num_samples
+        self.num_components = num_components
+        self.vert_samples = self.sampler.get_samples(self.num_components)
+        self.num_samples = num_samples
         self.constraint_name = constraint_name
         self.weights = None
         self.mass = None
@@ -308,6 +308,7 @@ class ConstraintsProjectionSubspace:
 
     def get_sampled_constrained_elements(self):
 
+        self.sampler.extend_samples(self.num_samples, self.vert_samples)
         results = []
         def find_first_nighbours(elements):
             for v in self.vert_samples:
@@ -429,12 +430,6 @@ class ConstraintsProjectionSubspace:
             row_sum = np.sum(tet_weights[t, :])
             if row_sum > 1e-10:
                 tet_weights[t, :] /= row_sum
-            # else:
-            #     # fallback: assign all weight to the strongest RBF
-            #     max_idx = np.argmax(tet_weights[t, :])
-            #     tet_weights[t, :] = 0.0
-            #     tet_weights[t, max_idx] = 1.0
-
         return tet_weights
 
     def compute_skinning_weights(self):
@@ -445,65 +440,6 @@ class ConstraintsProjectionSubspace:
         # # Normalize weights so that they sum to 1 per vertex
         weight_sums = np.sum(weights, axis=1, keepdims=True) + 1e-8
         weights /= weight_sums
-
-        # r = 4.0
-        # def br_cubic(t, r):
-        #     """Compactly supported cubic radial basis function."""
-        #     t = np.clip(t, 0, r)
-        #     return (1 - (t / r) ** 3) ** 3
-
-        # def quartic_rbf(dist, r):
-        #     a = 1 / r ** 4
-        #     b = -2 / r ** 2
-        #     val = a * dist ** 4 + b * dist ** 2 + 1
-        #     if val == np.nan:
-        #         fgt=0
-        #     val[dist >= r] = 0
-        #     return val
-
-        """
-        Compute subspace matrix U ∈ R^{n×4k} for position encoding.
-
-        Parameters:
-            vertices: (n, 3) array of vertex positions
-            k: number of sample points (i.e. handles)
-            r_factor: scaling for support radius r
-
-        Returns:
-            U: (n, 4k) sparse matrix
-        """
-        # vertices = self.vertices
-        # n = vertices.shape[0]
-        #
-        # # === Step 1: Furthest Point Sampling (Euclidean approximation) ===
-        # samples = [np.random.randint(n)]
-        # for _ in range(1, self.num_components):
-        #     dists = np.min(np.linalg.norm(vertices[samples][:, None] - vertices[None, :], axis=2), axis=0)
-        #     next_sample = np.argmax(dists)
-        #     samples.append(next_sample)
-        #
-        # samples = np.array(samples)
-        #
-        # # === Step 2: Compute RBF weights ===
-        # # Use gdist to compute distances from all samples
-        # geo_dists = np.zeros((vertices.shape[0], len(samples)))
-        # for i, s in enumerate(samples):
-        #     geo_dists[:, i] = compute_surface_geodesics(vertices, self.faces, [s])
-        #
-        # r = r_multiplier * np.max(np.min(geo_dists, axis=1))
-        #
-        # weights = br_cubic(geo_dists, r)
-        #
-        # # Normalize weights so that they sum to 1 per vertex
-        # weight_sums = np.sum(weights, axis=1, keepdims=True) + 1e-8
-        # weights /=weight_sums
-        #
-        # # Handling Uncovered Vertices
-        # for i in range(n):
-        #     if np.sum(weights[i, :]) < 1e-6:
-        #         max_idx = np.argmin(geo_dists[i, :])
-        #         weights[i, :] = 0
-        #         weights[i, max_idx] = 1
 
         check_matrix_health(weights, "weights")
 
@@ -533,7 +469,6 @@ class ConstraintsProjectionSubspace:
             M_diag: (len(constraints)*aux_size,) numpy array of diagonal mass entries
         """
 
-
         num_constraints = len(constraints)
         M_diag = np.zeros(num_constraints * aux_size)
 
@@ -559,32 +494,44 @@ class ConstraintsProjectionSubspace:
             base: (m, size+1) reduced PCA basis
         """
         # Step 1: remove column-wise mean
-        Y_centered = Y - Y.mean(axis=0, keepdims=True)
-        factor =1 / (np.std(Y_centered))
+        Y_centered = Y - Y.mean(axis=1, keepdims=True)
+
+        def robust_std(x):
+            if isinstance(x, torch.Tensor):
+                return x.std()
+            else:
+                return np.std(x)
+
+        factor = 1.0 / robust_std(Y_centered)
+
         Y_centered *=factor
 
-        # Step 2: compute A = Y^T M Y
-        if specify_verts:
-            M = diags(self.mass[specify_verts])
-        else:
-            M = diags(self.mass)
-        A = Y_centered.T @ (M @ Y_centered)
-
+        mass = torch.from_numpy(self.mass).to(device=Y_centered.device, dtype=Y_centered.dtype)
+        A = Y_centered.T @ (mass.unsqueeze(1) * Y_centered)
         # Step 3: eigendecomposition
-        vals, vecs = eigh(A)
+        # Step 1: Eigen-decomposition (symmetric matrix A)
+        vals, vecs = torch.linalg.eigh(A)  # vals: (n,), vecs: (n,n)
 
-        temp =vals/ np.max(vals)
-        # pick eigenvalues above tol
+        # Step 2: Normalize eigenvalues by their max
+        temp = vals / vals.max()
+
+        # # Step 3: Keep only significant eigenvalues (> tol)
         mask = temp > 1e-14
-        valid_indices = np.where(mask)[0]
-        vals, vecs = vals[valid_indices], vecs[:, valid_indices]
-        # Sort in descending order
-        idx = np.argsort(vals)[::-1]
-        vals, vecs = vals[idx], vecs[:, idx]
+        vals = vals[mask]
+        vecs = vecs[:, mask]
 
-        # Step 5: compute PCA basis = Y * u / sqrt(lambda)
-        base = Y_centered @ (vecs / np.sqrt(vals))
-        return base
+        # Step 4: Sort in descending order
+        sorted_vals, idx = torch.sort(vals, descending=True)
+        vecs = vecs[:, idx]
+        vals = sorted_vals
+
+        # Step 5: Compute PCA-style bases
+        base = Y_centered @ (vecs / torch.sqrt(vals.unsqueeze(0)))  # broadcast sqrt(vals)
+
+        V = torch.hstack((base, torch.ones((base.shape[0], 1), device=Y.device, dtype=Y.dtype)))
+        V /= factor
+        V += Y.mean(axis=1, keepdims=True)
+        return V
 
     def create_skinning_space_constraints(self, rest_state_aux, skinning_weights, constraints, aux_size):
 
@@ -610,82 +557,76 @@ class ConstraintsProjectionSubspace:
 
         return Y
 
+    def create_skinning_space_constraints_torch(self, rest_state_aux, skinning_weights, constraints, aux_size):
+        """
+        Vectorized PyTorch version of create_skinning_space_constraints.
+        Builds the constraint-space skinning matrix Y (|constraints|*aux_size, num_basis*(dim+1)).
+        """
+
+        device = rest_state_aux.device if isinstance(rest_state_aux, torch.Tensor) else 'cpu'
+        rest_state_aux = torch.as_tensor(rest_state_aux, dtype=torch.float32, device=device)
+        skinning_weights = torch.as_tensor(skinning_weights, dtype=torch.float32, device=device)
+
+        num_basis = skinning_weights.shape[1]
+        num_rows, dim = rest_state_aux.shape
+        num_constraints = len(constraints)
+
+        # Preallocate Y on GPU
+        Y = torch.zeros((num_rows, num_basis * (dim + 1)), device=device, dtype=torch.float32)
+
+        # Extract constraint IDs once
+        constraint_ids = torch.tensor([c.id for c in constraints], device=device, dtype=torch.long)
+
+        # Gather weights for all constraints: shape (num_constraints, num_basis)
+        W = skinning_weights[constraint_ids, :]  # (Nc, B)
+
+        # Reshape rest_state_aux to match constraint structure
+        # rest_state_aux is already (num_rows, dim), rows = Nc * aux_size
+        # Compute the row indices for each constraint’s aux block
+        rows_per_constraint = aux_size
+
+        # Broadcast over basis functions
+        for g in range(num_basis):
+            # weights for this basis across constraints
+            cur_w = W[:, g]  # (Nc,)
+            mask = cur_w > 1e-8
+            if not mask.any():
+                continue
+
+            # Repeat each constraint’s weight for aux_size rows
+            cur_w_expanded = cur_w.repeat_interleave(rows_per_constraint)  # (Nc*aux_size,)
+
+            # Apply weights to rest_state_aux
+            Y[:, g * (dim + 1):g * (dim + 1) + dim] = rest_state_aux * cur_w_expanded.unsqueeze(1)
+            Y[:, g * (dim + 1) + dim] = cur_w_expanded
+
+        return Y
+
     def create_basis_via_skinning_weights(self, rest_positions, assembly_ST, constraints, aux_size,
                                           use_pca=True, specify_verts=[]):
         """
         Complete Python equivalent of:
         PD::RHSInterpolationGroup::createBasisViaSkinningWeights
         """
-        # (1) Compute rest-state auxiliaries (simplified, assuming S = identity if constraints already map properly)
-        rest_state_aux = assembly_ST.to_dense().cpu().detach().numpy().T @ rest_positions.copy()
+        # Compute rest-state auxiliaries (simplified, assuming S = identity if constraints already map properly)
+        rest_state_aux = torch.sparse.mm(assembly_ST.transpose(0,1), torch.from_numpy(rest_positions).to(dtype=torch.float32, device=assembly_ST.device))
+        # Build constraint-space skinning matrix Y
+        Y = self.create_skinning_space_constraints_torch(rest_state_aux, self.weights, constraints, aux_size)
 
-        check_matrix_health(rest_state_aux, "aux_rest")
-        # (2) Build constraint-space skinning matrix Y
-
-        Y = self.create_skinning_space_constraints(rest_state_aux, self.weights, constraints, aux_size)
-        # Y = create_skinning_space(rest_state_aux, self.weights, constraints, aux_size, self.faces, self.tets)
-
-        n = rest_state_aux.shape[0]
-        # # === Step 3: Build U matrix ===
-        # row_idx = []
-        # col_idx = []
-        # data = []
-        #
-        # for i , c in enumerate(constraints):  # row
-        #     for pi in range(aux_size):  # for each vertex in the element
-        #         row = i * aux_size + pi
-        #         # print(f"row {row}", end="")
-        #         for j in range(self.num_components): #
-        #             w = self.weights[c.id, j]  # weight at constraint i for basis j
-        #             if w < 1e-6:
-        #                 continue
-        #
-        #             row_idx.append(row)
-        #             # print(f" col {j * 4 + 3} --w,", end="")
-        #             col_idx.append(j * 4 + 3)
-        #             data.append(w)
-        #
-        #             # === Extra affine/shear component ===
-        #             for d in range(3):
-        #                 val = w * rest_state_aux[row,d]
-        #
-        #                 # if val < 1e-6:
-        #                 #      continue
-        #                 # print(val)
-        #                 row_idx.append(row)
-        #                 col_idx.append(j * 4 + d)
-        #                 # print(f" col {j * 4 + d}--w.pos", end="")
-        #                 data.append(val)
-        #
-        # Y = sp.csr_matrix((np.array(data), (np.array(row_idx), np.array(col_idx))),
-        #               shape=(n, 4 * self.num_components)).toarray()
-
-        check_matrix_health(Y, "constraint projection basis")
-        # print(Y)
-
-        # (4) Perform PCA or not
+        # Perform PCA or not
         if use_pca:
             Y = self.snapshot_pca(Y, specify_verts)
-            # Final column is constant
-            # factor = 1/(np.std(Y) *Y.shape[1])
-            self.V = self.basis_scale * np.hstack((Y, np.ones((n, 1))))   # TODO: understand it!
 
-        else:
-            # Final column is constant
-            # Y_centered = Y - Y.mean(axis=0, keepdims=True)
-            # factor = self.basis_scale / (np.std(Y_centered))
-            # Y_centered *= factor
-            print(1/Y.max()**2, 1/(Y.std()**2) )
-            self.V = self.basis_scale *np.hstack((Y, np.ones((n, 1))))
-
-        print("")
-
+        # Final column is constant
+        self.V = torch.hstack((Y, torch.ones((Y.shape[0], 1), device=Y.device, dtype=Y.dtype)))
+        factor = 1/(5*self.V.norm())
+        # print(1/(10*self.V.norm()))
+        self.V *= factor   # normalize to avoid blowup
 
     def init_constraint_group_interpolation(self,
                            constraints,
-                           assembly_matrix,
-                           regularization_weight=0.0,
-                           aux_size=1):
+                           aux_size=1,
+                            mass_normalizarion=1.0):
         """
         Python equivalent of PD::RHSInterpolationGroup::initInterpolation
         Builds interpolation system for reduced constraint projections.
@@ -695,13 +636,14 @@ class ConstraintsProjectionSubspace:
         # --------------------------------------------------------
         # Create selection and weight matrices
         # --------------------------------------------------------
-        # Weight vector
+        # # Weight vector
         weights = np.ones(n_constraints * aux_size)
         for i, c in enumerate(constraints):
             for j in range(aux_size):
                 idx = i * aux_size + j
-                weights[idx] = c.wi   # constraint weight
-        W = diags(weights)
+                weights[idx] = c.wi * mass_normalizarion  # constraint weight
+
+        Wei = torch.from_numpy(weights).to(device=self.V.device, dtype=self.V.dtype)
 
         # Selection matrix (sampled constraints only)
         rows, cols, vals = [], [], []
@@ -709,31 +651,77 @@ class ConstraintsProjectionSubspace:
 
         # get ids of elements that touch any of the sampled verts
         self.get_sampled_constrained_elements()
-        assert len(self.sampled_constraints_ids) == len(set(self.sampled_constraints_ids))
-        for i, c in enumerate(constraints):
-            if c.id in self.sampled_constraints_ids and len(sampled_constraints) < len(self.vert_samples) :
-                sampled_constraints.append(c)
-                r = len(sampled_constraints) - 1
-                for d in range(aux_size):
-                    rows.append(r*aux_size+d)
-                    cols.append(c.id*aux_size+d)
-                    vals.append(1.0)
 
-        J_sel = csr_matrix((vals, (rows, cols)),
-                           shape=(aux_size*len(self.sampled_constraints_ids), aux_size*n_constraints)).toarray()
+        def build_selection_matrix_torch(constraints, sampled_constraints_ids, aux_size, n_constraints, device="cuda"):
+            # Keep the exact *constraints iteration order* (like your original loop)
+            sampled_set = set(sampled_constraints_ids)
+            ids_in_constraints_order = [c.id for c in constraints if c.id in sampled_set]
+            n_sampled = len(ids_in_constraints_order)
+
+            if n_sampled == 0:
+                # empty sparse COO
+                size = (0, aux_size * n_constraints)
+                return torch.sparse_coo_tensor(
+                    torch.empty((2, 0), dtype=torch.long, device=device),
+                    torch.empty((0,), dtype=torch.float32, device=device),
+                    size=size, device=device
+                ).coalesce()
+
+            ids_t = torch.tensor(ids_in_constraints_order, dtype=torch.long, device=device)
+
+            # Row indices: r*aux_size + d, with r in [0..n_sampled-1], d in [0..aux_size-1]
+            r = torch.arange(n_sampled, device=device).repeat_interleave(aux_size)
+            d = torch.arange(aux_size, device=device).repeat(n_sampled)
+            rows = r * aux_size + d  # shape: (n_sampled*aux_size,)
+
+            # Col indices: c.id*aux_size + d, using the encountered ids order
+            cols = (ids_t.repeat_interleave(aux_size) * aux_size) + d  # same shape
+
+            vals = torch.ones_like(rows, dtype=torch.float32)
+
+            J_sel = torch.sparse_coo_tensor(
+                torch.stack([rows, cols], dim=0),  # (2, nnz)
+                vals,
+                size=(aux_size * n_sampled, aux_size * n_constraints),
+                device=device,
+                dtype=torch.float32
+            ).coalesce()
+
+            return J_sel
+
+        J_sel = build_selection_matrix_torch(constraints, self.sampled_constraints_ids, aux_size, n_constraints )
         self.sampled_constraints = sampled_constraints
+
         # --------------------------------------------------------
         # Compute interpolation matrices
         # --------------------------------------------------------
-        JTJ = J_sel.T @ J_sel
+        # Compute JTJ
+        JTJ = torch.sparse.mm(J_sel.T, J_sel)  # result is dense tensor
 
+        # Compute lhs = V^T (JTJ V)
         lhs = self.V.T @ (JTJ @ self.V)
 
-        rhs = self.V.T @ J_sel.T
+        # Compute rhs = V^T J_sel^T
+        rhs = torch.sparse.mm(self.V.T, J_sel.T)
+
+        eps = 1e-8
+        max_eps = 1e-2
+        def chol(A, eps):
+            while True:
+                try:
+                    L = torch.linalg.cholesky(A + eps * torch.eye(A.shape[0], device=lhs.device, dtype=A.dtype))
+                    return L
+                except RuntimeError as e:
+                    if "not positive definite" not in str(e):
+                        raise
+                    if eps > max_eps:
+                        raise RuntimeError(f"Matrix not PD even after adding eps={eps}")
+                    eps *= 0.5  # increase regularization and retry
 
         # Factorize LHS
-        chol_L = cholesky(lhs + 1e-8 * np.eye(lhs.shape[0]), lower=True)
+        chol_L= chol(lhs, eps)
 
         # Store solver data
-        self.interpol_solver = [chol_L, rhs]
-        # self.V = W @ self.V
+        self.interpol_solver = [chol_L.to_dense().cpu().detach().numpy(), rhs.to_dense().cpu().detach().numpy()]
+
+        self.V = self.V * Wei.unsqueeze(1)

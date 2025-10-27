@@ -102,21 +102,29 @@ class Config_parameters:
         constraints = self.system_params ['constraints']
         parser.add_argument("--vert_bending_reduced", type=bool, default=constrProj_basis["vert_bending_reduced"])
         parser.add_argument("--vert_bending_num_components", type=bool, default=constrProj_basis["num_verts_bending_components"])
+        parser.add_argument("--vert_bending_num_samples", type=str, default=constrProj_basis["vert_bending_num_samples"])
 
         parser.add_argument("--edge_spring_reduced", type=bool, default=constrProj_basis["edge_spring_reduced"])
         parser.add_argument("--edge_spring_num_components", type=bool, default=constrProj_basis["edge_spring_num_components"])
+        parser.add_argument("--edge_spring_num_samples", type=str, default=constrProj_basis["edge_spring_num_samples"])
 
         parser.add_argument("--tri_strain_reduced", type=bool, default=constrProj_basis["tri_strain_reduced"])
         parser.add_argument("--tri_strain_num_components", type=bool,
                             default=constrProj_basis["tri_strain_num_components"])
+        parser.add_argument("--tri_strain_num_samples", type=str, default=constrProj_basis["tri_strain_num_samples"])
+
 
         parser.add_argument("--tet_strain_reduced", type=bool, default=constrProj_basis["tet_strain_reduced"])
         parser.add_argument("--tet_strain_num_components", type=bool,
                             default=constrProj_basis["tet_strain_num_components"])
+        parser.add_argument("--tet_strain_num_samples", type=str, default=constrProj_basis["tet_strain_num_samples"])
+
 
         parser.add_argument("--tet_deformation_reduced", type=bool, default=constrProj_basis["tet_deformation_reduced"])
         parser.add_argument("--tet_deformation_num_components", type=bool,
                             default=constrProj_basis["tet_deformation_num_components"])
+        parser.add_argument("--tet_deformation_num_samples", type=str, default=constrProj_basis["tet_deformation_num_samples"])
+
 
         parser.add_argument("--constraint_radial_r_muliplier", type=str, default=constrProj_basis["r_muliplier"])
         parser.add_argument("--constraint_basis_scale", type=str, default=constrProj_basis["basis_scale"])

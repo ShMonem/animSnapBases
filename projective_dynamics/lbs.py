@@ -2,17 +2,18 @@ import numpy as np
 import scipy.sparse as sp
 from scipy.sparse import csr_matrix, diags, vstack
 from scipy.linalg import cholesky, solve, eigh, svd, lu_factor
-try:
-    import gdist
-    USE_GDIST = True
-except ImportError:
-    USE_GDIST = False
-    from pygeodesic import geodesic
+# try:
+#     import gdist
+#     USE_GDIST = True
+# except ImportError:
+#     USE_GDIST = False
+#     from pygeodesic import geodesic
 
 import torch
 from stvd import STVD, STVD_MODE_ST_DIJKSTRA, STVD_MODE_GRAPH_DIJKSTRA
 import math
-from utils import compute_surface_geodesics
+# from utils import compute_surface_geodesics
+import polyscope as ps
 
 BASE_FUNC_CUTOFF = 1e-5
 USE_QUARTIC_POL = False  # or True for quartic RBFs
@@ -309,6 +310,20 @@ class ConstraintsProjectionSubspace:
     def get_sampled_constrained_elements(self):
 
         self.sampler.extend_samples(self.num_samples, self.vert_samples)
+
+        # # ps.init()
+        # ps.remove_all_structures()
+
+        # Register surface mesh
+        # ps_mesh = ps.register_surface_mesh("mesh", self.vertices, self.faces)
+        #
+        # # Highlighted points as a point cloud
+        # highlight_positions = self.vertices[self.vert_samples]
+        # ps.register_point_cloud("highlighted verts", highlight_positions, radius=0.01)
+
+        # ps.show()
+
+
         results = []
         def find_first_nighbours(elements):
             for v in self.vert_samples:
@@ -528,9 +543,10 @@ class ConstraintsProjectionSubspace:
         # Step 5: Compute PCA-style bases
         base = Y_centered @ (vecs / torch.sqrt(vals.unsqueeze(0)))  # broadcast sqrt(vals)
 
+        base /= factor
+        base += Y.mean(axis=0, keepdims=True)
         V = torch.hstack((base, torch.ones((base.shape[0], 1), device=Y.device, dtype=Y.dtype)))
-        V /= factor
-        V += Y.mean(axis=1, keepdims=True)
+
         return V
 
     def create_skinning_space_constraints(self, rest_state_aux, skinning_weights, constraints, aux_size):
@@ -619,7 +635,7 @@ class ConstraintsProjectionSubspace:
 
         # Final column is constant
         self.V = torch.hstack((Y, torch.ones((Y.shape[0], 1), device=Y.device, dtype=Y.dtype)))
-        factor = 1/(5*self.V.norm())
+        factor = 0.1/(self.V.norm())
         # print(1/(10*self.V.norm()))
         self.V *= factor   # normalize to avoid blowup
 
@@ -724,4 +740,4 @@ class ConstraintsProjectionSubspace:
         # Store solver data
         self.interpol_solver = [chol_L.to_dense().cpu().detach().numpy(), rhs.to_dense().cpu().detach().numpy()]
 
-        self.V = self.V * Wei.unsqueeze(1)
+        # self.V = self.V * Wei.unsqueeze(1)

@@ -77,8 +77,8 @@
     "tri_strain_num_samples": -1,
 
     "tet_strain_reduced": true,
-    "tet_strain_num_components": 120,
-    "tet_strain_num_samples": 100,
+    "tet_strain_num_components": 100,
+    "tet_strain_num_samples": 600,
 
     "tet_deformation_reduced": false,
     "tet_deformation_num_components": 100,

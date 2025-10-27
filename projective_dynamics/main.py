@@ -58,7 +58,7 @@ if __name__ == '__main__':
     from config import Config_parameters
 
     param = Config_parameters()
-    example = "bar_automated_deformationgradient"
+    example = "testing"
 
     param.reset_parameters("demos/"+example+".json")
 

@@ -12,6 +12,10 @@ from utils import delete_matching_column
 from dataclasses import dataclass
 from joblib import Parallel, delayed
 
+import torch
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Device in use: {device}")
+
 # Helper container for an edge and its triangles
 @dataclass
 class Edge:
@@ -119,7 +123,6 @@ class PositionalConstraint(Constraint):
             (3 * vi + 2, 3 * vi + 2, self.wi),
         ]
         return triplets
-
 
 class VertBendingConstraint(Constraint):
     def __init__(self, id, v_ind, wi, v_star, voronoi_area, positions, triangles,
@@ -530,18 +533,18 @@ class TetStrainConstraint(Constraint):
 
         G = np.column_stack([grads.T, grads_l])  # shape (3, 4)
 
-        self._selection_matrix = lil_matrix((num_vertices, 3))
-
+        # Suppose: num_vertices = |V|, G is (3, 4)
         v1, v2, v3, v4 = self.indices
+        rows = np.array([v1, v2, v3, v4] * 3)
+        cols = np.repeat(np.arange(3), 4)  # [0,0,0,0, 1,1,1,1, 2,2,2,2]
+        vals = G.T.flatten(order="F")  # flatten G by columns (matching col-major order)
 
-        for j in range(3):
-            self._selection_matrix[v1, j] = G[j, 0]
-            self._selection_matrix[v2, j] = G[j, 1]
-            self._selection_matrix[v3, j] = G[j, 2]
-            self._selection_matrix[v4, j] = G[j, 3]
+        self._selection_matrix = coo_matrix(
+            (vals, (rows, cols)), shape=(num_vertices, 3)
+        )
 
-        # self.wi * abs(self.V0) # stiffness of the constraint, resists extreme stretch/
-        self._selection_matrix = self._selection_matrix * self.wi * abs(self.V0)
+        # Apply stiffness scaling
+        self._selection_matrix *= self.wi * abs(self.V0)
 
     def get_pi(self, q, frame=0):
         """
@@ -860,7 +863,7 @@ class DeformableMesh:
         n = self.positions.shape[0]
         import igl
         if self.elements is not None:
-            m = igl.massmatrix(self.positions, self.elements, igl.MASSMATRIX_TYPE_VORONOI)
+            m = igl.massmatrix(self.positions, self.elements)
         else:
             m = igl.massmatrix(self.positions, self.faces, igl.MASSMATRIX_TYPE_VORONOI)
 
@@ -1330,41 +1333,50 @@ class DeformableMesh:
     def add_tet_constrain_strain(self, sigma_min, sigma_max, wi=1e6, samples=None):
         self.has_tets_strain_constraints = True
 
+        blocks = []
         if samples is not None:
-            num_elems = len(samples)
-            elements = self.elements[samples]
+            elems = self.elements[samples]
         else:
-            num_elems = len(self.elements)
-            elements = self.elements
+            elems = self.elements
 
-        if samples is not None:
-            self.tets_strain_assembly_ST = lil_matrix((self.positions.shape[0], 3 * len(samples)))  # (|V|,3|samples|)
-        else:
-            self.tets_strain_assembly_ST = lil_matrix((self.positions.shape[0], 3 * self.elements.shape[0]))  # (|V|,3|T|)
+        for e, elem in enumerate(elems):
+            idx = samples[e] if samples is not None else e
+            c = TetStrainConstraint(idx, elem.tolist(), wi, self.positions, sigma_min, sigma_max)
+            self.constraints.append(c)
+            self.tets_strain_constraints.append(c)
+            i = torch.from_numpy(np.vstack([c.selection_matrix.row, c.selection_matrix.col])).long().to(device)
+            v = torch.from_numpy(c.selection_matrix.data).float().to(device)
+            sm_torch = torch.sparse_coo_tensor(i, v, c.selection_matrix.shape, device=device)
+            blocks.append(sm_torch)  # (|V|,3)
 
-        if samples is not None:
-            for e, s in enumerate(samples):
-                elem = self.elements[s]
-                c = TetStrainConstraint(s, elem.tolist(), wi, self.positions, sigma_min, sigma_max)
-                self.constraints.append(c)
+        # concatenate along feature axis
+        self.tets_strain_assembly_ST = torch.cat(blocks, dim=1)  # (|V|,3*|T|)
 
-                self.tets_strain_constraints.append(c)
-                self.tets_strain_assembly_ST[:, 3 * e: 3 * e + 3] = c.selection_matrix  # each (|V|, 1)
-        else:
-            for e, elem in  enumerate(self.elements):
-                c = TetStrainConstraint(e, elem.tolist(), wi, self.positions, sigma_min, sigma_max)
-                self.constraints.append(c)
-
-                self.tets_strain_constraints.append(c)
-                self.tets_strain_assembly_ST[:, 3 * e: 3 * e + 3] = c.selection_matrix  # each (|V|, 1)
+        # if samples is not None:
+        #     self.tets_strain_assembly_ST = lil_matrix((self.positions.shape[0], 3 * len(samples)))  # (|V|,3|samples|)
+        # else:
+        #     self.tets_strain_assembly_ST = lil_matrix((self.positions.shape[0], 3 * self.elements.shape[0]))  # (|V|,3|T|)
+        #
+        # if samples is not None:
+        #     for e, s in enumerate(samples):
+        #         elem = self.elements[s]
+        #         c = TetStrainConstraint(s, elem.tolist(), wi, self.positions, sigma_min, sigma_max)
+        #         self.constraints.append(c)
+        #
+        #         self.tets_strain_constraints.append(c)
+        #         self.tets_strain_assembly_ST[:, 3 * e: 3 * e + 3] = c.selection_matrix  # each (|V|, 1)
+        # else:
+        #     for e, elem in  enumerate(self.elements):
+        #         c = TetStrainConstraint(e, elem.tolist(), wi, self.positions, sigma_min, sigma_max)
+        #         self.constraints.append(c)
+        #
+        #         self.tets_strain_constraints.append(c)
+        #         self.tets_strain_assembly_ST[:, 3 * e: 3 * e + 3] = c.selection_matrix  # each (|V|, 1)
 
         assert self.tets_strain_assembly_ST.shape[1] == 3* len(self.tets_strain_constraints)
 
     def add_tet_constrain_deformation_gradient(self, wi=1e6, samples=None):
         self.has_tets_deformation_gradient_constraints = True
-        import torch
-
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         blocks = []
         if samples is not None:

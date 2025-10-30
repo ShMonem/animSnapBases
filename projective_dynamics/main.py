@@ -54,7 +54,7 @@ if __name__ == '__main__':
     param = Config_parameters()
     example = "testing"
 
-    param.reset_parameters("demos/"+example+".json")
+    param.reset_parameters("projective_dynamics/demos/"+example+".json")
 
     # Add visualization params
     param.add_visualization_args(parser)

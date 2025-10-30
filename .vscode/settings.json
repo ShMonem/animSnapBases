@@ -1,0 +1,15 @@
+{
+    // --- VS Code Python Environment Defaults ---
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "python-envs.pythonProjects": [],
+    // --- Interpreter and Conda Path ---
+    "python.defaultInterpreterPath": "/home/shaimaa/miniforge3/envs/animSnapBases/bin/python",
+    //"python.condaPath": "/home/shaimaa/miniforge3/bin/conda",
+    // --- Code Intelligence ---
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.useLibraryCodeForTypes": true,
+    // --- Testing Settings (optional) ---
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
+}

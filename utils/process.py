@@ -265,8 +265,17 @@ def view_anim_file(hdf5_animation_file):
     # choose position and orientation
     actor = tvtk.Actor(mapper=tvtk.PolyDataMapper(), position=(0, 0, 0), orientation=(0, -90, 0))
     configure_input(actor.mapper, normals)
-    actor.property.set(edge_color=(0.5, 0.5, 0.5), ambient=0.0,
-                       specular=0.15, specular_power=128., shading=True, diffuse=0.8)
+    # actor.property.set(edge_color=(0.5, 0.5, 0.5), ambient=0.0,
+    #                    specular=0.15, specular_power=128., shading=True, diffuse=0.8)
+
+    actor.property.edge_visibility = True
+    actor.property.edge_color = (0.5, 0.5, 0.5)
+    actor.property.ambient = 0.0
+    actor.property.specular = 0.15
+    actor.property.diffuse = 0.8
+    actor.property.shading=True
+    actor.property.specular_power=128.
+
 
     fig = mlab.figure(bgcolor=(1, 1, 1), size=(1024, 1024))
     fig.scene.add_actor(actor)

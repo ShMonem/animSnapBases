@@ -22,7 +22,7 @@
   "physics_params": {
     "mass_per_particle": 10.0,
     "positional_constraint_wi": 1000000000,
-    "edge_constraint_wi": 500000.0,
+    "edge_constraint_wi": 50000000.0,
     "vert_bending_constraint_wi": 0.01,
     "deformation_gradient_constraint_wi": 0,
     "strain_limit_constraint_wi": 0.01,
@@ -66,14 +66,23 @@
     "properties": "_noAlignement_Volkwein_Standarized_Global_Orthogonalized_Release220_Frames_2_increment",
     "vert_bending_reduced": false,
     "num_verts_bending_components": 2,
-    "edge_spring_reduced": false,
+    "vert_bending_num_samples": -1,
+
+    "edge_spring_reduced": true,
     "edge_spring_num_components": 100,
-    "tri_strain_reduced": true,
+    "edge_spring_num_samples": 200,
+
+    "tri_strain_reduced": false,
     "tri_strain_num_components": 5,
+    "tri_strain_num_samples": -1,
+
     "tet_strain_reduced": false,
     "tet_strain_num_components": -1,
+    "tet_strain_num_samples": -1,
+
     "tet_deformation_reduced": false,
     "tet_deformation_num_components": -1,
+    "tet_deformation_num_samples": -1,
     "r_muliplier": 1000,
     "basis_scale": 0.001
   },

@@ -15,6 +15,7 @@ edge_spring_p = {}
 tris_strain_p = {}
 tets_strain_p = {}
 tets_deformation_gradient_p = {}
+positions = {}
 
 
 def flatten(p: np.ndarray) -> np.ndarray:
@@ -41,6 +42,7 @@ class constraintProjection:
         self.solver_list = []
         self.mapped_indices_Pt = None #  when mesh is not closed, not all verts are constrained
         self.interpolation_alpha = None
+        self.sampled_constraints = None
 
         
 class animSnapBasesSolver:
@@ -82,8 +84,11 @@ class animSnapBasesSolver:
         self.constraints_ready = False
 
         self.store_stacked_projections = False
+        self.store_positions = False
         self.record_path = ""
         self.max_p_snapshots_num = args.max_p_snapshots_num
+        self.max_q_snapshots_num = args.max_p_snapshots_num
+
 
         self.snapBases_interpolation_list = {"deim_pod", "deim_pod_vectorized", "deim_pca_blocks",
                                              "geom_pca_blocks_with_St", "adv_pca_blocks_with_St_partitioning", "adv_pca_blocks"}
@@ -91,10 +96,17 @@ class animSnapBasesSolver:
     def set_max_p_frames(self, value:int):
         self.max_p_snapshots_num = value
 
+    def set_max_q_frames(self, value: int):
+        self.max_q_snapshots_num = value
+
     def set_record_path(self, path: str):
         self.record_path = path
+
     def set_store_p(self, value: bool):
         self.store_stacked_projections = value
+
+    def set_store_q(self, value: bool):
+        self.store_positions = value
 
     def set_model(self, model):
         self.model = model
@@ -186,7 +198,7 @@ class animSnapBasesSolver:
                         f"Created LBS positions basis via skinning weights of size {self.U.shape}.")
 
     def prepare_lbs_reduced_group(self, has_group_constraints, reduced_group, group_name,
-                                  group_constraints, group_aux_size, assembly_ST, num_components, num_samples, specify_verts=[]):
+                                  group_constraints, group_aux_size, assembly_ST, assembly_ST_no_weights, num_components, num_samples, specify_verts=[]):
 
         if has_group_constraints and reduced_group:
             group_subspace = ConstraintsProjectionSubspace(self.args.constraint_radial_r_muliplier,
@@ -202,8 +214,8 @@ class animSnapBasesSolver:
             group_subspace.compute_constraint_mass_matrix(group_name, group_constraints, self.model.mass_init, group_aux_size)
 
             # compute lbs basis "V" for the constraint group
-            group_subspace.create_basis_via_skinning_weights(self.model.positions, assembly_ST, group_constraints, group_aux_size,
-                                              use_pca=False, specify_verts= specify_verts)
+            group_subspace.create_basis_via_skinning_weights(self.model.positions, assembly_ST_no_weights, group_constraints, group_aux_size,
+                                              use_pca=True, specify_verts= specify_verts, mass_normalizarion=1.0/self.model.mass_init.sum())
 
             if not self.reduced_position or self.position_reduction_type == "LBS":
                 projecting_mat = np.einsum('ne,em->nm',assembly_ST.to_dense().cpu().detach().numpy(), group_subspace.V.to_dense().cpu().detach().numpy())
@@ -226,28 +238,28 @@ class animSnapBasesSolver:
         self.bending.interpolation_alpha, self.bending.sampled_constraints, self.bending.projection_matrix, self.bending.solver_list = \
             self.prepare_lbs_reduced_group(self.model.has_verts_bending_constraints, self.bending.is_reduced,
                                        "verts_bending", self.model.verts_bending_constraints,
-                                       self.bending.row_dim, self.model.verts_bending_assembly_ST,
+                                       self.bending.row_dim, self.model.verts_bending_assembly_ST, self.model.verts_bending_assembly_ST_no_weights,
                                        self.bending.num_components, self.bending.num_samples, specify_verts=self.model.verts_bending_indicies)
 
     def prepare_lbs_reduced_edge_spring(self):
         self.spring.interpolation_alpha, self.spring.sampled_constraints, self.spring.projection_matrix, self.spring.solver_list = \
             self.prepare_lbs_reduced_group(self.model.has_edge_spring_constraints, self.spring.is_reduced,
                                        "edge_spring", self.model.edge_spring_constraints,
-                                       self.spring.row_dim, self.model.edge_spring_assembly_ST,
+                                       self.spring.row_dim, self.model.edge_spring_assembly_ST, self.model.edge_spring_assembly_ST_no_weights,
                                        self.spring.num_components, self.spring.num_samples,)
 
     def prepare_lbs_reduced_tris_strain(self):
         self.tris_strain.interpolation_alpha, self.tris_strain.sampled_constraints, self.tris_strain.projection_matrix, self.tris_strain.solver_list = \
             self.prepare_lbs_reduced_group(self.model.has_tris_strain_constraints, self.tris_strain.is_reduced,
                                        "tris_strain", self.model.tris_strain_constraints,
-                                       self.tris_strain.row_dim, self.model.tris_strain_assembly_ST,
+                                       self.tris_strain.row_dim, self.model.tris_strain_assembly_ST, self.model.tris_strain_assembly_ST_no_weights,
                                        self.tris_strain.num_components, self.tris_strain.num_samples)
 
     def prepare_lbs_reduced_tets_strain(self):
         self.tets_strain.interpolation_alpha, self.tets_strain.sampled_constraints, self.tets_strain.projection_matrix, self.tets_strain.solver_list = \
             self.prepare_lbs_reduced_group(self.model.has_tets_strain_constraints, self.tets_strain.is_reduced,
                                        "tets_strain", self.model.tets_strain_constraints,
-                                       self.tets_strain.row_dim, self.model.tets_strain_assembly_ST,
+                                       self.tets_strain.row_dim, self.model.tets_strain_assembly_ST, self.model.tets_strain_assembly_ST_no_weights,
                                        self.tets_strain.num_components, self.tets_strain.num_samples)
 
     def prepare_lbs_reduced_tets_deformation_gradient(self):
@@ -255,7 +267,8 @@ class animSnapBasesSolver:
          self.tets_deformation_gradient.projection_matrix, self.tets_deformation_gradient.solver_list) = \
             self.prepare_lbs_reduced_group(self.model.has_tets_deformation_gradient_constraints, self.tets_deformation_gradient.is_reduced,
                                        "tets_deformation_gradient", self.model.tets_deformation_gradient_constraints,
-                                       self.tets_deformation_gradient.row_dim, self.model.tets_deformation_gradient_assembly_ST,
+                                       self.tets_deformation_gradient.row_dim,
+                                       self.model.tets_deformation_gradient_assembly_ST, self.model.tets_deformation_gradient_assembly_ST_no_weights,
                                        self.tets_deformation_gradient.num_components, self.tets_deformation_gradient.num_samples)
 
     def prepare_snapshots_reduced_group(self, has_group_constraints, reduced_group, group_name, num_components,
@@ -299,7 +312,7 @@ class animSnapBasesSolver:
 
             if not self.reduced_position:
                 # ST (N, ep) @ V (ep, mp, 3) --> S^T V: (N, mp, 3)
-                projecting_mat = np.einsum('ne,emi->nmi',assembly_ST.toarray(), Vj)
+                projecting_mat = np.einsum('ne,emi->nmi',assembly_ST.to_dense().cpu().detach().numpy(), Vj)
             else:
                 ## TODO: requieres test
                 # U^T (r, N, 3) @ S^T (N, ep) --> U^T S^T V: (r, ep, 3)
@@ -427,20 +440,20 @@ class animSnapBasesSolver:
             #     matrices["positional" ] = self.model.positional_assembly_ST
 
             if self.model.has_verts_bending_constraints :
-                matrices["verts_bending" ] = self.model.verts_bending_assembly_ST
+                matrices["verts_bending" ] = self.model.verts_bending_assembly_ST.to_dense().cpu().detach().numpy()
                 np.savez(os.path.join(record_path , "verts_bending_constrained_indices.npz"), indices=self.model.verts_bending_indicies)
 
             if self.model.has_edge_spring_constraints :
-                matrices["edge_spring" ] = self.model.edge_spring_assembly_ST
+                matrices["edge_spring" ] = self.model.edge_spring_assembly_ST.to_dense().cpu().detach().numpy()
 
             if self.model.has_tris_strain_constraints :
-                matrices["tris_strain" ] = self.model.tris_strain_assembly_ST
+                matrices["tris_strain" ] = self.model.tris_strain_assembly_ST.to_dense().cpu().detach().numpy()
 
             if self.model.has_tets_strain_constraints:
-                matrices["tets_strain"] = self.model.tets_strain_assembly_ST
+                matrices["tets_strain"] = self.model.tets_strain_assembly_ST.to_dense().cpu().detach().numpy()
 
             if self.model.has_tets_deformation_gradient_constraints :
-                matrices["tets_deformation_gradient" ] = self.model.tets_deformation_gradient_assembly_ST
+                matrices["tets_deformation_gradient" ] = self.model.tets_deformation_gradient_assembly_ST.to_dense().cpu().detach().numpy()
 
             np.savez(os.path.join(record_path , file_name+".npz") , **matrices)
 
@@ -494,7 +507,7 @@ class animSnapBasesSolver:
                                                                                            device=ST.device)
 
         if self.store_stacked_projections:
-            list[str(self.frame)] = p
+            list[str(self.frame)] = p.to_dense().cpu().detach().numpy()
             if self.frame == self.max_p_snapshots_num:
                 np.savez(os.path.join(self.record_path, name + ".npz"), **list)
                 self.set_store_p(False)
@@ -592,7 +605,7 @@ class animSnapBasesSolver:
             else:
                 return self.get_group_reduced_term(q_t, self.model.verts_bending_constraints, self.bending.row_dim,
                                               self.bending.interpolation_alpha, self.bending.mapped_indices_Pt,
-                                              self.bending.projection_matrix, self.bending.solver_list)
+                                              self.bending.projection_matrix, self.bending.solver_list, self.bending.sampled_constraints)
         return np.zeros_like(unflatten(q_t))
 
     def project_to_edge_spring_manifold(self, q_t):
@@ -605,7 +618,7 @@ class animSnapBasesSolver:
                 return self.get_group_reduced_term(q_t, self.model.edge_spring_constraints, self.spring.row_dim,
                                                    self.spring.interpolation_alpha, self.spring.Pt,
                                                    self.spring.projection_matrix,
-                                                   self.spring.solver_list)
+                                                   self.spring.solver_list, self.spring.sampled_constraints)
         return np.zeros_like(unflatten(q_t))
 
     def project_to_triangles_strain_manifold(self, q_t):
@@ -618,7 +631,7 @@ class animSnapBasesSolver:
                 return self.get_group_reduced_term(q_t, self.model.tris_strain_constraints, self.tris_strain.row_dim,
                                                    self.tris_strain.interpolation_alpha, self.tris_strain.Pt,
                                                    self.tris_strain.projection_matrix,
-                                                   self.tris_strain.solver_list)
+                                                   self.tris_strain.solver_list, self.tris_strain.sampled_constraints)
         return np.zeros_like(unflatten(q_t))
 
     def project_to_tetrahedrons_strain_manifold(self, q_t):
@@ -631,7 +644,7 @@ class animSnapBasesSolver:
                 return self.get_group_reduced_term(q_t, self.model.tets_strain_constraints, self.tets_strain.row_dim,
                                                    self.tets_strain.interpolation_alpha, self.tets_strain.Pt,
                                                    self.tets_strain.projection_matrix,
-                                                   self.tets_strain.solver_list)
+                                                   self.tets_strain.solver_list, self.tets_strain.sampled_constraints)
         return np.zeros_like(unflatten(q_t))
 
     def project_to_tetrahedrons_deformation_gradient_manifold(self, q_t):
@@ -644,7 +657,7 @@ class animSnapBasesSolver:
                 return self.get_group_reduced_term(q_t, self.model.tets_deformation_gradient_constraints, self.tets_deformation_gradient.row_dim,
                                                    self.tets_deformation_gradient.interpolation_alpha, self.tets_deformation_gradient.Pt,
                                                    self.tets_deformation_gradient.projection_matrix,
-                                                   self.tets_deformation_gradient.solver_list, )
+                                                   self.tets_deformation_gradient.solver_list, self.tets_deformation_gradient.sampled_constraints)
         return np.zeros_like(unflatten(q_t))
 
     def step(self, fext, num_iterations=1, use_3d_rhs_form=True):
@@ -707,187 +720,18 @@ class animSnapBasesSolver:
         q_next = self.model.resolve_triangle_self_collisions(q_next)
         self.model.velocities = (q_next - self.model.positions) * dt_inv
         self.model.positions = q_next
+
+        if self.store_positions:
+            positions[str(self.frame)] = q_next.copy()
+            if self.frame == self.max_q_snapshots_num:
+                np.savez(os.path.join(self.record_path, "positions.npz"), **positions)
+                self.set_store_q(False)
+                print(f"Frame {self.frame} : FOM snapshots stored to directory", os.path.join(self.record_path, "positions.npz") )
+
         print(self.frame)
         self.frame += 1
 
 
-# class animSnapSolverTorch:
-#     """
-#     GPU-accelerated version of animSnapBasesSolver.
-#     Uses PyTorch tensors and CUDA acceleration automatically if available.
-#     """
-#
-#     def __init__(self, args, dt=1e-2, device=None, dtype=torch.float32):
-#         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#         self.dtype = dtype
-#
-#         self.model = None
-#         self.dt = dt
-#         self.frame = 0
-#
-#         self.A_torch = None     # global system matrix (sparse)
-#         self.mass = None
-#         self.velocities = None
-#         self.positions = None
-#         self.args = args
-#
-#         self.has_reduced_constraint_projections = False
-#
-#     def set_max_p_frames(self, value:int):
-#         self.max_p_snapshots_num = value
-#
-#     def set_record_path(self, path: str):
-#         self.record_path = path
-#     def set_store_p(self, value: bool):
-#         self.store_stacked_projections = value
-#
-#     def set_dirty(self):
-#         self.dirty = True
-#
-#     def set_clean(self):
-#         self.dirty = False
-#
-#     def ready(self):
-#         return not self.dirty
-#
-#     def set_model_constraints(self):
-#
-#         if self.args.vert_bending_constraint:
-#             self.model.add_vertex_bending_constraint(self.args.vert_bending_constraint_wi)
-#         if self.args.edge_constraint:
-#             self.model.add_edge_spring_constrain(self.args.edge_constraint_wi)
-#
-#         if self.args.tri_strain_constraint:
-#             self.model.add_tri_constrain_strain(
-#                 self.args.sigma_min,
-#                 self.args.sigma_max,
-#                 self.args.strain_limit_constraint_wi)
-#
-#         if self.args.tet_deformation_constraint:
-#             self.model.add_tet_deformation_gradient_constraint(self.args.deformation_gradient_constraint_wi)
-#         if self.args.tet_strain_constraint:
-#             self.model.add_tet_constrain_strain(
-#                 self.args.sigma_min,
-#                 self.args.sigma_max,
-#                 self.args.strain_limit_constraint_wi)
-#
-#
-#     # --------------------------------------------------------
-#     def set_model(self, model):
-#         """Attach a DeformableMeshTorch model."""
-#         self.model = model
-#         self.mass = model.mass.to(self.device)
-#         self.velocities = model.velocities.to(self.device)
-#         self.positions = model.positions.to(self.device)
-#         self.set_dirty()
-#
-#     # --------------------------------------------------------
-#     def _collect_A_triplets(self):
-#         """Collects triplets for system matrix A = M/dt^2 + Σ_i w_i S_i^T S_i."""
-#         N = self.model.num_vertices
-#         dt2_inv = 1.0 / (self.dt * self.dt)
-#         triplets = []
-#
-#         for c in self.model.constraints:
-#             triplets += c.get_wi_SiT_AiT_Ai_Si()
-#
-#         m = self.mass
-#         for i in range(N):
-#             base = 3 * i
-#             v = m[i].item() * dt2_inv
-#             triplets.append((base+0, base+0, v))
-#             triplets.append((base+1, base+1, v))
-#             triplets.append((base+2, base+2, v))
-#         return triplets, 3 * N
-#
-#     # --------------------------------------------------------
-#     def prepare_global_matrix(self):
-#         """Build global sparse matrix A on GPU."""
-#         self.set_model_constraints()
-#
-#         triplets, dim = self._collect_A_triplets()
-#         rows, cols, vals = zip(*triplets)
-#         idx = torch.tensor([rows, cols], dtype=torch.long, device=self.device)
-#         val = torch.tensor(vals, dtype=self.dtype, device=self.device)
-#         self.A_torch = torch.sparse_coo_tensor(idx, val, size=(dim, dim), device=self.device).coalesce()
-#
-#     # --------------------------------------------------------
-#     def _apply_A(self, x):
-#         """Applies the global system matrix A to a flattened vector x."""
-#         return torch.sparse.mm(self.A_torch, x.unsqueeze(1)).squeeze(1)
-#
-#     # --------------------------------------------------------
-#     def cg(self, A_apply, b, x0=None, tol=1e-7, maxit=200):
-#         """Conjugate gradient solver (GPU)."""
-#         x = torch.zeros_like(b) if x0 is None else x0.clone()
-#         r = b - A_apply(x)
-#         p = r.clone()
-#         rs_old = torch.dot(r, r)
-#         for _ in range(maxit):
-#             Ap = A_apply(p)
-#             alpha = rs_old / (torch.dot(p, Ap) + 1e-20)
-#             x = x + alpha * p
-#             r = r - alpha * Ap
-#             rs_new = torch.dot(r, r)
-#             if torch.sqrt(rs_new) < tol:
-#                 break
-#             p = r + (rs_new / (rs_old + 1e-20)) * p
-#             rs_old = rs_new
-#         return x
-#
-#     # --------------------------------------------------------
-#     def build_rhs(self, q):
-#         """Accumulate constraint projections into RHS (Σ_i S_i^T p_i)."""
-#         rhs = torch.zeros_like(self.positions)
-#         for c in self.model.constraints:
-#             c.project_wi_SiT_pi(q, rhs)
-#         return rhs
-#
-#     # --------------------------------------------------------
-#     def step(self, fext, num_iterations=1):
-#         """Perform one Projective Dynamics step on GPU."""
-#         if self.A_torch is None:
-#             self.prepare_global_matrix()
-#
-#         N = self.model.num_vertices
-#         pos = self.positions
-#         vel = self.velocities
-#         mass = self.mass
-#         dt = self.dt
-#
-#         dt_inv = 1.0 / dt
-#         dt2 = dt * dt
-#         dt2_inv = 1.0 / dt2
-#
-#         # Explicit prediction
-#         a = fext / mass[:, None]
-#         explicit = pos + dt * vel + dt2 * a
-#
-#         # Flatten for solver
-#         sn_flat = explicit.reshape(-1)
-#         m_flat = (mass.repeat_interleave(3) * dt2_inv) * sn_flat
-#
-#         q_flat = sn_flat.clone()
-#
-#         # Iterative PD solve
-#         for _ in range(num_iterations):
-#             rhs = torch.zeros_like(self.positions)
-#             for c in self.model.constraints:
-#                 c.project_wi_SiT_pi(q_flat.view(-1, 3), rhs)
-#             b = rhs + m_flat.view(-1, 3)
-#             b_flat = b.reshape(-1)
-#             q_flat = self.cg(self._apply_A, b_flat, tol=1e-6, maxit=200)
-#
-#         # Reshape & update
-#         q_next = q_flat.view(N, 3)
-#         self.velocities = (q_next - pos) * dt_inv
-#         self.positions = q_next
-#         self.model.positions = q_next
-#         self.model.velocities = self.velocities
-#
-#         self.frame += 1
-#         return q_next
-#
 
 class Solver:
     def __init__(self):
@@ -1095,5 +939,6 @@ class Solver:
         q_next= self.model.resolve_triangle_self_collisions(q_next)
         self.model.velocities = (q_next - self.model.positions) * dt_inv
         self.model.positions = q_next
+
         print(self.frame)
         self.frame +=1

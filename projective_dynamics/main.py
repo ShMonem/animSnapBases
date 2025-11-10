@@ -82,13 +82,21 @@ if __name__ == '__main__':
     param.add_directories_args(parser)
 
     args = parser.parse_args()
+    debug = False
+
 
     record_projection_data = False #args.record_projection_data
-    with cProfile.Profile() as pr:
-        main(args,
-             record_fom_info = record_projection_data,
-             case = example,
-             params = param)
+    if debug:
+        with cProfile.Profile() as pr:
+            main(args,
+                 record_fom_info = record_projection_data,
+                 case = example,
+                 params = param)
 
-    stats = pstats.Stats(pr)
-    stats.sort_stats(pstats.SortKey.TIME).print_stats(100)
+        stats = pstats.Stats(pr)
+        stats.sort_stats(pstats.SortKey.TIME).print_stats(100)
+    else:
+        main(args,
+             record_fom_info=record_projection_data,
+             case=example,
+             params=param)

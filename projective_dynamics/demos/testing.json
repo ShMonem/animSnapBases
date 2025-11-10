@@ -24,8 +24,8 @@
     "positional_constraint_wi": 0,
     "edge_constraint_wi": 1000.0,
     "vert_bending_constraint_wi": 0.1,
-    "deformation_gradient_constraint_wi": 100000000.0,
-    "strain_limit_constraint_wi": 100000000.0,
+    "deformation_gradient_constraint_wi": 10000000.0,
+    "strain_limit_constraint_wi": 10000.0,
     "sigma_min": 0.99,
     "sigma_max": 1.01
   },
@@ -34,8 +34,8 @@
     "vert_bending_constraint": false,
     "edge_spring_constraint": false,
     "tri_strain_constraint": false,
-    "tet_strain_constraint": true,
-    "tet_deformation_constraint": false,
+    "tet_strain_constraint": false,
+    "tet_deformation_constraint": true,
 
     "is_gravity_active": true,
 
@@ -58,8 +58,8 @@
   "position_reduction": {
     "positions_reduced": false,
     "name": "LBS",
-    "num_components": 30,
-    "r_muliplier": 6.1
+    "num_components": 100,
+    "r_muliplier": 1.1
   },
   "constraint_projetions_reduction": {
     "name": "LBS",
@@ -76,15 +76,15 @@
     "tri_strain_num_components": -1,
     "tri_strain_num_samples": -1,
 
-    "tet_strain_reduced": true,
-    "tet_strain_num_components": 100,
-    "tet_strain_num_samples": 600,
+    "tet_strain_reduced": false,
+    "tet_strain_num_components": 40,
+    "tet_strain_num_samples": 1000,
 
-    "tet_deformation_reduced": false,
-    "tet_deformation_num_components": 100,
+    "tet_deformation_reduced": true,
+    "tet_deformation_num_components": 40,
     "tet_deformation_num_samples": 1000,
 
-    "r_muliplier": 10.1,
+    "r_muliplier": 2.2,
       "basis_scale": 1
   },
     "nonlinear_snapshots": {

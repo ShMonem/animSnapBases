@@ -58,8 +58,8 @@
   "position_reduction": {
     "positions_reduced": false,
     "name": "LBS",
-    "num_components": 300,
-    "r_muliplier": 8.0
+    "num_components": 100,
+    "r_muliplier": 10.1
   },
   "constraint_projetions_reduction": {
     "name": "LBS",
@@ -81,10 +81,10 @@
     "tet_strain_num_samples": 600,
 
     "tet_deformation_reduced": true,
-    "tet_deformation_num_components": 100,
+    "tet_deformation_num_components": 10,
     "tet_deformation_num_samples": 600,
 
-    "r_muliplier": 10,
+    "r_muliplier": 2.2,
     "basis_scale": 1
   },
   "nonlinear_snapshots": {

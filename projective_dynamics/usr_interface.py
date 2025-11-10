@@ -1,5 +1,5 @@
 import os.path
-
+import igl
 import polyscope as ps
 import polyscope.imgui as psim
 import numpy as np
@@ -150,26 +150,25 @@ class PreDrawHandler:
             return
 
         model = self.solver.model
-        mass_value = float(self.physics_params.mass_per_particle)
+        # mass_value = float(self.physics_params.mass_per_particle)
 
         # -- 1. Update mass
         for i in range(model.mass.shape[0]):
             if model.is_fixed(i):
                 continue
-            # if not np.isclose(model.mass[i].detach().cpu().item(), mass_value, atol=1e-5): #CUDA
-            if not np.isclose(model.mass[i], mass_value, atol=1e-10):
-                model.mass[i] = mass_value
-                self.solver.set_dirty()
+            # if not np.isclose(model.mass[i], mass_value, atol=1e-10):
+            #     model.mass[i] = mass_value
+            #     self.solver.set_dirty()
 
         # -- 2. Apply gravity & simulate if animating
         if self._animating:
             gravity = 9.81 if self.physics_params.is_gravity_active else 0.0
-            self.fext[:, 1] -= gravity * self.physics_params.mass_per_particle
-            # self.fext = torch.as_tensor(self.fext, dtype=torch.float32, device=device)  #cuda
+            # self.fext[:, 1] -= gravity * self.physics_params.mass_per_particle
+            self.fext[:, 1] -= gravity * model.mass
+
 
             if not self.solver.ready():
                 self.solver.prepare(self.physics_params, store_fom_info=self.record_info, record_path=self.record_path)
-                # self.solver.prepare_global_matrix() #CUDA
             self.solver.step(self.fext, self.physics_params.solver_iterations)
 
             # Reset fext and update mesh
@@ -185,10 +184,12 @@ class PreDrawHandler:
 
             # update_camera_to_mesh_center(model)
             # ps.reset_camera_to_home_view()
+            ps.register_surface_mesh("model", model.positions, model.faces, color=color, edge_width=1.0)
 
             if self.record_info:
-                filename = os.path.join(self.record_path, "frame"+str(self.solver.frame)+".png")
-                ps.screenshot(filename, transparent_bg=True)
+                filename = os.path.join(self.record_path, "frame"+str(self.solver.frame))
+                ps.screenshot(filename+".png", transparent_bg=True)
+                igl.write_triangle_mesh(filename+".off", model.positions, model.faces)
 
         # -- 3. Show fixed points
         fixed_indices = [i for i, fix in enumerate(model.get_fixed_indices()) if fix]
@@ -215,9 +216,6 @@ class PreDrawHandler:
             if ps.has_point_cloud("picked_points"):
                 ps.remove_point_cloud("picked_points")
 
-        # ps.register_surface_mesh("model", model.positions.detach().cpu().numpy().astype(np.float32),
-        #                          model.faces.detach().cpu().numpy().astype(np.float32), color=color, edge_width=1.0) #CUDA
-        ps.register_surface_mesh("model", model.positions, model.faces, color=color, edge_width=1.0)
 
 
 

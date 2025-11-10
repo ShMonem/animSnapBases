@@ -149,20 +149,22 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
 
 
 
-            # if args.vert_bending_constraint:
-            #     model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
-            # if args.edge_constraint:
-            #     model.add_edge_spring_constrain(args.edge_constraint_wi)
-            # if args.tri_strain_constraint:
-            #     model.add_tri_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
-            # if args.tet_strain_constraint:
-            #     model.add_tet_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
-            # if args.tet_deformation_constraint:
-            #     model.add_tet_constrain_deformation_gradient(args.deformation_gradient_constraint_wi)
-            # # if recording snapshots build output file name/ path
+            if args.vert_bending_constraint:
+                model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
+            if args.edge_constraint:
+                model.add_edge_spring_constrain(args.edge_constraint_wi)
+            if args.tri_strain_constraint:
+                model.add_tri_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
+            if args.tet_strain_constraint:
+                model.add_tet_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
+            if args.tet_deformation_constraint:
+                model.add_tet_constrain_deformation_gradient(args.deformation_gradient_constraint_wi)
+            # if recording snapshots build output file name/ path
+
             if record_fom_info:
                 constrproj_case = "constraint_projection/FOM"
-                if solver.has_reduced_constraint_projectios:
+
+                if solver.has_reduced_constraint_projections:
                     constrproj_case = "constraint_projection/" + args.constraint_projection_basis_type
 
                 specify_path = ""
@@ -195,6 +197,7 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
 
                 solver.set_record_path(output_path)
                 solver.set_store_p(record_fom_info)
+                solver.set_store_q(record_fom_info)
             solver.set_dirty()
 
         elif solver.frame == 40:
@@ -1093,7 +1096,7 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
             params.edit_system_args(args, "Cloth")
 
             V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
-            reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
+            reset_simulation_model(V, F, None, should_rescale=True)
             object_name = "cloth"
 
             check_dir_exists(os.path.join(output_path, object_name))
@@ -1138,7 +1141,7 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
             # if recording snapshots build output file name/ path
             if record_fom_info:
                 constrproj_case = "constraint_projection/FOM"
-                if solver.has_reduced_constraint_projectios:
+                if solver.has_reduced_constraint_projections:
                     constrproj_case = "constraint_projection/" + args.constraint_projection_basis_type
 
                 specify_path = ""
@@ -1173,9 +1176,9 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
                 solver.set_store_p(record_fom_info)
             solver.set_dirty()
 
-        elif solver.frame % (poking_frames_per_point + rest_frames_per_point) == 0.0\
-                and 0 < solver.frame < total_frames_poking_frames:
-            i = solver.frame // (poking_frames_per_point+rest_frames_per_point)
+        elif solver.frame % (poking_frames_per_point + rest_frames_per_point) == 1:
+            i = solver.frame // (poking_frames_per_point + rest_frames_per_point)
+
             if i < poked_points.shape[0]:
                 model.add_positional_constraint(poked_points[i], args.positional_constraint_wi,
                                                 motion_type="user_defined", frame_shift=poking_series)
@@ -1183,7 +1186,7 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
                 solver.set_dirty()
                 print(f"Poking - positional constraint added to {i} vertex")
 
-        elif solver.frame % (poking_frames_per_point+rest_frames_per_point) == poking_frames_per_point\
+        elif solver.frame % (poking_frames_per_point + rest_frames_per_point) == poking_frames_per_point\
                 and 0 < solver.frame < total_frames_poking_frames:
             i = solver.frame // (poking_frames_per_point + rest_frames_per_point)
             if i < poked_points.shape[0]:
@@ -1363,7 +1366,8 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
             psim.BulletText(f"Vertices: {model.positions.shape[0]}")
             psim.BulletText(f"Triangles: {model.faces.shape[0]}")
             psim.BulletText(f"Edges: {model.count_edges(model.faces)}")
-            psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
+            if model.elements is not None:
+                psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
 
             if model.has_verts_bending_constraints:
                 psim.BulletText(f"Vertices bending constraint: {len(model.verts_bending_constraints)}")

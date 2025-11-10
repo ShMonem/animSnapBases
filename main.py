@@ -93,11 +93,14 @@ def main(param: Config_parameters):
 
             tets_plots_pca(bases, param)
 
-        if param.store_bases:
-            start = 1
-            end = bases.numComp
-            step = 1
-            bases.store_components_to_files(start, end, step, ".bin")
+        ## uncomment to store .bin format
+        # if param.store_bases:
+        #     start = 1
+        #     end = bases.numComp
+        #     step = 1
+        #     bases.store_components_to_files(start, end, step, ".bin")
+
+        bases.store_components_n_interpol_points()
 
     if param.compute_constProj_bases:
         from snapbases.constraintsComponents import constraintsComponents
@@ -169,7 +172,8 @@ def main(param: Config_parameters):
 if __name__ == '__main__':
     # -----------------------------------------------------------------------------------------------------------------
 
-    # available_demos = {"deim/cloth_automated_deim_vertBendingSubspace.json",
+    # available_demos = {"posSubspace/bar_gFall_posSubspace.json"
+    #                    "deim/cloth_automated_deim_vertBendingSubspace.json",
     #                    "deim/cloth_bendOnly_automated_deim_vertBendingSubspace.json"
     #
     #                    "deim/cloth_automated_deim_edgeSpringSubspace.json",
@@ -188,7 +192,7 @@ if __name__ == '__main__':
 
     # mesh = "bar"
     # subspace = "vertbendSubspace"
-    json_file = "config/examples/advanced/cloth_automated_adv_edgeSpringSubspace.json"
+    json_file = "config/examples/posSubspace/bar_gFall_posSubspace.json"
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
     parser.add_argument('--mesh', type=str, default="mesh", help='Give a character mesh')

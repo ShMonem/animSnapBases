@@ -172,7 +172,7 @@ def main(param: Config_parameters):
 if __name__ == '__main__':
     # -----------------------------------------------------------------------------------------------------------------
 
-    # available_demos = {"posSubspace/bar_gFall_posSubspace.json"
+    # available_demos = {
     #                    "deim/cloth_automated_deim_vertBendingSubspace.json",
     #                    "deim/cloth_bendOnly_automated_deim_vertBendingSubspace.json"
     #
@@ -181,18 +181,19 @@ if __name__ == '__main__':
     #    #
     #                    "deim/cloth_automated_deim_triStrainSubspace.json",
     #                    "deim/cloth_strainOnly_automated_deim_triStrainSubspace.json"
-    #
+    #                    "posSubspace/bar_gFall_posSubspace.json"
     #                    "deim/bar_automated_deim_tetDeformationGradientSubspace.json"}
 
     #                    "geom/cloth_automated_geom_vertBendingSubspace.json",
     #                    "geom/cloth_automated_geom_edgeSpringSubspace.json",
     #                    "geom/cloth_automated_geom_triStrainSubspace.json",
+    #                    "geom/bar_automated_geom_tetDeformationGradientSubspace.json
 
 
 
     # mesh = "bar"
     # subspace = "vertbendSubspace"
-    json_file = "config/examples/posSubspace/bar_gFall_posSubspace.json"
+    json_file = "config/examples/geom/bar_automated_geom_tetDeformationGradientSubspace.json"
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
     parser.add_argument('--mesh', type=str, default="mesh", help='Give a character mesh')

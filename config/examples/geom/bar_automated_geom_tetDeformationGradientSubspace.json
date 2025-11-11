@@ -5,7 +5,8 @@
 		"mesh": "bar",
 		"volumetric": true,
 		"experiment": "bar_automated_deformationgradient/",
-		"snap_format": ".off"
+		"snap_format": ".off",
+        "snap_file_patten": "/frame_*"
 	},
 	"vertexPos_bases":
 		{
@@ -50,7 +51,7 @@
 		"interpolation_type": "geom",
 		"desired_num_components": 1000,
 		"numComponents_verts": 5,
-		"bases_res_tol": 1e-40,
+		"bases_res_tol": 2e-19,
 		"dim": 3,
 		"constraintsDim": 1,
 		"max_element_per_geom_vert": 100000000,

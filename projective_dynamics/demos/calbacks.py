@@ -148,7 +148,6 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
             model.fix_surface_side_vertices(side="right")
 
 
-
             if args.vert_bending_constraint:
                 model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
             if args.edge_constraint:

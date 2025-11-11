@@ -81,10 +81,10 @@
     "tet_strain_num_samples": 600,
 
     "tet_deformation_reduced": true,
-    "tet_deformation_num_components": 10,
+    "tet_deformation_num_components": 40,
     "tet_deformation_num_samples": 600,
 
-    "r_muliplier": 2.2,
+    "r_muliplier": 1.1,
     "basis_scale": 1
   },
   "nonlinear_snapshots": {

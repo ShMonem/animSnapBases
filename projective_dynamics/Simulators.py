@@ -211,11 +211,11 @@ class animSnapBasesSolver:
             # compute skinning weights
             group_subspace.compute_skinning_weights()
             # compute constraint group mass matrix
-            group_subspace.compute_constraint_mass_matrix(group_name, group_constraints, self.model.mass_init, group_aux_size)
+            group_subspace.compute_constraint_mass_matrix(group_name, group_constraints, self.model.lumped_mass, self.model.mass_init, group_aux_size)
 
             # compute lbs basis "V" for the constraint group
             group_subspace.create_basis_via_skinning_weights(self.model.positions, assembly_ST_no_weights, group_constraints, group_aux_size,
-                                              use_pca=True, specify_verts= specify_verts, mass_normalizarion=1.0/self.model.mass_init.sum())
+                                              use_pca=True, specify_verts= specify_verts)
 
             if not self.reduced_position or self.position_reduction_type == "LBS":
                 projecting_mat = np.einsum('ne,em->nm',assembly_ST.to_dense().cpu().detach().numpy(), group_subspace.V.to_dense().cpu().detach().numpy())
@@ -225,8 +225,7 @@ class animSnapBasesSolver:
 
             # create a list of constrained elements and alpha points
             # compute interpolation solvers for lbs subspace
-            group_subspace.init_constraint_group_interpolation(group_constraints, aux_size=group_aux_size,
-                                                               mass_normalizarion=1/self.model.mass_init.sum())
+            group_subspace.init_constraint_group_interpolation(group_constraints, aux_size=group_aux_size)
 
             print(f"Created LBS interpolation basis via skinning weights for {group_name} of size {group_subspace.V.shape}.")
 

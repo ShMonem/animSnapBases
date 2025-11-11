@@ -298,7 +298,9 @@ class ConstraintsProjectionSubspace:
         self.num_samples = num_samples
         self.constraint_name = constraint_name
         self.weights = None
-        self.mass = None
+        self.mass = None   # geometrical masses (area/volume based)
+        self.particles_mass = None   # dynamical masses (for particles motion)
+
         self.sampled_constraints_ids = []
         self.sampled_constraints= []
         self.interpol_solver = {}
@@ -543,11 +545,12 @@ class ConstraintsProjectionSubspace:
         else:
             raise  ValueError(f"Unknown constraint type {self.constraint_name} for LBE subspaces")
 
-    def compute_constraint_mass_matrix(self, group_name, constraints, vertex_masses, aux_size):
+    def compute_constraint_mass_matrix(self, group_name, constraints, vertex_masses, particle_masses, aux_size):
         """
         Compute mass matrix and its diagonal for the constraint projection auxiliaries.
 
         Args:
+            particle_masses:
             constraints: list of dicts, each with keys like {"vertex": i} or {"triangle": t} or {"tet": T}
             vertex_masses: (n,) array of per-vertex masses
             tris: (m, 3) array of triangle indices
@@ -560,16 +563,23 @@ class ConstraintsProjectionSubspace:
 
         num_constraints = len(constraints)
         M_diag = np.zeros(num_constraints * aux_size)
+        M_diag_d = np.zeros(num_constraints * aux_size)
+
 
         if group_name == "verts_bending":
             self.mass = vertex_masses
+            self.particles_mass = particle_masses
         else:
             for i, c in enumerate(constraints):
                 w = np.sum(vertex_masses[c.indices])
-
                 M_diag[i * aux_size:(i + 1) * aux_size] = w
 
+                w_d = np.sum(particle_masses[c.indices])
+                M_diag_d[i * aux_size:(i + 1) * aux_size] = w_d
+
+
             self.mass = M_diag
+            self.particles_mass = M_diag_d
 
     def snapshot_pca(self, Y, specify_verts):
         """
@@ -644,7 +654,7 @@ class ConstraintsProjectionSubspace:
 
         return Y
 
-    def create_skinning_space_constraints_torch(self, rest_state_aux, skinning_weights, constraints, aux_size, mass_normalizarion):
+    def create_skinning_space_constraints_torch(self, rest_state_aux, skinning_weights, constraints, aux_size):
         """
         Vectorized PyTorch version of create_skinning_space_constraints.
         Builds the constraint-space skinning matrix Y (|constraints|*aux_size, num_basis*(dim+1)).
@@ -681,7 +691,7 @@ class ConstraintsProjectionSubspace:
                 continue
 
             # Repeat each constraint’s weight for aux_size rows
-            cur_w_expanded = cur_w.repeat_interleave(rows_per_constraint) # mass_normalizarion # (Nc*aux_size,)
+            cur_w_expanded = cur_w.repeat_interleave(rows_per_constraint) # (Nc*aux_size,)
 
             # Apply weights to rest_state_aux
             Y[:, g * (dim + 1): g * (dim + 1) + dim] = rest_state_aux * cur_w_expanded.unsqueeze(1)
@@ -690,7 +700,7 @@ class ConstraintsProjectionSubspace:
         return Y
 
     def create_basis_via_skinning_weights(self, rest_positions, assembly_ST_no_weights, constraints, aux_size,
-                                          use_pca=True, specify_verts=[], mass_normalizarion=1):
+                                          use_pca=True, specify_verts=[]):
         """
         Complete Python equivalent of:
         PD::RHSInterpolationGroup::createBasisViaSkinningWeights
@@ -698,10 +708,10 @@ class ConstraintsProjectionSubspace:
         # Compute rest-state auxiliaries (simplified, assuming S = identity if constraints already map properly)
         rest_state_aux = torch.sparse.mm(assembly_ST_no_weights.transpose(0,1), torch.from_numpy(rest_positions).to(dtype=torch.float32, device=assembly_ST_no_weights.device))
         # Build constraint-space skinning matrix Y
-        Y = self.create_skinning_space_constraints_torch(rest_state_aux, self.weights, constraints, aux_size, mass_normalizarion)
+        Y = self.create_skinning_space_constraints_torch(rest_state_aux, self.weights, constraints, aux_size)
 
         # Perform PCA or not
-        def mass_weighted_pca(Y, M, r_max=None, mean_axis=0, tol_rel=1e-6):
+        def mass_weighted_pca(Y, M_geom, mean_axis=0, tol_rel=1e-6):
             """
             Y: (m, s) snapshots (float, on same device)
             M: (m,) mass vector (float, same device)
@@ -711,7 +721,7 @@ class ConstraintsProjectionSubspace:
             Yc = Y - Y.mean(dim=mean_axis, keepdim=True)
 
             # 2) form A = Yc^T M Yc  (s x s)
-            Mw = M.unsqueeze(1)  # (m,1)
+            Mw = M_geom.unsqueeze(1)  # (m,1)
             A = Yc.T @ (Mw * Yc)  # symmetric PSD
 
             # 3) eigendecomp
@@ -727,10 +737,10 @@ class ConstraintsProjectionSubspace:
 
             # 5) numerically re-orthonormalize w.r.t. M  (QR in mass metric)
             #    Let L = sqrt(M). Do Euclidean QR on L^T V0 then back-transform.
-            L = torch.sqrt(M)  # (m,)
-            Qe, _ = torch.linalg.qr(V0 * L[:, None])  # Euclidean QR
-            # Qe, _ = torch.linalg.qr(V0)  # Euclidean QR
-            V = Qe / L[:, None]  # now V^T M V = I
+            # L = torch.sqrt(M)  # (m,)
+            # Qe, _ = torch.linalg.qr(V0 * L[:, None])  # Euclidean QR
+            # # Qe, _ = torch.linalg.qr(V0)  # Euclidean QR
+            # V = Qe / L[:, None]  # now V^T M V = I
             # V= V0
 
             # ## assert orthogonality w.r.to M
@@ -758,43 +768,38 @@ class ConstraintsProjectionSubspace:
             #         f"V^T M V != I (max abs err={err_abs:.3e}, rel err={err_rel:.3e}, "
             #         f"atol={atol}, rtol={rtol})"
             #     )
-            return V, vals
+            return V0, vals
 
-        def append_mass_orthonormal_one(V, M):
-            m = V.shape[0]
-            a = torch.ones(m, device=V.device, dtype=V.dtype)
+        def metric_convert_basis(V_g, M_dyn, tol=1e-10):
+            # Build Gram in simulation metric
+            MV = (M_dyn[:, None] * V_g)  # (m, r)
+            G = V_g.T @ MV  # (r, r)
 
-            # project a to be M-orthogonal to current V
-            # coef = V^T M a
-            coef = (M[:, None] * V).T @ a  # (r,)
-            a = a - V @ coef  # remove components along V
+            # Drop tiny modes if necessary
+            evals, evecs = torch.linalg.eigh(G)
+            keep = evals > tol * evals.max()
+            if keep.sum() < G.shape[0]:
+                V_g = V_g @ evecs[:, keep]  # re-basis
+                G = torch.diag(evals[keep])
 
-            # if nearly zero, skip to avoid rank issues
-            Ma = (M * a) @ a
-            if Ma <= 1e-12 * (M.sum()):  # robust skip
-                return V
-
-            a = a / torch.sqrt(Ma)
-            return torch.cat([V, a[:, None]], dim=1)
-
-        def project_out_global_scaling(V, M, rest_pos_flat):
-            # rest_pos_flat: (m,) stacked XYZ rest positions or per-DOF vector that encodes dilation direction
-            r = rest_pos_flat
-            rMr = (M * r) @ r
-            if rMr <= 0:
-                return V
-            coef = ((M * r).T @ V) / rMr  # (r,)
-            return V - r[:, None] * coef[None, :]
+            # Cholesky (or sqrt of diag if G diagonal)
+            R = torch.linalg.cholesky(G)  # (r_kept, r_kept)
+            V = V_g @ torch.cholesky_inverse(R)  # V^T M_dyn V = I
+            return V
 
         if use_pca:
             M = torch.as_tensor(self.mass, dtype=Y.dtype, device=Y.device)
+            M_dyn = torch.as_tensor(self.particles_mass, dtype=Y.dtype, device=Y.device)
+
 
             # PCA basis
             L = torch.sqrt(M)  # (m,)
             V, _ = mass_weighted_pca(Y, M, tol_rel=1e-8)
-            self.V = torch.hstack((V, torch.ones((Y.shape[0], 1), device=Y.device, dtype=Y.dtype)))
+            # V = metric_convert_basis(V, M_dyn, tol=1e-10)
+
+            self.V = torch.hstack((V, torch.ones((Y.shape[0], 1), device=Y.device, dtype=Y.dtype)))/ self.particles_mass.max()  #/60
             # self.V = L[:,None] * self.V
-            self.V /= mass_normalizarion
+            # self.V *= mass_normalizarion
             # self.V/=self.V.max()
 
 
@@ -809,8 +814,7 @@ class ConstraintsProjectionSubspace:
 
     def init_constraint_group_interpolation(self,
                            constraints,
-                           aux_size=1,
-                            mass_normalizarion=1.0):
+                           aux_size=1):
         """
         Python equivalent of PD::RHSInterpolationGroup::initInterpolation
         Builds interpolation system for reduced constraint projections.

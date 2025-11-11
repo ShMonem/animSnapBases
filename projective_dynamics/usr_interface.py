@@ -150,12 +150,16 @@ class PreDrawHandler:
             return
 
         model = self.solver.model
-        # mass_value = float(self.physics_params.mass_per_particle)
 
-        # -- 1. Update mass
-        for i in range(model.mass.shape[0]):
-            if model.is_fixed(i):
-                continue
+        # -- 3. Show fixed points
+        fixed_indices = [i for i, fix in enumerate(model.get_fixed_indices()) if fix]
+        picked_indices = [i for i, pick in enumerate(model.get_picked_verts()) if pick]
+
+        # # -- 1. Update mass
+        # mass_value = float(self.physics_params.mass_per_particle)
+        # for i in range(model.mass.shape[0]):
+        #     if model.is_fixed(i):
+        #         continue
             # if not np.isclose(model.mass[i], mass_value, atol=1e-10):
             #     model.mass[i] = mass_value
             #     self.solver.set_dirty()
@@ -165,6 +169,7 @@ class PreDrawHandler:
             gravity = 9.81 if self.physics_params.is_gravity_active else 0.0
             # self.fext[:, 1] -= gravity * self.physics_params.mass_per_particle
             self.fext[:, 1] -= gravity * model.mass
+            self.fext[fixed_indices] = 0
 
 
             if not self.solver.ready():
@@ -191,9 +196,6 @@ class PreDrawHandler:
                 ps.screenshot(filename+".png", transparent_bg=True)
                 igl.write_triangle_mesh(filename+".off", model.positions, model.faces)
 
-        # -- 3. Show fixed points
-        fixed_indices = [i for i, fix in enumerate(model.get_fixed_indices()) if fix]
-        picked_indices = [i for i, pick in enumerate(model.get_picked_verts()) if pick]
 
 
         if fixed_indices:

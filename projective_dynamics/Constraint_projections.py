@@ -909,7 +909,7 @@ class TetDeformationGradientConstraint(Constraint):
 
 
 class DeformableMesh:
-    def __init__(self, positions, faces, elements=None, masses=None):
+    def __init__(self, positions, faces, elements=None, masses=None, mass_per_particle=10):
 
         self.floor_height = 0
         self.foolr_collision = True
@@ -931,9 +931,9 @@ class DeformableMesh:
         else:
             m = igl.massmatrix(self.positions, self.faces, igl.MASSMATRIX_TYPE_VORONOI)
 
-        # vertex_masses = np.diag(m.todense())
+        self.lumped_mass = np.diag(m.todense()).copy()
 
-        self.mass = np.diag(m.todense()).copy() if masses is None else np.array(masses)
+        self.mass = np.ones(n) * mass_per_particle if masses is None else np.array(masses)
         self.mass_init = self.mass.copy()
         self.velocities = np.zeros_like(self.positions)
 

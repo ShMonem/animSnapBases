@@ -507,14 +507,15 @@ class ConstraintsProjectionSubspace:
         #         D = np.minimum(D, dijkstra(next_seed))
         #
         #     return np.array(seeds)
-        #
-        # seeds = farthest_point_sampling(self.vertices, self.faces, len(self.vert_samples))
-        # print("Selected seeds:", seeds)
+        # #
+        # # seeds = farthest_point_sampling(self.vertices, self.faces, len(self.vert_samples))
+        # # print("Selected seeds:", seeds)
         #
         # # ------------------------------
         # # Step 3. Compute Bounded Biharmonic Weights (BBW)
         # # ------------------------------
         # # Harmonic (smooth) weights fallback if BBWData is unavailable
+        # seeds = np.array(self.vert_samples)
         # b = seeds
         # bc = np.eye(len(b))
         #
@@ -523,7 +524,6 @@ class ConstraintsProjectionSubspace:
         # # weights = np.maximum(weights, 0)  # Clamp to positive
         # weights /= weights.sum(axis=1, keepdims=True)
 
-        # check_matrix_health(weights, "weights")
 
         ps_mesh = ps.register_surface_mesh("mesh", self.vertices, self.faces)
         #
@@ -580,55 +580,6 @@ class ConstraintsProjectionSubspace:
 
             self.mass = M_diag
             self.particles_mass = M_diag_d
-
-    def snapshot_pca(self, Y, specify_verts):
-        """
-        Perform mass-weighted PCA
-        Args:
-            Y: (m, s) snapshot matrix (each column = constraint-space feature)
-            masses_diag: (m, ) mass weights vector
-            size: number of principal components to keep
-
-        Returns:
-            base: (m, size+1) reduced PCA basis
-        """
-        # Step 1: remove column-wise mean
-        Y_centered = Y - Y.mean(axis=0, keepdims=True)
-
-        # def robust_std(x):
-        #     if isinstance(x, torch.Tensor):
-        #         return x.std()
-        #     else:
-        #         return np.std(x)
-        #
-        # factor = 1.0 / robust_std(Y_centered)
-        #
-        # Y_centered *=factor
-
-        mass = torch.from_numpy(self.mass).to(device=Y_centered.device, dtype=Y_centered.dtype)
-        A = Y_centered.T @ (mass.unsqueeze(1) * Y_centered)
-        # Step 3: eigendecomposition
-        # Step 1: Eigen-decomposition (symmetric matrix A)
-        vals, vecs = torch.linalg.eigh(A)  # vals: (n,), vecs: (n,n)
-
-        # Step 2: Normalize eigenvalues by their max
-        temp = vals / vals.max()
-
-        # # Step 3: Keep only significant eigenvalues (> tol)
-        tol = 1e-10 * vals.max()
-        mask = vals / vals.max() > 1e-6
-        vals = vals[mask]
-        vecs = vecs[:, mask]
-
-        # # Step 4: Sort in descending order
-        # sorted_vals, idx = torch.sort(vals, descending=True)
-        # vecs = vecs[:, idx]
-        # vals = sorted_vals
-
-        # Step 5: Compute PCA-style bases
-        base = Y_centered @ (vecs / torch.sqrt(vals.unsqueeze(0)))  # broadcast sqrt(vals)
-
-        return base
 
     def create_skinning_space_constraints(self, rest_state_aux, skinning_weights, constraints, aux_size):
 
@@ -735,79 +686,51 @@ class ConstraintsProjectionSubspace:
             # 4) spatial modes: V0 = Yc @ (vecs / sqrt(vals))
             V0 = Yc @ (vecs / torch.sqrt(vals).unsqueeze(0))  # (m, r)
 
-            # 5) numerically re-orthonormalize w.r.t. M  (QR in mass metric)
-            #    Let L = sqrt(M). Do Euclidean QR on L^T V0 then back-transform.
-            # L = torch.sqrt(M)  # (m,)
-            # Qe, _ = torch.linalg.qr(V0 * L[:, None])  # Euclidean QR
-            # # Qe, _ = torch.linalg.qr(V0)  # Euclidean QR
-            # V = Qe / L[:, None]  # now V^T M V = I
-            # V= V0
+            # 5) numerically re-orthonormalize w.r.t. M  (QR in geometrical mass metric)
+            # Let L = sqrt(M). We do Euclidean QR on L^T V0 then back-weighting with L^T^{-1}.
+            L = torch.sqrt(M)  # (m,)
+            Qe, _ = torch.linalg.qr(V0 * L[:, None])  # Euclidean QR
+            V = Qe / L[:, None]  # now V^T M V = I
 
-            # ## assert orthogonality w.r.to M
-            # if V.dtype == torch.float64:
-            #     atol = 1e-10
-            #     rtol = 1e-8
-            # else:  # float32
-            #     atol = 1e-6
-            #     rtol = 1e-4
-            #
-            # m, r = V.shape
-            # if M.dim() == 1:
-            #     MV = (M[:, None] * V)  # (m, r)
-            # else:
-            #     MV = M @ V  # (m, r) for diagonal (or general) M
-            #
-            # G = V.transpose(0, 1) @ MV  # (r, r)
-            # I = torch.eye(r, device=V.device, dtype=V.dtype)
-            #
-            # err_abs = (G - I).abs().max().item()
-            # err_rel = (G - I).norm() / (I.norm() + 1e-16)
-            #
-            # if not torch.allclose(G, I, atol=atol, rtol=rtol):
-            #     raise AssertionError(
-            #         f"V^T M V != I (max abs err={err_abs:.3e}, rel err={err_rel:.3e}, "
-            #         f"atol={atol}, rtol={rtol})"
-            #     )
-            return V0, vals
+            return V, vals
 
-        def metric_convert_basis(V_g, M_dyn, tol=1e-10):
-            # Build Gram in simulation metric
-            MV = (M_dyn[:, None] * V_g)  # (m, r)
-            G = V_g.T @ MV  # (r, r)
+        def metric_convert_basis(Vg, Mdyn, tol=1e-10):
+            # Vg: (m,r), Mdyn: (m,)
+            MV = Mdyn[:, None] * Vg  # (m,r)
+            G = Vg.T @ MV  # (r,r), SPD (up to tiny modes)
 
-            # Drop tiny modes if necessary
+            # drop tiny modes if needed
             evals, evecs = torch.linalg.eigh(G)
             keep = evals > tol * evals.max()
-            if keep.sum() < G.shape[0]:
-                V_g = V_g @ evecs[:, keep]  # re-basis
-                G = torch.diag(evals[keep])
+            Vg = Vg @ evecs[:, keep]
+            Gk = torch.diag(evals[keep])
+            r = Gk.shape[0]
 
-            # Cholesky (or sqrt of diag if G diagonal)
-            R = torch.linalg.cholesky(G)  # (r_kept, r_kept)
-            V = V_g @ torch.cholesky_inverse(R)  # V^T M_dyn V = I
+            # Cholesky and RIGHT-multiply by R^{-1}
+            R = torch.linalg.cholesky(Gk)  # (r,r), upper by default
+
+            # Option A: triangular solve for right-multiply
+            # V = Vg @ R^{-1}  <=>  solve(R^T, Vg^T)^T
+            V = torch.linalg.solve(R.T, Vg.T).T
+
+            # Option B (also fine for small r): explicit inv(R)
+            # Rinvt = torch.linalg.inv(R)
+            # V     = Vg @ Rinvt
+
+            # sanity: V^T Mdyn V ≈ I
+            # err = torch.linalg.norm((Mdyn[:,None]*V).T @ V - torch.eye(r, device=V.device))
             return V
 
         if use_pca:
             M = torch.as_tensor(self.mass, dtype=Y.dtype, device=Y.device)
             M_dyn = torch.as_tensor(self.particles_mass, dtype=Y.dtype, device=Y.device)
 
-
             # PCA basis
-            L = torch.sqrt(M)  # (m,)
             V, _ = mass_weighted_pca(Y, M, tol_rel=1e-8)
-            # V = metric_convert_basis(V, M_dyn, tol=1e-10)
-
-            self.V = torch.hstack((V, torch.ones((Y.shape[0], 1), device=Y.device, dtype=Y.dtype)))/ self.particles_mass.max()  #/60
-            # self.V = L[:,None] * self.V
-            # self.V *= mass_normalizarion
-            # self.V/=self.V.max()
-
-
+            # add the constant column and rescale with respect to particle masses
+            self.V = torch.hstack((V, torch.ones((Y.shape[0], 1), device=Y.device, dtype=Y.dtype))) /(10*self.particles_mass.max())
         else:
-            M = torch.as_tensor(self.mass, dtype=torch.float32, device=Y.device)
-            L = torch.sqrt(M)
-            self.V = torch.hstack((Y/L[:, None] , torch.ones((Y.shape[0], 1), device=Y.device, dtype=Y.dtype)))
-            self.V *=1/(self.V.norm())
+            self.V = torch.hstack((Y, torch.ones((Y.shape[0], 1), device=Y.device, dtype=Y.dtype))) / (10*self.particles_mass.max())
         rank = torch.linalg.matrix_rank(self.V, tol=1e-6)
         print(f"Skinning basis_, shape {self.V.shape} and rank: {rank}")
 

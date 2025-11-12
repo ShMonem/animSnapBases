@@ -24,7 +24,7 @@
     "positional_constraint_wi": 0,
     "edge_constraint_wi": 1000.0,
     "vert_bending_constraint_wi": 0.1,
-    "deformation_gradient_constraint_wi": 10000000.0,
+    "deformation_gradient_constraint_wi": 1000000.0,
     "strain_limit_constraint_wi": 10000.0,
     "sigma_min": 0.99,
     "sigma_max": 1.01
@@ -81,10 +81,10 @@
     "tet_strain_num_samples": 1000,
 
     "tet_deformation_reduced": true,
-    "tet_deformation_num_components": 80,
+    "tet_deformation_num_components": 100,
     "tet_deformation_num_samples": 600,
 
-    "r_muliplier": 1.1,
+    "r_muliplier": 2.5,
       "basis_scale": 1
   },
     "nonlinear_snapshots": {

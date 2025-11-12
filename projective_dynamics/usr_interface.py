@@ -156,13 +156,13 @@ class PreDrawHandler:
         picked_indices = [i for i, pick in enumerate(model.get_picked_verts()) if pick]
 
         # # -- 1. Update mass
-        # mass_value = float(self.physics_params.mass_per_particle)
-        # for i in range(model.mass.shape[0]):
-        #     if model.is_fixed(i):
-        #         continue
-            # if not np.isclose(model.mass[i], mass_value, atol=1e-10):
-            #     model.mass[i] = mass_value
-            #     self.solver.set_dirty()
+        mass_value = float(self.physics_params.mass_per_particle)
+        for i in range(model.mass.shape[0]):
+            if model.is_fixed(i):
+                continue
+            if not np.isclose(model.mass[i], model.mass_init[i], atol=1e-10):
+                model.mass[i] = model.mass_init[i]
+                self.solver.set_dirty()
 
         # -- 2. Apply gravity & simulate if animating
         if self._animating:

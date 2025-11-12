@@ -909,7 +909,7 @@ class TetDeformationGradientConstraint(Constraint):
 
 
 class DeformableMesh:
-    def __init__(self, positions, faces, elements=None, masses=None, mass_per_particle=10):
+    def __init__(self, positions, faces, elements=None, masses=None, mass_per_particle=10, mass_fixed_particle=1e10):
 
         self.floor_height = 0
         self.foolr_collision = True
@@ -923,6 +923,7 @@ class DeformableMesh:
         self.positions_corrections = np.zeros_like(self.positions)
         self.faces = np.array(faces)
         self.elements = elements
+        self.mass_fixed_particle = mass_fixed_particle
 
         n = self.positions.shape[0]
         import igl
@@ -933,7 +934,8 @@ class DeformableMesh:
 
         self.lumped_mass = np.diag(m.todense()).copy()
 
-        self.mass = np.ones(n) * mass_per_particle if masses is None else np.array(masses)
+        self.mass = np.ones(n)  if masses is None else np.array(masses)
+        # self.mass = self.lumped_mass /self.lumped_mass.max()
         self.mass_init = self.mass.copy()
         self.velocities = np.zeros_like(self.positions)
 
@@ -1082,15 +1084,16 @@ class DeformableMesh:
 
     def fix(self, i):
         self.fixed_flags[i] = True
-        self.mass[i] = 1e10
+        self.mass[i] = self.mass_fixed_particle
 
     def unfix(self, i):
         self.fixed_flags[i] = False
-        self.mass[i] = self.mass_init[i]
+        # self.mass[i] = self.mass_init[i]
 
     def toggle_fixed(self, i, mass_when_unfixed=1.0): #todo, mass when not fixed wie init
         self.fixed_flags[i] = not self.fixed_flags[i]
-        self.mass[i] = 1e10 if self.fixed_flags[i] else self.mass_init[i]
+        self.mass[i] = self.mass_fixed_particle if self.fixed_flags[i] else self.mass_init[i]
+
 
     def fix_side_vertices(self, args, threshold = None, side="left", axis=0):
         """

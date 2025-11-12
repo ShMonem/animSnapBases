@@ -174,28 +174,36 @@ class animSnapBasesSolver:
             self.cholesky = sp.linalg.factorized(full_global_mat)
         else:
 
-            if self.position_reduction_type not in {"LBS"}:
-                raise ValueError("Position reduction not yet implemented")
+
+            if self.position_reduction_type in {"snapBases"}:
+                dir = args.pos_basis_dir
+                file = args.pos_basis_file
+                num_components = self.position_basis_num_components
+                upload_file = os.path.join(dir, file)
+                local_data = np.load(upload_file)
+                self.U = local_data["components"].swapaxes(0, 1)[:,:num_components, :]  # TODO:test
+
+            elif self.position_reduction_type == "LBS":
+                pos_subspace = PositionsSubspace(self.args.pos_radial_r_muliplier,self.model.positions, faces=self.model.faces,
+                                                 tets=self.model.elements, num_samples=self.position_basis_num_components)
+                pos_subspace.create_basis_via_skinning_weights()
+                self.U = pos_subspace.U
+
+
+                full_global_mat = self.U.T @ full_global_mat @ self.U
+                if issparse(full_global_mat):
+                    tr = full_global_mat.diagonal().sum()
+                else:
+                    tr = np.trace(full_global_mat)
+                la = 1e-8 * tr / full_global_mat.shape[0]  # scale-aware lambda (to add Tikhonov regularization)
+
+                self.cholesky = sp.linalg.factorized(full_global_mat + la * np.eye(full_global_mat.shape[0]))
+
+                print(
+                    f"Created LBS positions basis via skinning weights of size {self.U.shape}.")
             else:
-                if self.position_reduction_type == "LBS":
-                    # self.U = compute_position_skinning_subspace(self.model.positions, self.model.faces, k = self.position_basis_num_components)
-                    pos_subspace = PositionsSubspace(self.args.pos_radial_r_muliplier,self.model.positions, faces=self.model.faces,
-                                                     tets=self.model.elements, num_samples=self.position_basis_num_components)
-                    pos_subspace.create_basis_via_skinning_weights()
-                    self.U = pos_subspace.U
+                raise ValueError("Position reduction not yet implemented")
 
-
-                    full_global_mat = self.U.T @ full_global_mat @ self.U
-                    if issparse(full_global_mat):
-                        tr = full_global_mat.diagonal().sum()
-                    else:
-                        tr = np.trace(full_global_mat)
-                    la = 1e-8 * tr / full_global_mat.shape[0]  # scale-aware lambda (to add Tikhonov regularization)
-
-                    self.cholesky = sp.linalg.factorized(full_global_mat + la * np.eye(full_global_mat.shape[0]))
-
-                    print(
-                        f"Created LBS positions basis via skinning weights of size {self.U.shape}.")
 
     def prepare_lbs_reduced_group(self, has_group_constraints, reduced_group, group_name,
                                   group_constraints, group_aux_size, assembly_ST, assembly_ST_no_weights, num_components, num_samples, specify_verts=[]):
@@ -577,7 +585,6 @@ class animSnapBasesSolver:
 
         else:
             raise  ValueError("Unknown constraint projection interpolation method")
-
 
 
     def project_to_positional_constraint_manifold(self, q_t):

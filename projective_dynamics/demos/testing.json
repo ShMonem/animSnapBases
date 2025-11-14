@@ -24,7 +24,7 @@
     "positional_constraint_wi": 0,
     "edge_constraint_wi": 1000.0,
     "vert_bending_constraint_wi": 0.1,
-    "deformation_gradient_constraint_wi": 1000000.0,
+    "deformation_gradient_constraint_wi": 100.0,
     "strain_limit_constraint_wi": 10000.0,
     "sigma_min": 0.99,
     "sigma_max": 1.01
@@ -56,9 +56,10 @@
     "record_projection_data": false
   },
   "position_reduction": {
-    "positions_reduced": false,
+    "positions_reduced": true,
     "name": "LBS",
     "num_components": 100,
+    "properties": "",
     "r_muliplier": 1.1
   },
   "constraint_projetions_reduction": {
@@ -80,12 +81,12 @@
     "tet_strain_num_components": 40,
     "tet_strain_num_samples": 1000,
 
-    "tet_deformation_reduced": true,
-    "tet_deformation_num_components": 100,
-    "tet_deformation_num_samples": 600,
+    "tet_deformation_reduced": false,
+    "tet_deformation_num_components": 80,
+    "tet_deformation_num_samples": 1000,
 
-    "r_muliplier": 2.5,
-      "basis_scale": 1
+    "r_muliplier": 2.2,
+      "basis_scale": 0.15
   },
     "nonlinear_snapshots": {
     "max_p_snapshots_num": 360,
@@ -94,6 +95,8 @@
   "directories": {
     "output": "output/",
     "positions_basis": "",
+    "geom_positions_basis_dir": "../results/bar//q_bases/",
+    "geom_positions_basis_file": "positionSubspace.npz",
     "geom_interpolation_basis_dir": "",
     "geom_interpolation_basis_file": "",
     "geom_basis": ""

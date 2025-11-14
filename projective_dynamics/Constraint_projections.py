@@ -909,7 +909,7 @@ class TetDeformationGradientConstraint(Constraint):
 
 
 class DeformableMesh:
-    def __init__(self, positions, faces, elements=None, masses=None, mass_per_particle=10, mass_fixed_particle=1e10):
+    def __init__(self, positions, faces, elements=None, masses=None, mass_per_particle=10, mass_fixed_particle=1e4):
 
         self.floor_height = 0
         self.foolr_collision = True
@@ -934,8 +934,10 @@ class DeformableMesh:
 
         self.lumped_mass = np.diag(m.todense()).copy()
 
-        self.mass = np.ones(n)  if masses is None else np.array(masses)
-        # self.mass = self.lumped_mass /self.lumped_mass.max()
+        # self.mass = np.ones(n)  if masses is None else np.array(masses)
+        self.mass_normalization = 1/self.lumped_mass.sum()
+        self.mass_per_particle = 2
+        self.mass = self.lumped_mass * self.mass_normalization * self.mass_per_particle
         self.mass_init = self.mass.copy()
         self.velocities = np.zeros_like(self.positions)
 
@@ -1268,7 +1270,7 @@ class DeformableMesh:
 
     def add_positional_constraint(self, vi, wi=1e9, motion_type='fixed', frame_shift=None, frame_reset=0):
         self.has_positional_constraints = True
-        c = PositionalConstraint(vi, [vi], wi, self.positions, motion_type, frame_shift, frame_reset)
+        c = PositionalConstraint(vi, [vi], wi * self.mass_normalization , self.positions, motion_type, frame_shift, frame_reset)
         self.constraints.append(c)
 
         # build assembly
@@ -1322,7 +1324,7 @@ class DeformableMesh:
             if any(e.t2 < 0 for e in star):
                 continue
 
-            c = VertBendingConstraint(v, v, wi, star, voronoi_area[v], self.positions, self.faces)
+            c = VertBendingConstraint(v, v, wi * self.mass_normalization , star, voronoi_area[v], self.positions, self.faces)
             self.constraints.append(c)
             self.verts_bending_constraints.append(c)
             self.verts_bending_indicies.append(v)
@@ -1386,7 +1388,7 @@ class DeformableMesh:
             e0, e1 = int(elem[0]), int(elem[1])
 
             # Build constraint (each has .selection_matrix in COO)
-            c = EdgeSpringConstraint(e_idx, [e0, e1], wi, self.positions)
+            c = EdgeSpringConstraint(e_idx, [e0, e1], wi * self.mass_normalization , self.positions)
             self.constraints.append(c)
             self.edge_spring_constraints.append(c)
 
@@ -1433,7 +1435,7 @@ class DeformableMesh:
             elem = self.faces[f_idx]
 
             # Build constraint
-            c = TriStrainConstraint(f_idx, elem.tolist(), wi, self.positions, sigma_min, sigma_max)
+            c = TriStrainConstraint(f_idx, elem.tolist(), wi * self.mass_normalization , self.positions, sigma_min, sigma_max)
             self.constraints.append(c)
             self.tris_strain_constraints.append(c)
 
@@ -1478,7 +1480,7 @@ class DeformableMesh:
 
         for e, elem in enumerate(elems):
             idx = samples[e] if samples is not None else e
-            c = TetStrainConstraint(idx, elem.tolist(), wi, self.positions, sigma_min, sigma_max)
+            c = TetStrainConstraint(idx, elem.tolist(), wi * self.mass_normalization , self.positions, sigma_min, sigma_max)
             self.constraints.append(c)
             self.tets_strain_constraints.append(c)
             i = torch.from_numpy(np.vstack([c.selection_matrix.row, c.selection_matrix.col])).long().to(device)
@@ -1530,7 +1532,7 @@ class DeformableMesh:
 
         for e, elem in enumerate(elems):
             idx = samples[e] if samples is not None else e
-            c = TetDeformationGradientConstraint(idx, elem.tolist(), wi, self.positions)
+            c = TetDeformationGradientConstraint(idx, elem.tolist(), wi * self.mass_normalization , self.positions)
             self.constraints.append(c)
             self.tets_deformation_gradient_constraints.append(c)
             # sm = c.selection_matrix.tocoo()

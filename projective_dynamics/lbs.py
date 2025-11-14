@@ -525,7 +525,7 @@ class ConstraintsProjectionSubspace:
         # weights /= weights.sum(axis=1, keepdims=True)
 
 
-        ps_mesh = ps.register_surface_mesh("mesh", self.vertices, self.faces)
+        # ps_mesh = ps.register_surface_mesh("mesh", self.vertices, self.faces)
         #
         # # Register weights as scalar fields
         # for i in range(weights.shape[1]):

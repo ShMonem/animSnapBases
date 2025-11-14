@@ -909,16 +909,14 @@ class TetDeformationGradientConstraint(Constraint):
 
 
 class DeformableMesh:
-    def __init__(self, positions, faces, elements=None, masses=None, mass_per_particle=10, mass_fixed_particle=1e4):
+    def __init__(self, positions, faces, elements=None, masses=None, mass_per_particle=2, mass_fixed_particle=1e4):
 
         self.floor_height = 0
         self.foolr_collision = True
         self.init_hight_shift = 1    # 3 for cloth 1 for bar
 
         self.init_positions = np.array(positions)  # rest positions
-        if self.foolr_collision:
-            self.init_positions[:, 1] += self.init_hight_shift
-        self.positions = self.init_positions.copy()   # current positions
+        self.positions = self.init_positions.copy()  # current positions
 
         self.positions_corrections = np.zeros_like(self.positions)
         self.faces = np.array(faces)
@@ -936,7 +934,7 @@ class DeformableMesh:
 
         # self.mass = np.ones(n)  if masses is None else np.array(masses)
         self.mass_normalization = 1/self.lumped_mass.sum()
-        self.mass_per_particle = 2
+        self.mass_per_particle = mass_per_particle
         self.mass = self.lumped_mass * self.mass_normalization * self.mass_per_particle
         self.mass_init = self.mass.copy()
         self.velocities = np.zeros_like(self.positions)
@@ -988,6 +986,11 @@ class DeformableMesh:
         self.tets_deformation_gradient_assembly_ST = None
         self.tets_deformation_gradient_assembly_ST_no_weights = None
         self.tets_deformation_gradient_stacked_p = None
+
+    def set_init_hight(self, value=1):
+        self.init_hight_shift = value
+        self.init_positions[:, 1] += self.init_hight_shift
+        self.positions = self.init_positions.copy()  # current positions
 
     def reset_constraints_attributes(self):
         self.constraints = []  # list of all constrained elements each as Constraint class-instance

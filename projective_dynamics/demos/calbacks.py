@@ -83,13 +83,14 @@ def rescale(V):
         V /= scale
     return V
 
-def reset_simulation_model(V, F, T, should_rescale=False, params=None):
+def reset_simulation_model(V, F, T, should_rescale=False, params=None, hight=1):
     global model, fext, solver
     if should_rescale:
         V = rescale(V)
 
     model = DeformableMesh(V, F, T)
     solver.set_model(model)
+    model.set_init_hight(hight)
     fext = np.zeros_like(V)
 
     ps.remove_all_structures()
@@ -124,7 +125,7 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
 
             # V, T, F, _ = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
 
-            reset_simulation_model(V, F, T, should_rescale=True)
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
             object_name = "bar"
 
             check_dir_exists(os.path.join(output_path, object_name))
@@ -160,11 +161,19 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
                 model.add_tet_constrain_deformation_gradient(args.deformation_gradient_constraint_wi)
             # if recording snapshots build output file name/ path
 
-            if record_fom_info:
-                constrproj_case = "constraint_projection/FOM"
+            def make_sim_path(args):
+                nonlocal output_path
 
-                if solver.has_reduced_constraint_projections:
-                    constrproj_case = "constraint_projection/" + args.constraint_projection_basis_type
+                sim_case = "FOM"
+
+                if  solver.has_reduced_position and not solver.has_reduced_constraint_projections:
+                    sim_case = "positions_reduced/" + args.position_basis_type
+                elif solver.has_reduced_constraint_projections and not solver.has_reduced_position:
+                    sim_case = "constraint_projections_reduced/" + args.constraint_projection_basis_type
+
+                elif solver.has_reduced_constraint_projections and solver.has_reduced_position:
+                    sim_case = "positions_and_constraint_projections_reduced/" + args.position_basis_type +"_"+ args.constraint_projection_basis_type
+
 
                 specify_path = ""
                 if model.has_verts_bending_constraints:
@@ -189,14 +198,21 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
                     specify_path = specify_path + "tets_deformation_gradient_wi" + str(args.deformation_gradient_constraint_wi) + "_"
                     if args.tet_deformation_reduced :
                         specify_path = specify_path + "reduced_"+ str(args.tet_deformation_num_components)+"_"
-
-
-                output_path += "/" + object_name + "/" + experiment + "/" + "/" + constrproj_case + "/" + specify_path + "/"
+                output_path += "/" + object_name + "/" + experiment + "/" + sim_case + "/" + specify_path + "/"
                 check_dir_exists(output_path)
 
                 solver.set_record_path(output_path)
                 solver.set_store_p(record_fom_info)
                 solver.set_store_q(record_fom_info)
+
+
+            if record_fom_info:
+                make_sim_path(args)
+                # record parameters for tracking
+                with open(output_path + "/args.txt", "w") as f:
+                    for key, value in vars(args).items():
+                        f.write(f"{key}: {value}\n")
+
             solver.set_dirty()
 
         elif solver.frame == 40:

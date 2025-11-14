@@ -651,7 +651,7 @@ class ConstraintsProjectionSubspace:
         return Y
 
     def create_basis_via_skinning_weights(self, rest_positions, assembly_ST_no_weights, constraints, aux_size,
-                                          use_pca=True, specify_verts=[]):
+                                          use_pca=True, specify_verts=[], normalization_factor=1.0):
         """
         Complete Python equivalent of:
         PD::RHSInterpolationGroup::createBasisViaSkinningWeights
@@ -660,9 +660,10 @@ class ConstraintsProjectionSubspace:
         rest_state_aux = torch.sparse.mm(assembly_ST_no_weights.transpose(0,1), torch.from_numpy(rest_positions).to(dtype=torch.float32, device=assembly_ST_no_weights.device))
         # Build constraint-space skinning matrix Y
         Y = self.create_skinning_space_constraints_torch(rest_state_aux, self.weights, constraints, aux_size)
+        Y = torch.hstack((Y, torch.ones((Y.shape[0], 1), device=Y.device, dtype=Y.dtype)))
 
         # Perform PCA or not
-        def mass_weighted_pca(Y, M_geom, mean_axis=0, tol_rel=1e-6):
+        def mass_weighted_pca(Y, M_geom, mean_axis=0, tol_rel=1e-6, max_cols=-1):
             """
             Y: (m, s) snapshots (float, on same device)
             M: (m,) mass vector (float, same device)
@@ -685,14 +686,14 @@ class ConstraintsProjectionSubspace:
 
             # 4) spatial modes: V0 = Yc @ (vecs / sqrt(vals))
             V0 = Yc @ (vecs / torch.sqrt(vals).unsqueeze(0))  # (m, r)
-
             # 5) numerically re-orthonormalize w.r.t. M  (QR in geometrical mass metric)
             # Let L = sqrt(M). We do Euclidean QR on L^T V0 then back-weighting with L^T^{-1}.
             L = torch.sqrt(M)  # (m,)
             Qe, _ = torch.linalg.qr(V0 * L[:, None])  # Euclidean QR
             V = Qe / L[:, None]  # now V^T M V = I
+            V = torch.hstack((V, torch.ones((Y.shape[0], 1), device=Y.device, dtype=Y.dtype)))
 
-            return V, vals
+            return V #, vals[:max_cols]
 
         def metric_convert_basis(Vg, Mdyn, tol=1e-10):
             # Vg: (m,r), Mdyn: (m,)
@@ -726,11 +727,10 @@ class ConstraintsProjectionSubspace:
             M_dyn = torch.as_tensor(self.particles_mass, dtype=Y.dtype, device=Y.device)
 
             # PCA basis
-            V, _ = mass_weighted_pca(Y, M, tol_rel=1e-8)
-            # add the constant column and rescale with respect to particle masses
-            self.V = torch.hstack((V, torch.ones((Y.shape[0], 1), device=Y.device, dtype=Y.dtype))) /(10*self.particles_mass.max())
+            self.V = mass_weighted_pca(Y, M_dyn, tol_rel=1e-8, max_cols=self.num_components) *self.basis_scale/(normalization_factor) #
+
         else:
-            self.V = torch.hstack((Y, torch.ones((Y.shape[0], 1), device=Y.device, dtype=Y.dtype))) / (10*self.particles_mass.max())
+            self.V = Y / (10*self.particles_mass.max())
         rank = torch.linalg.matrix_rank(self.V, tol=1e-6)
         print(f"Skinning basis_, shape {self.V.shape} and rank: {rank}")
 

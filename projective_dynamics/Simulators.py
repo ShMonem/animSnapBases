@@ -51,6 +51,7 @@ class animSnapBasesSolver:
         self.dirty = True
         self.A = None
         self.cholesky = None
+        self.cholesky_list = []
         self.dt = None
         self.frame = 0
         self.args = args
@@ -174,14 +175,79 @@ class animSnapBasesSolver:
             self.cholesky = sp.linalg.factorized(full_global_mat)
         else:
 
+            if self.position_reduction_type in {"PCA"}:
+                def build_U_hat(U):
+                    # U: (N, r, 3)
+                    N, r, _ = U.shape
+                    U_hat = np.zeros((3 * N, r))
 
-            if self.position_reduction_type in {"snapBases"}:
-                dir = args.pos_basis_dir
-                file = args.pos_basis_file
+                    Ux = U[:, :, 0]
+                    Uy = U[:, :, 1]
+                    Uz = U[:, :, 2]
+
+                    U_hat[0::3] = Ux  # rows 0,3,6,... = x
+                    U_hat[1::3] = Uy  # rows 1,4,7,... = y
+                    U_hat[2::3] = Uz  # rows 2,5,8,... = z
+
+                    return U_hat
+
+                def build_N_byN_global_mat():
+                    """
+                    lhs_matrix: (N,N) scipy.sparse matrix (CSC or CSR)
+                    constraints: list of constraint objects
+                        each c must provide:
+                            c.getSelectionMatrix()  -> SciPy sparse matrix (N, k)
+                            c.getWeight()           -> scalar
+                    """
+                    M = np.diag(mass)
+                    N = M.shape[0]
+
+                    # Accumulate triplets here
+                    rows = []
+                    cols = []
+                    data = []
+
+                    for c in self.model.constraints:
+                        S = c.selection_matrix()  # SciPy sparse (N × k)
+
+                        # Multiply S^T * S (still sparse)
+                        STS = (S.T @ S).tocoo()  # (k × k)
+
+                        # Append weighted triplets
+                        rows.extend(STS.row)
+                        cols.extend(STS.col)
+                        data.extend(STS.data)
+
+                    # Build conMat from triplets
+                    conMat = sp.coo_matrix((data, (rows, cols)), shape=M.shape).tocsc()
+
+                    # Add to lhs (in-place compatible)
+                    return M + conMat
+                dir = args.geom_positions_basis_dir
+                file = args.geom_positions_basis_file
                 num_components = self.position_basis_num_components
                 upload_file = os.path.join(dir, file)
                 local_data = np.load(upload_file)
-                self.U = local_data["components"].swapaxes(0, 1)[:,:num_components, :]  # TODO:test
+                U_tmp = local_data["components"].swapaxes(0, 1)[:,:num_components, :]  # (N, r, 3) TODO:test
+
+                # stack XYZ into a single (3N, r) basis
+                # U: (N, r, 3)
+                N, r, _ = U_tmp.shape
+                # global_mat = build_N_byN_global_mat()
+                self.U = build_U_hat(U_tmp)
+                UtMU = self.U.T @ full_global_mat @ self.U
+
+                if issparse(full_global_mat):
+                    tr = UtMU.diagonal().sum()
+                else:
+                    tr = np.trace(UtMU)
+                la = 1e-8 * tr / UtMU.shape[0]  # scale-aware lambda (to add Tikhonov regularization)
+
+                self.cholesky = sp.linalg.factorized(UtMU+ la * np.eye(UtMU.shape[0]))
+
+
+                print(
+                    f"Loaded animSnap positions basis of size {self.U.shape}.")
 
             elif self.position_reduction_type == "LBS":
                 pos_subspace = PositionsSubspace(self.args.pos_radial_r_muliplier,self.model.positions, faces=self.model.faces,
@@ -223,7 +289,7 @@ class animSnapBasesSolver:
 
             # compute lbs basis "V" for the constraint group
             group_subspace.create_basis_via_skinning_weights(self.model.positions, assembly_ST_no_weights, group_constraints, group_aux_size,
-                                              use_pca=True, specify_verts= specify_verts)
+                                              use_pca=True, specify_verts= specify_verts, normalization_factor= self.model.mass_normalization)
 
             if not self.reduced_position or self.position_reduction_type == "LBS":
                 projecting_mat = np.einsum('ne,em->nm',assembly_ST.to_dense().cpu().detach().numpy(), group_subspace.V.to_dense().cpu().detach().numpy())
@@ -712,7 +778,7 @@ class animSnapBasesSolver:
 
 
             if self.reduced_position:
-                if self.position_reduction_type == "LBS":
+                if self.position_reduction_type in {"LBS", "PCA"}:
                     b = self.U.T @ b.reshape(-1)
                     q = self.U @ self.cholesky(b.flatten())
                 else:

@@ -131,12 +131,12 @@ class posSnapshots:
         if not os.path.exists(fileName):
             # if no file given, use igl to compute masses
             if mass_on_tet_mesh:
-                _, self.tets, _ = read_mesh_file(self.tet_mesh)
+                self.verts, self.tets, self.tris = read_mesh_file(self.tet_mesh)
                 m = igl.massmatrix(self.verts[0], self.tets)
             else:
                 m = igl.massmatrix(self.verts[0], self.tris, igl.MASSMATRIX_TYPE_VORONOI)
             Mass_mat = np.diag(m.todense())
-            Mass_mat = Mass_mat / Mass_mat.sum() * 2
+            # Mass_mat = Mass_mat / Mass_mat.sum() * 2
         else:
             try:
                 with open(fileName, "rb") as fileMass:  # mass matrix (im: boxed in -0.5-0.5)

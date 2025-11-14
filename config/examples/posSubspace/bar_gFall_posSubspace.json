@@ -6,7 +6,7 @@
 		"experiment": "bar_automated_deformationgradient",
 		"experiment_dir": "projective_dynamics/output/",
 		"snap_format": ".off",
-      "snap_file_patten": "/frame_*"
+      "snap_file_patten": "/frame*"
 	},
 	"vertexPos_bases":
 		{
@@ -17,11 +17,11 @@
 			},
 			"snapshots":
 			{
-				"max_numFrames": 70,
-				"frame_increment": 1,
-				"numFrames": 70,
+				"max_numFrames": 40,
+				"frame_increment": 2,
+				"numFrames": 20,
 				"format": ".off",
-				"snaps_folder": "/constraint_projection/FOM/tets_deformation_gradient_wi100000000.0_",
+				"snaps_folder": "/constraint_projection/FOM/tets_deformation_gradient_wi1000000.0_",
 				"read_all_from_first": true,
 				"anims_folder": "FOM_animations_h5",
 				"preAlignement": "_centered" ,
@@ -42,8 +42,8 @@
 			"pca":
 				{
 					"compute": true,
-					"numComponents": 200,
-					"supported": "_Local",
+					"numComponents": 50,
+					"supported": "_Global",
 					"store_sing_val": true
 				},
 			"splocs":

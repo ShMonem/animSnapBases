@@ -93,7 +93,6 @@ class Config_parameters:
         parser.add_argument("--pos_radial_r_muliplier", type=str, default=positions_basis["r_muliplier"])
 
 
-
     def add_constraint_projections_reduction_args(self, parser):
         constrProj_basis = self.system_params["constraint_projetions_reduction"]
         parser.add_argument("--constraint_projection_basis_type", type=str, default=constrProj_basis["name"])
@@ -145,6 +144,10 @@ class Config_parameters:
         parser.add_argument("--geom_interpolation_basis_dir", type=str,
                             default=directories['geom_interpolation_basis_dir']+ constrProj_basis_name+ constrProj_basis_properties)
         parser.add_argument("--geom_interpolation_basis_file", type=str, default=directories['geom_interpolation_basis_file'])
+
+        positions_basis = self.system_params["position_reduction"]
+        parser.add_argument("--geom_positions_basis_dir", type=str, default=directories['geom_positions_basis_dir'] + positions_basis["name"] + positions_basis["properties"])
+        parser.add_argument("--geom_positions_basis_file", type=str, default=directories['geom_positions_basis_file'])
 
 
 def initiate_system_args(parser):

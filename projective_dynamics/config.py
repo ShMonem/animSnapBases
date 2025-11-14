@@ -32,6 +32,9 @@ class Config_parameters:
         parser.add_argument("--window_open", type=str, default= visualization["window_open"])
         parser.add_argument("--is_simulating", type=str, default= visualization["is_simulating"])
 
+        parser.add_argument("--height_up_shift", type=str, default= visualization["height_shift"])
+
+
     def add_solver_args(self, parser):
         solver = self.system_params ["solver_params"]
         # parser.add_argument("--solver_window_open", type=bool, default=solver["window_open"])
@@ -127,7 +130,8 @@ class Config_parameters:
 
         parser.add_argument("--constraint_radial_r_muliplier", type=str, default=constrProj_basis["r_muliplier"])
         parser.add_argument("--constraint_basis_scale", type=str, default=constrProj_basis["basis_scale"])
-
+        # spot:  0.15
+        # bat:   2
 
         parser.add_argument("--max_p_snapshots_num", type=bool,
                             default=self.system_params["nonlinear_snapshots"]["max_p_snapshots_num"])

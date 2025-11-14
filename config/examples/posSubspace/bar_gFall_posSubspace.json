@@ -17,11 +17,11 @@
 			},
 			"snapshots":
 			{
-				"max_numFrames": 40,
+				"max_numFrames": 140,
 				"frame_increment": 2,
-				"numFrames": 20,
+				"numFrames": 70,
 				"format": ".off",
-				"snaps_folder": "/constraint_projection/FOM/tets_deformation_gradient_wi1000000.0_",
+				"snaps_folder": "/FOM/tets_deformation_gradient_wi100.0_",
 				"read_all_from_first": true,
 				"anims_folder": "FOM_animations_h5",
 				"preAlignement": "_centered" ,
@@ -31,7 +31,7 @@
 			},
 			"dim": 3,
 			"rest_shape": "first",
-			"massWeighted": "_Volkwein",
+			"massWeighted": "_nonVolkwein",
 			"standarized": "_Standarized",
 			"orthogonalized": "_nonOrthogonalized",
 			"support":
@@ -42,7 +42,7 @@
 			"pca":
 				{
 					"compute": true,
-					"numComponents": 50,
+					"numComponents": 200,
 					"supported": "_Global",
 					"store_sing_val": true
 				},

@@ -1,18 +1,19 @@
 {
   "system": {
     "Bar": {
-      "bar_width": 40,
-      "bar_height": 5,
-      "bar_depth":5
+      "bar_width": -1,
+      "bar_height": -1,
+      "bar_depth":-1
     },
     "Cloth": {
-      "cloth_width": 20,
-      "cloth_height": 20
-    }
+      "cloth_width": -1,
+      "cloth_height": -1
+    },
+    "user_defined_mesh": ""
   },
   "visualization_params": {
     "window_open": true,
-    "is_simulating": false,
+    "is_simulating": true,
     "height_shift": 2
   },
     "solver_params": {
@@ -20,13 +21,13 @@
       "dt": 0.016,
     "solver_iterations": 10
     },
-   "physics_params": {
+  "physics_params": {
     "mass_per_particle": 10.0,
     "positional_constraint_wi": 0,
     "edge_constraint_wi": 1000.0,
     "vert_bending_constraint_wi": 0.1,
     "deformation_gradient_constraint_wi": 100.0,
-    "strain_limit_constraint_wi": 10000.0,
+    "strain_limit_constraint_wi": 10000000,
     "sigma_min": 0.99,
     "sigma_max": 1.01
   },
@@ -57,15 +58,15 @@
     "record_projection_data": false
   },
   "position_reduction": {
-    "positions_reduced": true,
+    "positions_reduced": false,
     "name": "PCA",
-    "num_components": 100,
     "properties": "_centered_nonVolkwein_Standarized_Global_nonOrthogonalized_Release70_Frames_2_increment_",
+    "num_components": 200,
     "r_muliplier": 1.1
   },
   "constraint_projetions_reduction": {
-    "name": "LBS",
-    "properties": "",
+    "name": "geom_pca_blocks_with_St",
+    "properties": "_noAlignement_Volkwein_Standarized_Global_Orthogonalized_Release70_Frames_2_increment",
     "vert_bending_reduced": false,
     "num_verts_bending_components": -1,
     "vert_bending_num_samples": -1,
@@ -79,18 +80,18 @@
     "tri_strain_num_samples": -1,
 
     "tet_strain_reduced": false,
-    "tet_strain_num_components": 40,
-    "tet_strain_num_samples": 1000,
+    "tet_strain_num_components": 100,
+    "tet_strain_num_samples": 600,
 
     "tet_deformation_reduced": false,
-    "tet_deformation_num_components": 80,
+    "tet_deformation_num_components": 10,
     "tet_deformation_num_samples": 1000,
 
     "r_muliplier": 2.2,
-      "basis_scale": 0.15
+    "basis_scale": 2.0
   },
-    "nonlinear_snapshots": {
-    "max_p_snapshots_num": 360,
+  "nonlinear_snapshots": {
+    "max_p_snapshots_num": 140,
     "recodr_snapshots_info": true
   },
   "directories": {
@@ -98,8 +99,8 @@
     "positions_basis": "",
     "geom_positions_basis_dir": "../results/bar/bar_automated_deformationgradient/q_bases/",
     "geom_positions_basis_file": "positionSubspace.npz",
-    "geom_interpolation_basis_dir": "",
-    "geom_interpolation_basis_file": "",
+    "geom_interpolation_basis_dir": "../results/bar/bar_automated_deformationgradient/p_bases/",
+    "geom_interpolation_basis_file": "components_interpol_alphas_interpol_verts_interpol_alpha_ranges.npz",
     "geom_basis": ""
 
   }

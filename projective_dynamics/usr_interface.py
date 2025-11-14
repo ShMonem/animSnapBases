@@ -179,15 +179,29 @@ class PreDrawHandler:
             # Reset fext and update mesh
             self.fext[:] = 0.0
 
-            if self.solver.has_reduced_constraint_projections:
-                color = (64 / 255, 224 / 255, 208 / 255)  # turquoise
+            if self.solver.has_reduced_constraint_projections and not self.solver.has_reduced_position:
+                if self.solver.constraint_projection_reduction_type in {"LBS"}:
+                    color = (255/255, 140/255, 0/255)  # dark orange
+                else:  # animSanpBasis
+                    # color = (0 / 255, 100 / 255, 0 / 255)  # green?
+
+                    color = (0/255, 100/255, 0/255)      # darkgreen
+
+            elif self.solver.has_reduced_position and not self.solver.has_reduced_constraint_projections:
+                if self.solver.position_reduction_type in {"LBS"}:
+                    color = (204/255, 85/255, 0/255)  # orange
+                else: # animSanpBasis
+                    color = (144/255, 238/255, 144/255)   # lightgreen / pale green
+
+            elif self.solver.has_reduced_position and self.solver.has_reduced_constraint_projections:
+                color = (211/255, 211/255, 211/255)    # lightgray
             else:
-                color = (0.4, 0.4, 0.9)  # light_purple
+                color = (0.4, 0.4, 0.9)  # light_purple  FOM
 
             if ps.has_surface_mesh("model"):
                 ps.remove_surface_mesh("model")
 
-            # update_camera_to_mesh_center(model)
+            update_camera_to_mesh_center(model)
             # ps.reset_camera_to_home_view()
             ps.register_surface_mesh("model", model.positions, model.faces, color=color, edge_width=1.0)
 

@@ -195,7 +195,7 @@ if __name__ == '__main__':
 
     # mesh = "bar"
     # subspace = "vertbendSubspace"
-    json_file = "config/examples/posSubspace/bar_gFall_posSubspace.json"
+    json_file = "config/examples/posSubspace/bar_testing_posSubspace.json"
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
     parser.add_argument('--mesh', type=str, default="mesh", help='Give a character mesh')

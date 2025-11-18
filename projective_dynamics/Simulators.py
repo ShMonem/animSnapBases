@@ -44,6 +44,10 @@ class constraintProjection:
         self.interpolation_alpha = None
         self.sampled_constraints = None
 
+        # allows for single constraint type update, if you add/change constraint from a callback reset .subspace_projection_ready to false
+        # and call
+        self.subspace_projection_ready = False
+
         
 class animSnapBasesSolver:
     def __init__(self, args):
@@ -81,9 +85,9 @@ class animSnapBasesSolver:
         ])
         self.constraint_projection_reduction_type = args.constraint_projection_basis_type
 
-        self.constraint_projection_ready = False
-        self.position_reduction_ready =False
-        self.constraints_ready = False
+        self.constraint_subspace_ready = False
+        self.position_subspace_ready =False
+        # self.constraints_ready = False
 
         self.store_stacked_projections = False
         self.store_positions = False
@@ -125,24 +129,52 @@ class animSnapBasesSolver:
 
     def set_model_constraints(self):
 
-        if self.args.vert_bending_constraint:
+        # Only reset the constraint that has changed
+        if self.args.vert_bending_constraint and self.model.bending_constraints_changed:
             self.model.add_vertex_bending_constraint(self.args.vert_bending_constraint_wi)
-        if self.args.edge_constraint:
-            self.model.add_edge_spring_constrain(self.args.edge_constraint_wi)
 
-        if self.args.tri_strain_constraint:
+            self.model.bending_constraints_changed = False
+            if self.bending.is_reduced:
+                self.bending.subspace_projection_ready = False
+
+        if self.args.edge_constraint and self.model.spring_constraints_changed:
+            self.model.add_edge_spring_constrain(self.args.edge_constraint_wi)
+            self.model.spring_constraints_changed = False
+            if self.spring.is_reduced:
+                self.spring.subspace_projection_ready = False
+
+        if self.args.tri_strain_constraint and self.model.tris_strain_constraints_changed:
             self.model.add_tri_constrain_strain(
                 self.args.sigma_min,
                 self.args.sigma_max,
                 self.args.strain_limit_constraint_wi)
+            self.model.tris_strain_constraints_changed = False
+            if self.tris_strain.is_reduced:
+                self.tris_strain.subspace_projection_ready = False
 
-        if self.args.tet_deformation_constraint:
-            self.model.add_tet_constrain_deformation_gradient(self.args.deformation_gradient_constraint_wi)
-        if self.args.tet_strain_constraint:
+        if self.args.tet_strain_constraint and self.model.tets_strain_constraints_changed:
             self.model.add_tet_constrain_strain(
                 self.args.sigma_min,
                 self.args.sigma_max,
                 self.args.strain_limit_constraint_wi)
+            self.model.tets_strain_constraints_changed = False
+            if self.tets_strain.is_reduced:
+                self.tets_strain.subspace_projection_ready = False
+
+        if self.args.tet_deformation_constraint and self.model.tets_deformation_constraints_changed:
+            self.model.add_tet_constrain_deformation_gradient(self.args.deformation_gradient_constraint_wi)
+            self.model.tets_deformation_constraints_changed = False
+            if self.tets_deformation_gradient.is_reduced:
+                self.tets_deformation_gradient.subspace_projection_ready = False
+
+
+        # note: positional constrained is set directly in the DeformableMesh class
+        self.model.constraints = [*self.model.positional_constraints,
+                                  *self.model.verts_bending_constraints,
+                                  *self.model.edge_spring_constraints,
+                                  *self.model.tris_strain_constraints,
+                                  *self.model.tets_strain_constraints,
+                                  *self.model.tets_deformation_gradient_constraints]
 
 
     def prepare_global_matrix(self, args):
@@ -176,7 +208,7 @@ class animSnapBasesSolver:
             self.cholesky = sp.linalg.factorized(full_global_mat)
         else:
 
-            if not self.position_reduction_ready:  # only once
+            if not self.position_subspace_ready:  # only once
                 if self.position_reduction_type in {"PCA"}:
                     def build_U_hat(U):
                         # U: (N, r, 3)
@@ -225,6 +257,7 @@ class animSnapBasesSolver:
 
                         # Add to lhs (in-place compatible)
                         return M + conMat
+
                     dir = args.geom_positions_basis_dir
                     file = args.geom_positions_basis_file
                     num_components = self.position_basis_num_components
@@ -249,7 +282,7 @@ class animSnapBasesSolver:
                 else:
                     raise ValueError("Position reduction not yet implemented")
 
-                self.position_reduction_ready = True
+                self.position_subspace_ready = True
 
             UtMU = self.U.T @ full_global_mat @ self.U
 
@@ -335,11 +368,12 @@ class animSnapBasesSolver:
                                        self.model.tets_deformation_gradient_assembly_ST, self.model.tets_deformation_gradient_assembly_ST_no_weights,
                                        self.tets_deformation_gradient.num_components, self.tets_deformation_gradient.num_samples)
 
-    def prepare_snapshots_reduced_group(self, has_group_constraints, reduced_group, group_name, num_components,
+    def prepare_snapshots_reduced_group(self, has_group_constraints, reduced_group, is_ready, group_name, num_components,
                                         row_dim, assembly_ST, dir, file):
         """
             # generic constraints reduction preparation for all groups except verts bending
         Args:
+            is_ready:
             has_group_constraints:
             reduced_group:
             group_name:
@@ -355,7 +389,8 @@ class animSnapBasesSolver:
         if self.constraint_projection_reduction_type in {"deim_pod", "deim_pod_vectorized"}:
             row_dim = 1    # because these methods do not select a full block but only few row indices
 
-        if has_group_constraints and reduced_group:
+        # TODO: this step can be further optimized, as "is_ready" means that only selection mat has changed
+        if has_group_constraints and reduced_group and not is_ready:
             solver_list = []
             upload_file = os.path.join(dir, group_name, file)
             local_data = np.load(upload_file)
@@ -402,7 +437,7 @@ class animSnapBasesSolver:
             return None, [], None, []
 
     def prepare_snapshots_reduced_verts_bending(self, dir, file):
-        if self.model.has_verts_bending_constraints and self.bending.is_reduced:
+        if self.model.has_verts_bending_constraints and self.bending.is_reduced and not self.bending.subspace_projection_ready:
             upload_file = os.path.join(dir, "verts_bending", file)
             local_data = np.load(upload_file)
             Vj = local_data["components"].swapaxes(0, 1)[:, :self.bending.num_components*self.bending.row_dim, :]   # shape shold be (ep, mp, 3)
@@ -439,25 +474,25 @@ class animSnapBasesSolver:
 
     def prepare_snapshots_reduced_edge_spring(self,dir, file):
         self.spring.interpolation_alpha, self.spring.Pt, self.spring.projection_matrix, self.spring.solver_list = \
-        self.prepare_snapshots_reduced_group(self.model.has_edge_spring_constraints, self.spring.is_reduced,
+        self.prepare_snapshots_reduced_group(self.model.has_edge_spring_constraints, self.spring.is_reduced, self.spring.subspace_projection_ready,
                                    "edge_spring", self.spring.num_components, self.spring.row_dim,
                                    self.model.edge_spring_assembly_ST,  dir, file)
 
     def prepare_snapshots_reduced_tris_strain(self, dir, file):
         self.tris_strain.interpolation_alpha, self.tris_strain.Pt,  self.tris_strain.projection_matrix, self.tris_strain.solver_list = \
-            self.prepare_snapshots_reduced_group(self.model.has_tris_strain_constraints, self.tris_strain.is_reduced,
+            self.prepare_snapshots_reduced_group(self.model.has_tris_strain_constraints, self.tris_strain.is_reduced, self.tris_strain.subspace_projection_ready,
                                        "tris_strain", self.tris_strain.num_components, self.tris_strain.row_dim,
                                        self.model.tris_strain_assembly_ST, dir, file)
 
     def prepare_snapshots_reduced_tets_strain(self, dir, file):
         self.tets_strain.interpolation_alpha, self.tets_strain.Pt, self.tets_strain.projection_matrix, self.tets_strain.solver_list = \
-            self.prepare_snapshots_reduced_group(self.model.has_tets_strain_constraints, self.tets_strain.is_reduced,
+            self.prepare_snapshots_reduced_group(self.model.has_tets_strain_constraints, self.tets_strain.is_reduced, self.tets_strain.subspace_projection_ready,
                                        "tets_strain", self.tets_strain.num_components, self.tets_strain.row_dim,
                                        self.model.tets_strain_assembly_ST, dir, file)
 
     def prepare_snapshots_reduced_tets_deformation_gradient(self, dir, file):
         self.tets_deformation_gradient.interpolation_alpha, self.tets_deformation_gradient.Pt, self.tets_deformation_gradient.projection_matrix, self.tets_deformation_gradient.solver_list = \
-            self.prepare_snapshots_reduced_group(self.model.has_tets_deformation_gradient_constraints, self.tets_deformation_gradient.is_reduced,
+            self.prepare_snapshots_reduced_group(self.model.has_tets_deformation_gradient_constraints, self.tets_deformation_gradient.is_reduced, self.tets_deformation_gradient.subspace_projection_ready,
                                        "tets_deformation_gradient", self.tets_deformation_gradient.num_components, self.tets_deformation_gradient.row_dim,
                                        self.model.tets_deformation_gradient_assembly_ST, dir, file)
 
@@ -526,7 +561,7 @@ class animSnapBasesSolver:
             store_assembly_matrices()
             self.set_store_p(store_fom_info)
 
-        if not self.constraints_ready:
+        if self.model.constraints_changed: # triggers the solver to re-prepare the global matrix and update selection matrices
             # called only once
             # Apply any desired constraints
             self.model.immobilize()
@@ -534,11 +569,12 @@ class animSnapBasesSolver:
             self.model.reset_constraints_attributes()
             # sets constraints from args
             self.set_model_constraints()
-            self.constraints_ready = True
+            self.model.constraints_changed = False
+            self.set_dirty()
 
-        if self.has_reduced_constraint_projections and not self.constraint_projection_ready:
+        if self.has_reduced_constraint_projections and not self.constraint_subspace_ready:
             self.prepare_local_term(args)
-            self.constraint_projection_ready = True
+            self.constraint_subspace_ready = True
 
         if self.dirty:
             # global term computation is called every time mass matrix is changed
@@ -767,16 +803,20 @@ class animSnapBasesSolver:
                     constraint.project_wi_SiT_pi(q, b)
             b += unflatten(masses)
 
-
             if self.has_reduced_position:
                 if self.position_reduction_type in {"LBS", "PCA"}:
-                    b = self.U.T @ b.reshape(-1)
+                    # from full to reduced
+                    M3 = np.repeat(self.model.mass, 3)  # (3N,)
+                    b = np.linalg.solve( self.U.T @ np.diag(M3) @ self.U, self.U.T @ np.diag(M3) @ b.flatten())
+                    # b = self.U.T @ b.reshape(-1)
                     q = self.U @ self.cholesky(b.flatten())
                 else:
                     raise ValueError("unknown position reductoin")
 
             else:
-                q = self.cholesky(b.flatten())
+
+                b = b.flatten()
+                q = self.cholesky(b)
 
         q_next = unflatten(q)
         q_next = self.model.resolve_self_collision_fast(q_next)

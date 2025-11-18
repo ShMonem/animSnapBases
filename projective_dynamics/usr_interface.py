@@ -175,7 +175,6 @@ class PreDrawHandler:
             if not self.solver.ready():
                 self.solver.prepare(self.physics_params, store_fom_info=self.record_info, record_path=self.record_path)
             self.solver.step(self.fext, self.physics_params.solver_iterations)
-
             # Reset fext and update mesh
             self.fext[:] = 0.0
 
@@ -201,7 +200,7 @@ class PreDrawHandler:
             if ps.has_surface_mesh("model"):
                 ps.remove_surface_mesh("model")
 
-            update_camera_to_mesh_center(model)
+            # update_camera_to_mesh_center(model)
             # ps.reset_camera_to_home_view()
             ps.register_surface_mesh("model", model.positions, model.faces, color=color, edge_width=1.0)
 

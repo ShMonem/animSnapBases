@@ -32,6 +32,9 @@ class Config_parameters:
         parser.add_argument("--window_open", type=str, default= visualization["window_open"])
         parser.add_argument("--is_simulating", type=str, default= visualization["is_simulating"])
 
+        parser.add_argument("--height_up_shift", type=str, default= visualization["height_shift"])
+
+
     def add_solver_args(self, parser):
         solver = self.system_params ["solver_params"]
         # parser.add_argument("--solver_window_open", type=bool, default=solver["window_open"])
@@ -84,6 +87,15 @@ class Config_parameters:
 
         parser.add_argument("--record_projection_data", type=str, default=constraints["record_projection_data"])
 
+    def add_position_reduction_args(self, parser):
+        positions_basis = self.system_params["position_reduction"]
+        parser.add_argument("--positions_reduced", type=str, default=positions_basis["positions_reduced"])
+
+        parser.add_argument("--position_basis_type", type=str, default=positions_basis["name"])
+        parser.add_argument("--num_position_components", type=str, default=positions_basis["num_components"])
+        parser.add_argument("--pos_radial_r_muliplier", type=str, default=positions_basis["r_muliplier"])
+
+
     def add_constraint_projections_reduction_args(self, parser):
         constrProj_basis = self.system_params["constraint_projetions_reduction"]
         parser.add_argument("--constraint_projection_basis_type", type=str, default=constrProj_basis["name"])
@@ -92,21 +104,34 @@ class Config_parameters:
         constraints = self.system_params ['constraints']
         parser.add_argument("--vert_bending_reduced", type=bool, default=constrProj_basis["vert_bending_reduced"])
         parser.add_argument("--vert_bending_num_components", type=bool, default=constrProj_basis["num_verts_bending_components"])
+        parser.add_argument("--vert_bending_num_samples", type=str, default=constrProj_basis["vert_bending_num_samples"])
 
         parser.add_argument("--edge_spring_reduced", type=bool, default=constrProj_basis["edge_spring_reduced"])
         parser.add_argument("--edge_spring_num_components", type=bool, default=constrProj_basis["edge_spring_num_components"])
+        parser.add_argument("--edge_spring_num_samples", type=str, default=constrProj_basis["edge_spring_num_samples"])
 
         parser.add_argument("--tri_strain_reduced", type=bool, default=constrProj_basis["tri_strain_reduced"])
         parser.add_argument("--tri_strain_num_components", type=bool,
                             default=constrProj_basis["tri_strain_num_components"])
+        parser.add_argument("--tri_strain_num_samples", type=str, default=constrProj_basis["tri_strain_num_samples"])
+
 
         parser.add_argument("--tet_strain_reduced", type=bool, default=constrProj_basis["tet_strain_reduced"])
         parser.add_argument("--tet_strain_num_components", type=bool,
                             default=constrProj_basis["tet_strain_num_components"])
+        parser.add_argument("--tet_strain_num_samples", type=str, default=constrProj_basis["tet_strain_num_samples"])
+
 
         parser.add_argument("--tet_deformation_reduced", type=bool, default=constrProj_basis["tet_deformation_reduced"])
         parser.add_argument("--tet_deformation_num_components", type=bool,
                             default=constrProj_basis["tet_deformation_num_components"])
+        parser.add_argument("--tet_deformation_num_samples", type=str, default=constrProj_basis["tet_deformation_num_samples"])
+
+
+        parser.add_argument("--constraint_radial_r_muliplier", type=str, default=constrProj_basis["r_muliplier"])
+        parser.add_argument("--constraint_basis_scale", type=str, default=constrProj_basis["basis_scale"])
+        # spot:  0.15
+        # bat:   2
 
         parser.add_argument("--max_p_snapshots_num", type=bool,
                             default=self.system_params["nonlinear_snapshots"]["max_p_snapshots_num"])
@@ -123,6 +148,10 @@ class Config_parameters:
         parser.add_argument("--geom_interpolation_basis_dir", type=str,
                             default=directories['geom_interpolation_basis_dir']+ constrProj_basis_name+ constrProj_basis_properties)
         parser.add_argument("--geom_interpolation_basis_file", type=str, default=directories['geom_interpolation_basis_file'])
+
+        positions_basis = self.system_params["position_reduction"]
+        parser.add_argument("--geom_positions_basis_dir", type=str, default=directories['geom_positions_basis_dir'] + positions_basis["name"] + positions_basis["properties"])
+        parser.add_argument("--geom_positions_basis_file", type=str, default=directories['geom_positions_basis_file'])
 
 
 def initiate_system_args(parser):

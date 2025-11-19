@@ -93,11 +93,14 @@ def main(param: Config_parameters):
 
             tets_plots_pca(bases, param)
 
+        # uncomment to store .bin format
         if param.store_bases:
             start = 1
             end = bases.numComp
             step = 1
             bases.store_components_to_files(start, end, step, ".bin")
+
+        bases.store_components_n_interpol_points()
 
     if param.compute_constProj_bases:
         from snapbases.constraintsComponents import constraintsComponents
@@ -127,6 +130,10 @@ def main(param: Config_parameters):
         elif param.constProj_bases_interpolation_type == "geom":
             geom_interpolation_in_pos_space = True
             nonlinearBases.geom_block_form_utilizing_differential_operator(geom_interpolation_in_pos_space)
+        elif param.constProj_bases_interpolation_type == "adv":
+            geom_interpolation_in_pos_space = True
+            interpolate_wrt_partitioning = True
+            nonlinearBases.geom_block_form_utilizing_differential_operator(geom_interpolation_in_pos_space, interpolate_wrt_partitioning)
 
         # copy time log file to correct directory
         copy_and_delete_file("function_timings.txt", os.path.join(param.vertPos_output_directory,"time_logs.txt"))
@@ -153,10 +160,10 @@ def main(param: Config_parameters):
             if param.constProj_basis_type == "pod_vectorized" or param.constProj_basis_type == "pod":
                 steps = 1
 
-            if param.constProj_basis_type == "pca_blocks" or param.constProj_basis_type == "pca_blocks_with_St" :
+            if param.constProj_basis_type in {"pca_blocks" , "pca_blocks_with_St" , "pca_blocks_with_St_partitioning"}:
                 pca_tests = True
 
-            if param.constProj_bases_interpolation_type == "geom":
+            if param.constProj_bases_interpolation_type in { "geom"}:
                 visualize_geom_elements = param.reduced_constProj_snapshots_available
 
             tets_plots_nonlinearity_basis(nonlinearBases, pca_tests=pca_tests, postProcess_tests=postProcess_tests,
@@ -165,26 +172,30 @@ def main(param: Config_parameters):
 if __name__ == '__main__':
     # -----------------------------------------------------------------------------------------------------------------
 
-    # available_demos = {"cloth_automated_deim_vertBendingSubspace.json",
-    #                    "cloth_bendOnly_automated_deim_vertBendingSubspace.json"
+    # available_demos = {
+    #                    "deim/cloth_automated_deim_vertBendingSubspace.json",
+    #                    "deim/cloth_bendOnly_automated_deim_vertBendingSubspace.json"
     #
-    #                    "cloth_automated_geom_vertBendingSubspace.json",
-    #
-    #                    "cloth_automated_deim_edgeSpringSubspace.json",
-    #                    "cloth_springOnly_automated_deim_edgeSpringSubspace.json",
-    #
-    #                    "cloth_automated_geom_edgeSpringSubspace.json",
-    #
-    #                    "cloth_automated_deim_triStrainSubspace.json",
-    #                    "cloth_strainOnly_automated_deim_triStrainSubspace.json"
-    #
-    #                    "cloth_automated_geom_triStrainSubspace.json",
-    #
-    #                    "bar_automated_deim_tetDeformationGradientSubspace.json"}
+    #                    "deim/cloth_automated_deim_edgeSpringSubspace.json",
+    #                    "deim/cloth_springOnly_automated_deim_edgeSpringSubspace.json",
+    #    #
+    #                    "deim/cloth_automated_deim_triStrainSubspace.json",
+    #                    "deim/cloth_strainOnly_automated_deim_triStrainSubspace.json"
+    #                    "deim/bar_automated_deim_tetDeformationGradientSubspace.json"}
+
+    #                    "geom/cloth_automated_geom_vertBendingSubspace.json",
+    #                    "geom/cloth_automated_geom_edgeSpringSubspace.json",
+    #                    "geom/cloth_automated_geom_triStrainSubspace.json",
+    #                    "geom/bar_automated_geom_tetDeformationGradientSubspace.json
+
+    #                    "posSubspace/bar_gFall_posSubspace.json"
+
+
+
 
     # mesh = "bar"
     # subspace = "vertbendSubspace"
-    json_file = "config/examples/cloth_strainOnly_automated_deim_triStrainSubspace.json"
+    json_file = "config/examples/posSubspace/bar_gFall_posSubspace.json"
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
     parser.add_argument('--mesh', type=str, default="mesh", help='Give a character mesh')

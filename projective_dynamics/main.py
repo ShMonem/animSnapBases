@@ -3,13 +3,18 @@ import polyscope as ps
 import config
 import argparse
 
-
+import cProfile
+import pstats
 def main(args, record_fom_info = False, case=None, params=None):
 
     import demos.calbacks
+
     if case == "testing":
-        # callback = demos.calbacks.interacrive_testing_callback(args, record_fom_info, params)
+        callback = demos.calbacks.interacrive_testing_callback(args, record_fom_info, params)
+    elif case == "cloth_automated_bend_spring_strain_snapshots":
         callback = demos.calbacks.cloth_snapshots(args, record_fom_info, params)
+    elif case == "cloth_automated_bend_spring_strain_tests":
+        callback = demos.calbacks.cloth_test(args, record_fom_info, params)
     elif case == "cloth_automated_bend_spring_strain":
         callback = demos.calbacks.cloth_automated_bend_spring_strain_callback(args, record_fom_info, params)
     elif case == "cloth_automated_spring":
@@ -42,6 +47,7 @@ if __name__ == '__main__':
     # "cloth_automated_bend.json",
     # "cloth_automated_spring.json",
     # "cloth_automated_strain.json",
+    # "cloth_automated_bend_spring_strain_snapshots.json"
     # "bar_automated_deformationgradient.json"]
 
     # # ---------------- build parser argument ----------------
@@ -52,7 +58,7 @@ if __name__ == '__main__':
     from config import Config_parameters
 
     param = Config_parameters()
-    example = "testing"
+    example = "bar_automated_deformationgradient"
 
     param.reset_parameters("projective_dynamics/demos/"+example+".json")
 
@@ -65,16 +71,32 @@ if __name__ == '__main__':
     # Physics parameters
     param.add_physics_args(parser)
 
+
     # Model reduction parameters
+    # positions
+    param.add_position_reduction_args(parser)
+    # constraints projections
     param.add_constraint_projections_reduction_args(parser)
 
     # Important output and input directories
     param.add_directories_args(parser)
 
     args = parser.parse_args()
+    debug = False
+
 
     record_projection_data = False #args.record_projection_data
-    main(args,
-         record_fom_info = record_projection_data,
-         case = example,
-         params = param)
+    if debug:
+        with cProfile.Profile() as pr:
+            main(args,
+                 record_fom_info = record_projection_data,
+                 case = example,
+                 params = param)
+
+        stats = pstats.Stats(pr)
+        stats.sort_stats(pstats.SortKey.TIME).print_stats(100)
+    else:
+        main(args,
+             record_fom_info=record_projection_data,
+             case=example,
+             params=param)

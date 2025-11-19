@@ -14,9 +14,12 @@ from geometry import get_simple_bar_model, get_simple_cloth_model, get_simple_ba
 from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler, PickingState
 
 from Simulators import animSnapBasesSolver, Solver
-import trimesh
-import meshio
-from utils import check_dir_exists
+# import trimesh
+# import meshio
+from utils import check_dir_exists, read_mesh_file
+from scipy.spatial import cKDTree
+from scipy.spatial.transform import Rotation as R
+
 
 # declare global variables
 model = None
@@ -67,6 +70,8 @@ def get_solver_class_from_name(args):
         return animSnapBasesSolver(args)
     elif args.solver == "Solver":
         return Solver()
+    elif args.solver == "animSnapSolverTorch":
+        return animSnapSolverTorch(args)
     else:
         raise ValueError("Unknown solver name")
 
@@ -78,17 +83,19 @@ def rescale(V):
         V /= scale
     return V
 
-def reset_simulation_model(V, F, T, should_rescale=False, params=None):
+def reset_simulation_model(V, F, T, should_rescale=False, params=None, hight=1):
     global model, fext, solver
     if should_rescale:
         V = rescale(V)
 
     model = DeformableMesh(V, F, T)
     solver.set_model(model)
+    model.set_init_hight(hight)
     fext = np.zeros_like(V)
 
     ps.remove_all_structures()
-    ps.register_surface_mesh("model", model.positions, model.faces, enabled=True)
+    ps.register_surface_mesh("model", model.positions,
+                             model.faces, enabled=True)
     ps.get_surface_mesh("model").set_selection_mode("vertices_only")  # or "vertex_only"
 
     ps.set_ground_plane_mode("shadow_only")  # set +Z as up direction
@@ -112,53 +119,49 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
         if solver.frame == 0:
             print("Frame 0: Creating cloth and fixing left/right corners")
 
-            params.edit_system_args(args, "Bar")
+            # params.edit_system_args(args, "Bar")
 
-            V, T, F, _ = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
+            V, T, F = read_mesh_file("../data/bar.mesh")
 
-            reset_simulation_model(V, F, T, should_rescale=True)
+            # V, T, F, _ = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
+
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
             object_name = "bar"
 
             check_dir_exists(os.path.join(output_path, object_name))
-            mesh = meshio.Mesh(
-                points=V,
-                cells=[
-                    ("triangle", F),
-                    ("tetra", T)
-                ]
-            )
-            mesh.write(os.path.join(output_path, object_name, object_name+".mesh"))
-
-            mesh_surface = trimesh.Trimesh(vertices=V, faces=F)
-            mesh_surface.export(os.path.join(output_path, object_name, object_name + ".obj"))
+            # mesh = meshio.Mesh(
+            #     points=V,
+            #     cells=[
+            #         ("triangle", F),
+            #         ("tetra", T)
+            #     ]
+            # )
+            # mesh.write(os.path.join(output_path, object_name, object_name+".mesh"))
+            #
+            # mesh_surface = trimesh.Trimesh(vertices=V, faces=F)
+            # mesh_surface.export(os.path.join(output_path, object_name, object_name + ".obj"))
 
             psim.PushItemWidth(200)
             psim.TextUnformatted("== Projective Dynamics ==")
             psim.Separator()
 
-            model.fix_surface_side_vertices(side="left")
-            model.fix_surface_side_vertices(side="right")
+            model.fix_surface_side_vertices(args.positional_constraint_wi, side="left")
+            model.fix_surface_side_vertices(args.positional_constraint_wi, side="right")
 
-            # Apply any desired constraints
-            model.immobilize()
-            model.clear_constraints()
-            model.reset_constraints_attributes()
 
-            if args.vert_bending_constraint:
-                model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
-            if args.edge_constraint:
-                model.add_edge_spring_constrain(args.edge_constraint_wi)
-            if args.tri_strain_constraint:
-                model.add_tri_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
-            if args.tet_strain_constraint:
-                model.add_tet_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
-            if args.tet_deformation_constraint:
-                model.add_tet_constrain_deformation_gradient(args.deformation_gradient_constraint_wi)
-            # if recording snapshots build output file name/ path
-            if record_fom_info:
-                constrproj_case = "constraint_projection/FOM"
-                if solver.has_reduced_constraint_projectios:
-                    constrproj_case = "constraint_projection/" + args.constraint_projection_basis_type
+            def make_sim_path(args):
+                nonlocal output_path
+
+                sim_case = "FOM"
+
+                if  solver.has_reduced_position and not solver.has_reduced_constraint_projections:
+                    sim_case = "positions_reduced/" + args.position_basis_type
+                elif solver.has_reduced_constraint_projections and not solver.has_reduced_position:
+                    sim_case = "constraint_projections_reduced/" + args.constraint_projection_basis_type
+
+                elif solver.has_reduced_constraint_projections and solver.has_reduced_position:
+                    sim_case = "positions_and_constraint_projections_reduced/" + args.position_basis_type +"_"+ args.constraint_projection_basis_type
+
 
                 specify_path = ""
                 if model.has_verts_bending_constraints:
@@ -183,24 +186,33 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
                     specify_path = specify_path + "tets_deformation_gradient_wi" + str(args.deformation_gradient_constraint_wi) + "_"
                     if args.tet_deformation_reduced :
                         specify_path = specify_path + "reduced_"+ str(args.tet_deformation_num_components)+"_"
-
-
-                output_path += "/" + object_name + "/" + experiment + "/" + "/" + constrproj_case + "/" + specify_path + "/"
+                output_path += "/" + object_name + "/" + experiment + "/" + sim_case + "/" + specify_path + "/"
                 check_dir_exists(output_path)
 
                 solver.set_record_path(output_path)
                 solver.set_store_p(record_fom_info)
+                solver.set_store_q(record_fom_info)
+
+
+            if record_fom_info:
+                make_sim_path(args)
+                # record parameters for tracking
+                with open(output_path + "/args.txt", "w") as f:
+                    for key, value in vars(args).items():
+                        f.write(f"{key}: {value}\n")
+
             solver.set_dirty()
 
         elif solver.frame == 40:
             print("Frame 10: Releasing left side")
             model.release_surface_side_vertices(side="left")
+            solver.set_dirty()
 
 
         elif solver.frame == 80:
             print("Frame 10: Releasing right side")
             model.release_surface_side_vertices(side="right")
-        #
+
         # elif solver.frame == 140:
         #     print("Frame 30: Releasing all corners")
         #     model.release_cloth_corners(side="top")
@@ -267,8 +279,8 @@ def cloth_automated_bend_spring_strain_callback(args, record_fom_info = False, p
             object_name = "cloth"
 
             check_dir_exists(os.path.join(output_path, object_name))
-            mesh = trimesh.Trimesh(vertices=V, faces=F)
-            mesh.export(os.path.join(output_path, object_name, object_name+".obj"))
+            # mesh = trimesh.Trimesh(vertices=V, faces=F)
+            # mesh.export(os.path.join(output_path, object_name, object_name+".obj"))
 
             psim.PushItemWidth(200)
             psim.TextUnformatted("== Projective Dynamics ==")
@@ -402,8 +414,8 @@ def cloth_automated_strain_callback(args, record_fom_info = False, params=None,e
             object_name = "cloth"
 
             check_dir_exists(os.path.join(output_path, object_name))
-            mesh = trimesh.Trimesh(vertices=V, faces=F)
-            mesh.export(os.path.join(output_path, object_name, object_name+".obj"))
+            # mesh = trimesh.Trimesh(vertices=V, faces=F)
+            # mesh.export(os.path.join(output_path, object_name, object_name+".obj"))
 
             psim.PushItemWidth(200)
             psim.TextUnformatted("== Projective Dynamics ==")
@@ -527,8 +539,8 @@ def cloth_automated_bend_callback(args, record_fom_info = False, params=None,exp
             object_name = "cloth"
 
             check_dir_exists(os.path.join(output_path, object_name))
-            mesh = trimesh.Trimesh(vertices=V, faces=F)
-            mesh.export(os.path.join(output_path, object_name, object_name+".obj"))
+            # mesh = trimesh.Trimesh(vertices=V, faces=F)
+            # mesh.export(os.path.join(output_path, object_name, object_name+".obj"))
 
             psim.PushItemWidth(200)
             psim.TextUnformatted("== Projective Dynamics ==")
@@ -632,20 +644,231 @@ def cloth_automated_bend_callback(args, record_fom_info = False, params=None,exp
 
     return callback
 
-
-def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth_automated_snapshots"):
+def cloth_test(args, record_fom_info = False, params=None,experiment="cloth_automated_bend_spring_strain_test"):
     global model, fext, solver
     solver = get_solver_class_from_name(args)
     is_simulating = True
     output_path = args.output_dir
 
+    start_frame = 0
+    bottom_side_verts = None
+    counter = 0
+    final_frame = 100
 
+
+    def create_rotation_around_arbitrary_axis(
+            axis_vector,
+            axis_point=np.zeros(3),
+            start_frame=0,
+            num_frames=30,
+            num_rotations=1,
+            total_frames=None
+    ):
+        """
+        Rotate a point around an arbitrary axis in space over time.
+
+        Parameters:
+        - point: np.array(3,), the vertex to rotate
+        - axis_vector: np.array(3,), direction vector of the axis
+        - axis_point: np.array(3,), a point the axis passes through
+        - start_frame: int, first frame to apply rotation
+        - num_frames: int, number of frames over which rotation occurs
+        - num_rotations: int, how many full 360° rotations
+        - total_frames: int, total number of frames in animation
+
+        Returns:
+        - motion: (total_frames, 3) array of vertex positions over time
+        """
+
+        if total_frames is None:
+            total_frames = start_frame + num_frames
+
+        motion = np.zeros((total_frames, 3))
+
+        # Normalize the axis direction
+        axis_dir = axis_vector / np.linalg.norm(axis_vector)
+
+        # Generate rotation angles
+        angles = np.linspace(0, 2 * np.pi * num_rotations, num_frames, endpoint=False)
+
+        for i, theta in enumerate(angles):
+            # Rodrigues' rotation formula
+            v = -axis_point  # vector from axis_point to point
+            k = axis_dir
+
+            v_rot = (
+                    v * np.cos(theta)
+                    + np.cross(k, v) * np.sin(theta)
+                    + k * np.dot(k, v) * (1 - np.cos(theta))
+            )
+            rotated = axis_point + v_rot
+            motion[start_frame + i] = rotated
+
+        return motion
+
+    def callback():
+        nonlocal output_path, is_simulating, bottom_side_verts, counter
+        psim.TextUnformatted("== Projective Dynamics ==")
+        psim.Separator()
+        counter += 1
+        # Frame 0: create mesh and apply initial constraints
+        if solver.frame == 0:
+            print(f"Frame: {solver.frame} Creating cloth and generating poking fames")
+
+            params.edit_system_args(args, "Cloth")
+
+            V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
+            reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
+            object_name = "cloth"
+
+            check_dir_exists(os.path.join(output_path, object_name))
+            # mesh = trimesh.Trimesh(vertices=V, faces=F)
+            # mesh.export(os.path.join(output_path, object_name, object_name + ".obj"))
+
+            psim.PushItemWidth(200)
+            psim.TextUnformatted("== Projective Dynamics ==")
+            psim.Separator()
+
+            top_side_verts = model.fix_surface_side_vertices(side="top", fix_it = True, return_target = True)  # fix
+            # return indices and not fix
+            bottom_side_verts = model.fix_surface_side_vertices(side="bottom", fix_it = False, return_target = True)
+
+
+            # Apply any desired constraints
+            model.immobilize()
+            model.clear_constraints()
+            model.reset_constraints_attributes()
+
+            print("Poking - positional constraint added to center vertex")
+            for i in range(len(bottom_side_verts)):
+                center_i = top_side_verts[i]
+                initial_i = bottom_side_verts[i]  # point on x-axis
+                rotation_series = create_rotation_around_arbitrary_axis(
+                    axis_vector=np.array([1.5, 0, 0]),
+                    axis_point=V[center_i],
+                    start_frame=10,
+                    num_frames=60,
+                    num_rotations=1,
+                    total_frames=100)
+                model.add_positional_constraint(initial_i, args.positional_constraint_wi,
+                                                motion_type="user_defined", frame_shift=rotation_series)
+
+                model.picked_vert[initial_i] = True
+
+            if args.vert_bending_constraint:
+                model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
+            if args.edge_constraint:
+                model.add_edge_spring_constrain(args.edge_constraint_wi)
+            if args.tri_strain_constraint:
+                model.add_tri_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
+
+            # if recording snapshots build output file name/ path
+            if record_fom_info:
+                constrproj_case = "constraint_projection/FOM"
+                if solver.has_reduced_constraint_projectios:
+                    constrproj_case = "constraint_projection/" + args.constraint_projection_basis_type
+
+                specify_path = ""
+                if model.has_verts_bending_constraints:
+                    specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
+                    if args.vert_bending_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.vert_bending_num_components) + "_"
+
+                if model.has_edge_spring_constraints:
+                    specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
+                    if args.edge_spring_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.edge_spring_num_components) + "_"
+
+                if model.has_tris_strain_constraints:
+                    specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+                    if args.tri_strain_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.tri_strain_num_components) + "_"
+                if model.has_tets_strain_constraints:
+                    specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+                    if args.tet_strain_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.tet_strain_num_components) + "_"
+                if model.has_tets_deformation_gradient_constraints:
+                    specify_path = specify_path + "tets_deformation_gradient_wi" + str(
+                        args.deformation_gradient_constraint_wi) + "_"
+                    if args.tet_deformation_reduced:
+                        specify_path = specify_path + "reduced_" + str(args.tet_deformation_num_components) + "_"
+
+                output_path += "/" + object_name + "/" + experiment + "/" + "/" + constrproj_case + "/" + specify_path + "/"
+                check_dir_exists(output_path)
+
+                solver.set_record_path(output_path)
+                solver.set_store_p(record_fom_info)
+            solver.set_dirty()
+
+        if counter == final_frame:
+            print("Stopping simulation.")
+            is_simulating = False
+            ps.unshow()
+            return
+
+        # Run a single simulation step
+        if model is not None and is_simulating:
+            pre_draw_handler = PreDrawHandler(
+                lambda: model.positions.shape[0] > 0, args, solver, fext,
+                record_info=record_fom_info, record_path=output_path
+            )
+            pre_draw_handler.set_animating(True)
+            pre_draw_handler.handle()
+
+        if model is not None:
+            psim.BulletText(f"Vertices: {model.positions.shape[0]}")
+            psim.BulletText(f"Triangles: {model.faces.shape[0]}")
+            psim.BulletText(f"Edges: {model.count_edges(model.faces)}")
+            psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
+
+            if model.has_verts_bending_constraints:
+                psim.BulletText(f"Vertices bending constraint: {len(model.verts_bending_constraints)}")
+                psim.BulletText(f"wi: {str(args.vert_bending_constraint_wi)}")
+
+            if model.has_edge_spring_constraints:
+                psim.BulletText(f"Edge pring constraint: {len(model.edge_spring_constraints)}")
+                psim.BulletText(f"wi: {str(args.edge_constraint_wi)}")
+
+            if model.has_tris_strain_constraints:
+                psim.BulletText(f"Triangles strain constraint: {len(model.tris_strain_constraints)}")
+                psim.BulletText(f"wi: {str(args.strain_limit_constraint_wi)}")
+
+        psim.End()
+
+    return callback
+
+
+def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth_automated_bend_spring_strain_snapshots"):
+    global model, fext, solver
+    solver = get_solver_class_from_name(args)
+    is_simulating = True
+    output_path = args.output_dir
+
+    start_poking_frame = 0
+    poking_half_width = 0.2  # how far we poke from the original point *[-1, 1]
     poking_frames_per_point = 20
     rest_frames_per_point = 10
     poking_series = None
     poked_points = None
-    number_pockes = 15
-    total_frames = number_pockes*(rest_frames_per_point + poking_frames_per_point)
+    top_side_verts = None
+    bottom_side_verts = None
+    right_side_verts = None
+    left_side_verts = None
+    number_pockes = 10
+    total_frames_poking_frames = number_pockes *(rest_frames_per_point + poking_frames_per_point)
+    free_fall_frames = 5
+    start_stretching_frame = total_frames_poking_frames + free_fall_frames
+    stretching_frames = 20
+    number_stretches = 2
+    rest_frames_per_stretch = 10
+    release_stretching_frame = start_stretching_frame + 2* stretching_frames
+    start_bottom_top_rolling_frame = release_stretching_frame + rest_frames_per_stretch
+    rolling_frames = 100
+
+
+    counter = 0
+    final_frame = 600 #total_frames_poking_frames +free_fall_frames + stretching_frames
+    number_recorded_frames = final_frame - 4
 
     def create_poke_z_motion_with_jumps(f_l, f_j, k, z_range=1.0):
         """
@@ -734,24 +957,155 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
 
         return seeds, labels
 
+    def compute_voronoi_seeds_incremental(positions, k, start_idx=None, visualize=True, title="Voronoi Partitioning (Euclidean Approximation)"):
+        """
+        Select k Voronoi seeds on a mesh using incremental farthest-point sampling.
+
+        Parameters:
+            positions: (n, 3) numpy array of vertex positions
+            k: int, number of seeds to return
+            start_idx: optional int, index of first seed (default = closest to centroid)
+
+        Returns:
+            seeds: list of k vertex indices
+        """
+        n = positions.shape[0]
+
+        # Start from the closest point to the centroid if not given
+        if start_idx is None:
+            center = positions.mean(axis=0)
+            start_idx = np.argmin(np.linalg.norm(positions - center, axis=1))
+
+        seeds = [start_idx]
+        dists = np.linalg.norm(positions - positions[start_idx], axis=1)
+
+        for _ in range(1, k):
+            # Find the point with maximum distance to the nearest seed
+            min_dists = dists
+            next_idx = np.argmax(min_dists)
+            seeds.append(next_idx)
+
+            # Update minimum distances to the new seed
+            new_dists = np.linalg.norm(positions - positions[next_idx], axis=1)
+            dists = np.minimum(dists, new_dists)
+
+        # Assign each vertex to the nearest seed
+        tree = cKDTree(positions[seeds])
+        labels = tree.query(positions)[1]  # nearest seed index
+        if visualize:
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+            ax.scatter(positions[:, 0], positions[:, 1], positions[:, 2], c=labels, cmap='tab20', s=5)
+            ax.scatter(positions[seeds, 0], positions[seeds, 1], positions[seeds, 2], c='black', s=30, label="Seeds")
+            ax.set_title(title)
+            ax.legend()
+            plt.show()
+
+        return np.array(seeds), labels
+
+    def create_xyz_stretch_motion_with_jumps(f_l, f_j, k, displacement_xyz=(1.0, 0.0, 0.0)):
+        """
+        Generate a multi-axis motion that repeats k times:
+          - motion phase: linearly interpolate from 0 to target displacement and back over f_l frames
+          - pause phase: hold at rest (zeros) for f_j frames
+
+        :param f_l: Frames per motion cycle (excluding jump)
+        :param f_j: Frames per pause (jump)
+        :param k: Number of motion+pause cycles
+        :param displacement_xyz: (dx, dy, dz) tuple of peak displacement along each axis
+        :return: (total_frames, 3) array of displacement per frame
+        """
+        dx, dy, dz = displacement_xyz
+        motion = []
+
+        for _ in range(k):
+            # -- Motion phase: 0 -> displacement -> 0
+            half = f_l // 2
+            phase1 = np.linspace(0, 1, half, endpoint=False)
+            phase2 = np.linspace(1, 0, f_l - half)
+
+            motion_phase = np.concatenate([phase1, phase2])[:, None]  # shape (f_l, 1)
+            disp_phase = motion_phase * np.array([[dx, dy, dz]])  # broadcast to (f_l, 3)
+
+            # -- Pause phase: hold at zero
+            pause_phase = np.zeros((f_j, 3))
+
+            # -- Append both
+            motion.append(disp_phase)
+            motion.append(pause_phase)
+
+        motion_array = np.concatenate(motion, axis=0)  # shape: (k * (f_l + f_j), 3)
+        return motion_array
+
+    def create_rotation_around_arbitrary_axis(
+            axis_vector,
+            axis_point=np.zeros(3),
+            start_frame=0,
+            num_frames=30,
+            num_rotations=1,
+            total_frames=None
+    ):
+        """
+        Rotate a point around an arbitrary axis in space over time.
+
+        Parameters:
+        - point: np.array(3,), the vertex to rotate
+        - axis_vector: np.array(3,), direction vector of the axis
+        - axis_point: np.array(3,), a point the axis passes through
+        - start_frame: int, first frame to apply rotation
+        - num_frames: int, number of frames over which rotation occurs
+        - num_rotations: int, how many full 360° rotations
+        - total_frames: int, total number of frames in animation
+
+        Returns:
+        - motion: (total_frames, 3) array of vertex positions over time
+        """
+
+        if total_frames is None:
+            total_frames = start_frame + num_frames
+
+        motion = np.zeros((total_frames, 3))
+
+        # Normalize the axis direction
+        axis_dir = axis_vector / np.linalg.norm(axis_vector)
+
+        # Generate rotation angles
+        angles = np.linspace(0, 2 * np.pi * num_rotations, num_frames, endpoint=False)
+
+        for i, theta in enumerate(angles):
+            # Rodrigues' rotation formula
+            v = -axis_point  # vector from axis_point to point
+            k = axis_dir
+
+            v_rot = (
+                    v * np.cos(theta)
+                    + np.cross(k, v) * np.sin(theta)
+                    + k * np.dot(k, v) * (1 - np.cos(theta))
+            )
+            rotated = axis_point + v_rot
+            motion[start_frame + i] = rotated
+
+        return motion
+
     def callback():
-        nonlocal output_path, is_simulating, poking_series, poked_points, poking_frames_per_point, rest_frames_per_point, number_pockes, total_frames
+        nonlocal output_path, is_simulating, poking_series, poked_points, poking_frames_per_point, rest_frames_per_point, number_pockes, counter,\
+            top_side_verts, bottom_side_verts, right_side_verts, left_side_verts
         psim.TextUnformatted("== Projective Dynamics ==")
         psim.Separator()
-
+        counter += 1
         # Frame 0: create mesh and apply initial constraints
         if solver.frame == 0:
-            print("Frame 0: Creating cloth and fixing left/right corners")
+            print(f"Frame: {solver.frame} Creating cloth and generating poking fames")
 
             params.edit_system_args(args, "Cloth")
 
             V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
-            reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
+            reset_simulation_model(V, F, None, should_rescale=True)
             object_name = "cloth"
 
             check_dir_exists(os.path.join(output_path, object_name))
-            mesh = trimesh.Trimesh(vertices=V, faces=F)
-            mesh.export(os.path.join(output_path, object_name, object_name + ".obj"))
+            # mesh = trimesh.Trimesh(vertices=V, faces=F)
+            # mesh.export(os.path.join(output_path, object_name, object_name + ".obj"))
 
             psim.PushItemWidth(200)
             psim.TextUnformatted("== Projective Dynamics ==")
@@ -764,8 +1118,12 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
 
             # Generate motion serise for poking
             # Generate z values: 0 → 1 ->> -1 linearly
-            poking_series = create_poke_z_motion_with_jumps(poking_frames_per_point, rest_frames_per_point, number_pockes, z_range=0.2)
-            poked_points, labels = get_voronoi_seeds_and_partition(V, F, number_pockes)
+            # poked_points, labels = get_voronoi_seeds_and_partition(V, F, number_pockes)
+            poked_points, lables = compute_voronoi_seeds_incremental(V, number_pockes, visualize=False)
+            poking_series = create_poke_z_motion_with_jumps(poking_frames_per_point, rest_frames_per_point, poked_points.shape[0], z_range=poking_half_width)
+
+            # How many frames to record
+            solver.set_max_p_frames(number_recorded_frames)
 
             # Apply any desired constraints
             model.immobilize()
@@ -775,6 +1133,7 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
             model.add_positional_constraint(poked_points[0], args.positional_constraint_wi,
                                             motion_type="user_defined", frame_shift=poking_series)
             print("Poking - positional constraint added to center vertex")
+
             model.picked_vert[poked_points[0]] = True
             if args.vert_bending_constraint:
                 model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
@@ -786,7 +1145,7 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
             # if recording snapshots build output file name/ path
             if record_fom_info:
                 constrproj_case = "constraint_projection/FOM"
-                if solver.has_reduced_constraint_projectios:
+                if solver.has_reduced_constraint_projections:
                     constrproj_case = "constraint_projection/" + args.constraint_projection_basis_type
 
                 specify_path = ""
@@ -821,28 +1180,177 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
                 solver.set_store_p(record_fom_info)
             solver.set_dirty()
 
-        elif solver.frame % (poking_frames_per_point+rest_frames_per_point) == 0.0 and solver.frame > 0:
-            i = solver.frame // (poking_frames_per_point+rest_frames_per_point)
-            if i <= number_pockes:
+        elif solver.frame % (poking_frames_per_point + rest_frames_per_point) == 1:
+            i = solver.frame // (poking_frames_per_point + rest_frames_per_point)
+
+            if i < poked_points.shape[0]:
                 model.add_positional_constraint(poked_points[i], args.positional_constraint_wi,
                                                 motion_type="user_defined", frame_shift=poking_series)
                 model.picked_vert[poked_points[i]] = True
                 solver.set_dirty()
                 print(f"Poking - positional constraint added to {i} vertex")
 
-        elif solver.frame % (poking_frames_per_point+rest_frames_per_point) == poking_frames_per_point and solver.frame > 0:
+        elif solver.frame % (poking_frames_per_point + rest_frames_per_point) == poking_frames_per_point\
+                and 0 < solver.frame < total_frames_poking_frames:
             i = solver.frame // (poking_frames_per_point + rest_frames_per_point)
-            if i <= number_pockes:
+            if i < poked_points.shape[0]:
                 print(f"Removing - positional constraint remover from {i} vertex")
                 model.remove_positional_constraint(poked_points[i])
                 model.picked_vert[poked_points[i]] = False
                 solver.set_dirty()
 
-
-        if solver.frame == total_frames:
+        elif solver.frame == total_frames_poking_frames:
             model.release_surface_side_vertices(side="top")
 
-        if solver.frame == total_frames + rest_frames_per_point:
+        elif solver.frame == start_stretching_frame:
+            print(f"Frame: {solver.frame} Resetting cloth mesh and generating top-bottom stretching fames")
+
+            V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
+            reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
+            object_name = "cloth"
+
+            check_dir_exists(os.path.join(output_path, object_name))
+            # mesh = trimesh.Trimesh(vertices=V, faces=F)
+
+            # Generate serise for streatching
+            stretch_motion_top = create_xyz_stretch_motion_with_jumps(stretching_frames, rest_frames_per_stretch,
+                                                                      number_stretches, displacement_xyz=(0.0, 0.4, 0.0))
+            stretch_motion_bottom = - stretch_motion_top
+
+            # Apply any desired constraints
+            model.immobilize()
+            model.clear_constraints()
+            model.reset_constraints_attributes()
+            #
+            model.compute_sides_and_corner_indices()
+            top_side_verts = model._side_surface_verts["top"]
+            bottom_side_verts = model._side_surface_verts["bottom"]
+            # top_side_verts = model.fix_surface_side_vertices(side="top", return_target=True)
+            # bottom_side_verts = model.fix_surface_side_vertices(side="bottom", return_target=True)
+
+            for v in top_side_verts:
+                model.add_positional_constraint(v, args.positional_constraint_wi,
+                                            motion_type="user_defined", frame_shift=stretch_motion_top, frame_reset=solver.frame)
+                model.picked_vert[v] = True
+
+            for v in bottom_side_verts:
+                model.add_positional_constraint(v, args.positional_constraint_wi,
+                                            motion_type="user_defined", frame_shift=stretch_motion_bottom, frame_reset=solver.frame)
+                model.picked_vert[v] = True
+
+            print("Stretching - positional constraint added to top and bottom sides.")
+
+            if args.vert_bending_constraint:
+                model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
+            if args.edge_constraint:
+                model.add_edge_spring_constrain(args.edge_constraint_wi)
+            if args.tri_strain_constraint:
+                model.add_tri_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
+
+            solver.set_dirty()
+
+        elif solver.frame == start_stretching_frame + stretching_frames:
+
+            # model.release_surface_side_vertices(side="right")
+            # model.release_surface_side_vertices(side="left")
+            print(f"Removing - positional constraint remover from top-bottom sides.")
+            for v in top_side_verts:
+                model.remove_positional_constraint(v)
+                model.picked_vert[v] = False
+
+            for v in bottom_side_verts:
+                model.remove_positional_constraint(v)
+                model.picked_vert[v] = False
+
+            print(f"Frame: {solver.frame} Resetting cloth mesh and generating left-right stretching fames")
+
+            right_side_verts = model._side_surface_verts["right"]
+            left_side_verts = model._side_surface_verts["left"]
+            # right_side_verts = model.fix_surface_side_vertices(side="right", return_target=True)
+            # left_side_verts = model.fix_surface_side_vertices(side="left", return_target=True)
+
+            # Generate serise for streatching
+            stretch_motion_right = create_xyz_stretch_motion_with_jumps(stretching_frames, rest_frames_per_stretch,
+                                                                      number_stretches,
+                                                                      displacement_xyz=(0.4, 0.0, 0.0))
+            stretch_motion_left = - stretch_motion_right
+            for v in right_side_verts:
+                model.add_positional_constraint(v, args.positional_constraint_wi,
+                                            motion_type="user_defined", frame_shift=stretch_motion_right, frame_reset=solver.frame)
+                model.picked_vert[v] = True
+
+            for v in left_side_verts:
+                model.add_positional_constraint(v, args.positional_constraint_wi,
+                                            motion_type="user_defined", frame_shift=stretch_motion_left, frame_reset=solver.frame)
+                model.picked_vert[v] = True
+
+            solver.set_dirty()
+            print("Stretching - positional constraint added to right and left sides.")
+
+        elif solver.frame == release_stretching_frame:
+
+            print(f"Removing - positional constraint remover from top-bottom sides.")
+            for v in right_side_verts:
+                model.remove_positional_constraint(v)
+                model.picked_vert[v] = False
+
+            for v in left_side_verts:
+                model.remove_positional_constraint(v)
+                model.picked_vert[v] = False
+            solver.set_dirty()
+
+        elif solver.frame == start_bottom_top_rolling_frame:
+            print(f"Frame: {solver.frame} Creating cloth and generating poking fames")
+
+            params.edit_system_args(args, "Cloth")
+
+            V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
+            reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
+            object_name = "cloth"
+
+            check_dir_exists(os.path.join(output_path, object_name))
+            # mesh = trimesh.Trimesh(vertices=V, faces=F)
+            # mesh.export(os.path.join(output_path, object_name, object_name + ".obj"))
+
+            psim.PushItemWidth(200)
+            psim.TextUnformatted("== Projective Dynamics ==")
+            psim.Separator()
+
+            top_side_verts = model.fix_surface_side_vertices(side="top", fix_it=True, return_target=True)  # fix
+            # return indices and not fix
+            bottom_side_verts = model.fix_surface_side_vertices(side="bottom", fix_it=False, return_target=True)
+
+            # Apply any desired constraints
+            model.immobilize()
+            model.clear_constraints()
+            model.reset_constraints_attributes()
+
+            print("Poking - positional constraint added to center vertex")
+            for i in range(len(bottom_side_verts)):
+                center_i = top_side_verts[i]
+                initial_i = bottom_side_verts[i]  # point on x-axis
+                rotation_series = create_rotation_around_arbitrary_axis(
+                    axis_vector=np.array([1.5, 0, 0]),
+                    axis_point=V[center_i],
+                    start_frame=10,
+                    num_frames=60,
+                    num_rotations=1,
+                    total_frames=100)
+                model.add_positional_constraint(initial_i, args.positional_constraint_wi,
+                                                motion_type="user_defined", frame_shift=rotation_series, frame_reset=solver.frame)
+
+                model.picked_vert[initial_i] = True
+
+            if args.vert_bending_constraint:
+                model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
+            if args.edge_constraint:
+                model.add_edge_spring_constrain(args.edge_constraint_wi)
+            if args.tri_strain_constraint:
+                model.add_tri_constrain_strain(args.sigma_min, args.sigma_max, args.strain_limit_constraint_wi)
+
+            solver.set_dirty()
+
+        if counter == final_frame:
             print("Stopping simulation.")
             is_simulating = False
             ps.unshow()
@@ -862,7 +1370,8 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
             psim.BulletText(f"Vertices: {model.positions.shape[0]}")
             psim.BulletText(f"Triangles: {model.faces.shape[0]}")
             psim.BulletText(f"Edges: {model.count_edges(model.faces)}")
-            psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
+            if model.elements is not None:
+                psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
 
             if model.has_verts_bending_constraints:
                 psim.BulletText(f"Vertices bending constraint: {len(model.verts_bending_constraints)}")
@@ -881,7 +1390,7 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
 
     return callback
 
-def interacrive_testing_callback(args, record_fom_info = False, params=None):
+def interacrive_testing_callback(args, record_fom_info = False, params=None, experiment="testing"):
     global model, fext, solver, mouse_down_handler, mouse_move_handler
     solver = get_solver_class_from_name(args)
     is_simulating = args.is_simulating
@@ -893,243 +1402,305 @@ def interacrive_testing_callback(args, record_fom_info = False, params=None):
         psim.TextUnformatted("== Projective Dynamics ==")
         psim.Separator()
         object_name = ""
-        if psim.CollapsingHeader("Geometry"):
-            if psim.TreeNode("Bar"):
 
-                params.edit_system_args(args, "Bar")
+        record = False
+        system_name = "User_defined"
 
-                if psim.Button("Compute##Bar"):
-                    V, T, F, _ = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
-                    reset_simulation_model(V, F, T, should_rescale=True)
-                    object_name = "Bar"
+        def make_sim_path(args):
+            nonlocal output_path
 
-                psim.TreePop()
-            if psim.TreeNode("Cloth"):
+            sim_case = "FOM"
 
-                params.edit_system_args(args, "Cloth")
+            if solver.has_reduced_position and not solver.has_reduced_constraint_projections:
+                sim_case = "positions_reduced/" + args.position_basis_type
+            elif solver.has_reduced_constraint_projections and not solver.has_reduced_position:
+                sim_case = "constraint_projections_reduced/" + args.constraint_projection_basis_type
 
-                if psim.Button("Compute##Cloth"):
-                    V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
-                    reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
-                    object_name = "Cloth"
+            elif solver.has_reduced_constraint_projections and solver.has_reduced_position:
+                sim_case = "positions_and_constraint_projections_reduced/" + args.position_basis_type + "_" + args.constraint_projection_basis_type
 
-                psim.TreePop()
+            specify_path = ""
+            if model.has_verts_bending_constraints:
+                specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
+                if args.vert_bending_reduced:
+                    specify_path = specify_path + "reduced_" + str(args.vert_bending_num_components) + "_"
 
-            if model is not None:
-                set_up_mouse_handler(args, model, fext)
+            if model.has_edge_spring_constraints:
+                specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
+                if args.edge_spring_reduced:
+                    specify_path = specify_path + "reduced_" + str(args.edge_spring_num_components) + "_"
 
+            if model.has_tris_strain_constraints:
+                specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+                if args.tri_strain_reduced:
+                    specify_path = specify_path + "reduced_" + str(args.tri_strain_num_components) + "_"
+            if model.has_tets_strain_constraints:
+                specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+                if args.tet_strain_reduced:
+                    specify_path = specify_path + "reduced_" + str(args.tet_strain_num_components) + "_"
+            if model.has_tets_deformation_gradient_constraints:
+                specify_path = specify_path + "tets_deformation_gradient_wi" + str(
+                    args.deformation_gradient_constraint_wi) + "_"
+                if args.tet_deformation_reduced:
+                    specify_path = specify_path + "reduced_" + str(args.tet_deformation_num_components) + "_"
+            output_path += "/" + object_name + "/" + experiment + "/" + sim_case + "/" + specify_path + "/"
+            check_dir_exists(output_path)
 
-                psim.BulletText(f"Vertices: {model.positions.shape[0]}")
-                psim.BulletText(f"Triangles: {model.faces.shape[0]}")
-                psim.BulletText(f"Edges: {model.count_edges(model.faces)}")
-                psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
+            solver.set_record_path(output_path)
+            solver.set_store_p(record_fom_info)
+            solver.set_store_q(record_fom_info)
 
-        if psim.CollapsingHeader("Physics"):
-            if psim.TreeNode("Constraints"):
+        if solver.frame == 0:
+            psim.PushItemWidth(200)
+            psim.TextUnformatted("== Projective Dynamics ==")
+            psim.Separator()
 
-                if object_name == "Bar":
-                    changed, args.fix_left_side = psim.Checkbox("Fix Left\nVertices Side", args.fix_left_side)
-                    changed, args.fix_right_side = psim.Checkbox("Fix Right\nVertices Side", args.fix_right_side)
+            if system_name == "Bar":
 
-                if object_name == "Cloth":
-                    changed, args.fix_left_corners = psim.Checkbox("Fix Left\nCorners Side", args.fix_left_corners)
-                    changed, args.fix_right_corners = psim.Checkbox("Fix Right\nCorners Side", args.fix_right_corners)
+                V, T, F = read_mesh_file("../data/bar.mesh")
+                reset_simulation_model(V, F, T, should_rescale=True)
+                object_name = "bar"
 
-                    changed, args.fix_top_corners = psim.Checkbox("Fix Top\nCorners Side", args.fix_top_corners)
-                    changed, args.fix_bottom_corners = psim.Checkbox("Fix Bottom\nCorners Side",
-                                                                     args.fix_bottom_corners)
-
-                changed, args.vert_bending_constraint_wi = psim.InputFloat("wi \nVertBend",
-                                                                           args.vert_bending_constraint_wi)
-                changed, args.vert_bending_constraint = psim.Checkbox("Active \nVertBend", args.vert_bending_constraint)
-
-                changed, args.edge_constraint_wi = psim.InputFloat("wi \nEdgeSpring", args.edge_constraint_wi)
-                changed, args.edge_constraint = psim.Checkbox("Active \nEdgeSpring", args.edge_constraint)
-
-                changed, args.deformation_gradient_constraint_wi = psim.InputFloat("wi \nDeformationGradient",
-                                                                                   args.deformation_gradient_constraint_wi)
-                changed, args.tet_deformation_constraint = psim.Checkbox("Active \nDeformationGradient",
-                                                                         args.tet_deformation_constraint)
-
-                changed, args.strain_limit_constraint_wi = psim.InputFloat("wi \nStrainLimit",
-                                                                           args.strain_limit_constraint_wi)
-                changed, args.sigma_min = psim.InputFloat("Minimum singular \nvalue StrainLimit", args.sigma_min)
-                changed, args.sigma_max = psim.InputFloat("Maximum singular \nvalue StrainLimit", args.sigma_max)
-
-                changed, args.tri_strain_constraint = psim.Checkbox("Active \nTriStrain", args.tri_strain_constraint)
-                changed, args.tet_strain_constraint = psim.Checkbox("Active \nTetStrain", args.tet_strain_constraint)
-
-                changed, args.positional_constraint_wi = psim.InputFloat("wi \nPositional constraint",
-                                                                         args.positional_constraint_wi)
-
-                if psim.Button("Apply##Constraints"):
-                    model.immobilize()
-                    model.clear_constraints()
-                    model.reset_constraints_attributes()
-                    solver.set_dirty()
-                    # ---------------------------------------------------------------------------------------------------
-
-                    # used for Bar
-                    if args.fix_left_side and not args._fix_left_triggered:
-                        model.fix_surface_side_vertices(side="left", args=args)
-                        args._fix_left_triggered = True
-                    elif args._fix_left_triggered and not args.fix_left_side:
-                        model.release_surface_side_vertices(side="left")
-                        args._fix_left_triggered = False
-
-                    if args.fix_right_side and not args._fix_right_triggered:
-                        model.fix_surface_side_vertices(side="right", args=args)
-                        args._fix_right_triggered = True
-                    elif args._fix_right_triggered and not args.fix_right_side:
-                        model.release_surface_side_vertices(side="right")
-                        args._fix_right_triggered = False
-                    # ---------------------------------------------------------------------------------------------------
-
-                    # used for cloth
-                    if args.fix_top_corners and not args._fix_top_corners_triggered:
-                        model.fix_cloth_corners(side="top")
-                        args._fix_top_corners_triggered = True
-                    elif args._fix_top_corners_triggered and not args.fix_top_corners:
-                        model.release_cloth_corners(side="top")
-                        args._fix_top_corners_triggered = False
-
-                    if args.fix_bottom_corners and not args._fix_bottom_corners_triggered:
-                        model.fix_cloth_corners(side="bottom")
-                        args._fix_bottom_corners_triggered = True
-                    elif args._fix_bottom_corners_triggered and not args.fix_bottom_corners:
-                        model.release_cloth_corners(side="bottom")
-                        args._fix_bottom_corners_triggered = False
-
-                    if args.fix_right_corners and not args._fix_right_corners_triggered:
-                        model.fix_cloth_corners(side="right")
-                        args._fix_right_corners_triggered = True
-                    elif args._fix_right_corners_triggered and not args.fix_right_corners:
-                        model.release_cloth_corners(side="right")
-                        args._fix_right_corners_triggered = False
-
-                    if args.fix_left_corners and not args._fix_left_corners_triggered:
-                        model.fix_cloth_corners(side="left")
-                        args._fix_left_corners_triggered = True
-                    elif args._fix_left_corners_triggered and not args.fix_left_corners:
-                        model.release_cloth_corners(side="left")
-                        args._fix_left_corners_triggered = False
-                    # ---------------------------------------------------------------------------------------------------
-                    if args.vert_bending_constraint:
-                        model.add_vertex_bending_constraint(args.vert_bending_constraint_wi)
-                    if args.edge_constraint:
-                        model.add_edge_spring_constrain(args.edge_constraint_wi)
-
-                    if args.tri_strain_constraint:
-                        model.add_tri_constrain_strain(
-                            args.sigma_min,
-                            args.sigma_max,
-                            args.strain_limit_constraint_wi)
-
-                    if args.tet_deformation_constraint:
-                        model.add_tet_constrain_deformation_gradient(args.deformation_gradient_constraint_wi)
-                    if args.tet_strain_constraint:
-                        model.add_tet_constrain_strain(
-                            args.sigma_min,
-                            args.sigma_max,
-                            args.strain_limit_constraint_wi)
-
-                psim.BulletText(f"no. Constraints: {len(model.constraints)}")
-                psim.TreePop()
-
-            changed, args.dt = psim.InputFloat("Timestep", args.dt)
-            changed, args.solver_iterations = psim.InputInt("Solver iterations", args.solver_iterations)
-            changed, args.mass_per_particle = psim.InputFloat("mass per particle", args.mass_per_particle)
-            changed, args.is_gravity_active = psim.Checkbox("Gravity", args.is_gravity_active)
-
-            changed, args.is_simulating = psim.Checkbox("Simulate", args.is_simulating)
-
-            if model is not None:
-
-                # if recording snapshots build output file name/ path
                 if record_fom_info:
-                    specify_path = ""
-                    if model.has_verts_bending_constraints:
-                        specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
-                        if args.vert_bending_reduced:
-                            specify_path = specify_path + "reduced_" + str(args.vert_bending_num_components) + "_"
+                    make_sim_path(args)
+                    # record parameters for tracking
+                    with open(output_path + "/args.txt", "w") as f:
+                        for key, value in vars(args).items():
+                            f.write(f"{key}: {value}\n")
 
-                    if model.has_edge_spring_constraints:
-                        specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
-                        if args.edge_spring_reduced:
-                            specify_path = specify_path + "reduced_" + str(args.edge_spring_num_components) + "_"
+            if system_name == "Cloth":
 
-                    if model.has_tris_strain_constraints:
-                        specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
-                        if args.tri_strain_reduced:
-                            specify_path = specify_path + "reduced_" + str(args.tri_strain_num_components) + "_"
-                    if model.has_tets_strain_constraints:
-                        specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
-                        if args.tet_strain_reduced:
-                            specify_path = specify_path + "reduced_" + str(args.tet_strain_num_components) + "_"
-                    if model.has_tets_deformation_gradient_constraints:
-                        specify_path = specify_path + "tets_deformation_gradient_wi" + str(
-                            args.deformation_gradient_constraint_wi) + "_"
-                        if args.tet_deformation_reduced:
-                            specify_path = specify_path + "reduced_" + str(args.tet_deformation_num_components)+ "_"
+                V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
+                reset_simulation_model(V, F, None, should_rescale=True)
+                object_name = "Cloth"
 
-                    output_path += "/" + object_name + "/" + specify_path
+                if record_fom_info:
+                    make_sim_path(args)
+                    # record parameters for tracking
+                    with open(output_path + "/args.txt", "w") as f:
+                        for key, value in vars(args).items():
+                            f.write(f"{key}: {value}\n")
 
-                # mouse_down_handler = MouseDownHandler(lambda: model.positions.shape[0] > 0, picking_state, solver, physics_params)
-                # mouse_move_handler = MouseMoveHandler(lambda: model.positions.shape[0] > 0, picking_state, model, lambda: fext)
-                fext_dragging = mouse_move_handler.fext
+            if system_name == "User_defined":
+                V, T, F = read_mesh_file("../data/sphere.mesh")
+                reset_simulation_model(V, F, T, should_rescale=True)
+                object_name = "sphere"
 
-                pre_draw_handler = PreDrawHandler(lambda: model.positions.shape[0] > 0, args, solver, fext + fext_dragging,
-                                                  record_info=record_fom_info, record_path=output_path)
-                # print(solver.frame)
-            if args.is_simulating:
-                pre_draw_handler.set_animating(True)
-                pre_draw_handler.handle()
+                if record_fom_info:
+                    make_sim_path(args)
+                    # record parameters for tracking
+                    with open(output_path + "/args.txt", "w") as f:
+                        for key, value in vars(args).items():
+                            f.write(f"{key}: {value}\n")
+                model.fix_surface_side_vertices(args.positional_constraint_wi, side="left")
+
+            solver.set_dirty()
+
+        if model is not None:
+            set_up_mouse_handler(args, model, fext)
+            psim.BulletText(f"Vertices: {model.positions.shape[0]}")
+            psim.BulletText(f"Triangles: {model.faces.shape[0]}")
+            psim.BulletText(f"Edges: {model.count_edges(model.faces)}")
+            psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
+
+        if model is not None and is_simulating:
+
+            pre_draw_handler = PreDrawHandler(
+                lambda: model.positions.shape[0] > 0, args, solver, fext,
+                record_info=record_fom_info, record_path=output_path
+            )
+            pre_draw_handler.set_animating(True)
+            pre_draw_handler.handle()
+        # if psim.CollapsingHeader("Physics"):
+        #     if psim.TreeNode("Constraints"):
+        #
+        #         if object_name == "Bar":
+        #             changed, args.fix_left_side = psim.Checkbox("Fix Left\nVertices Side", args.fix_left_side)
+        #             changed, args.fix_right_side = psim.Checkbox("Fix Right\nVertices Side", args.fix_right_side)
+        #
+        #         if object_name == "Cloth":
+        #             changed, args.fix_left_corners = psim.Checkbox("Fix Left\nCorners Side", args.fix_left_corners)
+        #             changed, args.fix_right_corners = psim.Checkbox("Fix Right\nCorners Side", args.fix_right_corners)
+        #
+        #             changed, args.fix_top_corners = psim.Checkbox("Fix Top\nCorners Side", args.fix_top_corners)
+        #             changed, args.fix_bottom_corners = psim.Checkbox("Fix Bottom\nCorners Side",
+        #                                                              args.fix_bottom_corners)
+        #
+        #         changed, args.vert_bending_constraint_wi = psim.InputFloat("wi \nVertBend",
+        #                                                                    args.vert_bending_constraint_wi)
+        #         changed, args.vert_bending_constraint = psim.Checkbox("Active \nVertBend", args.vert_bending_constraint)
+        #
+        #         changed, args.edge_constraint_wi = psim.InputFloat("wi \nEdgeSpring", args.edge_constraint_wi)
+        #         changed, args.edge_constraint = psim.Checkbox("Active \nEdgeSpring", args.edge_constraint)
+        #
+        #         changed, args.deformation_gradient_constraint_wi = psim.InputFloat("wi \nDeformationGradient",
+        #                                                                            args.deformation_gradient_constraint_wi)
+        #         changed, args.tet_deformation_constraint = psim.Checkbox("Active \nDeformationGradient",
+        #                                                                  args.tet_deformation_constraint)
+        #
+        #         changed, args.strain_limit_constraint_wi = psim.InputFloat("wi \nStrainLimit",
+        #                                                                    args.strain_limit_constraint_wi)
+        #         changed, args.sigma_min = psim.InputFloat("Minimum singular \nvalue StrainLimit", args.sigma_min)
+        #         changed, args.sigma_max = psim.InputFloat("Maximum singular \nvalue StrainLimit", args.sigma_max)
+        #
+        #         changed, args.tri_strain_constraint = psim.Checkbox("Active \nTriStrain", args.tri_strain_constraint)
+        #         changed, args.tet_strain_constraint = psim.Checkbox("Active \nTetStrain", args.tet_strain_constraint)
+        #
+        #         changed, args.positional_constraint_wi = psim.InputFloat("wi \nPositional constraint",
+        #                                                                  args.positional_constraint_wi)
+        #
+        #         if psim.Button("Apply##Constraints"):
+        #             model.immobilize()
+        #             model.clear_constraints()
+        #             # model.reset_constraints_attributes()
+        #             solver.set_dirty()
+        #             # ---------------------------------------------------------------------------------------------------
+        #
+        #             # used for Bar
+        #             if args.fix_left_side and not args._fix_left_triggered:
+        #                 model.fix_surface_side_vertices(side="left")
+        #                 args._fix_left_triggered = True
+        #             elif args._fix_left_triggered and not args.fix_left_side:
+        #                 model.release_surface_side_vertices(side="left")
+        #                 args._fix_left_triggered = False
+        #
+        #             if args.fix_right_side and not args._fix_right_triggered:
+        #                 model.fix_surface_side_vertices(side="right")
+        #                 args._fix_right_triggered = True
+        #             elif args._fix_right_triggered and not args.fix_right_side:
+        #                 model.release_surface_side_vertices(side="right")
+        #                 args._fix_right_triggered = False
+        #             # ---------------------------------------------------------------------------------------------------
+        #
+        #             # used for cloth
+        #             if args.fix_top_corners and not args._fix_top_corners_triggered:
+        #                 model.fix_cloth_corners(side="top")
+        #                 args._fix_top_corners_triggered = True
+        #             elif args._fix_top_corners_triggered and not args.fix_top_corners:
+        #                 model.release_cloth_corners(side="top")
+        #                 args._fix_top_corners_triggered = False
+        #
+        #             if args.fix_bottom_corners and not args._fix_bottom_corners_triggered:
+        #                 model.fix_cloth_corners(side="bottom")
+        #                 args._fix_bottom_corners_triggered = True
+        #             elif args._fix_bottom_corners_triggered and not args.fix_bottom_corners:
+        #                 model.release_cloth_corners(side="bottom")
+        #                 args._fix_bottom_corners_triggered = False
+        #
+        #             if args.fix_right_corners and not args._fix_right_corners_triggered:
+        #                 model.fix_cloth_corners(side="right")
+        #                 args._fix_right_corners_triggered = True
+        #             elif args._fix_right_corners_triggered and not args.fix_right_corners:
+        #                 model.release_cloth_corners(side="right")
+        #                 args._fix_right_corners_triggered = False
+        #
+        #             if args.fix_left_corners and not args._fix_left_corners_triggered:
+        #                 model.fix_cloth_corners(side="left")
+        #                 args._fix_left_corners_triggered = True
+        #             elif args._fix_left_corners_triggered and not args.fix_left_corners:
+        #                 model.release_cloth_corners(side="left")
+        #                 args._fix_left_corners_triggered = False
+        #             # ---------------------------------------------------------------------------------------------------
+        #
+        #         psim.BulletText(f"no. Constraints: {len(model.constraints)}")
+        #         psim.TreePop()
+        #
+        #     changed, args.dt = psim.InputFloat("Timestep", args.dt)
+        #     changed, args.solver_iterations = psim.InputInt("Solver iterations", args.solver_iterations)
+        #     changed, args.mass_per_particle = psim.InputFloat("mass per particle", args.mass_per_particle)
+        #     changed, args.is_gravity_active = psim.Checkbox("Gravity", args.is_gravity_active)
+        #
+        #     changed, args.is_simulating = psim.Checkbox("Simulate", args.is_simulating)
+        #
+        #
+        #
+        #     if model is not None:
+        #
+        #         # # if recording snapshots build output file name/ path
+        #         # if record_fom_info:
+        #         #     specify_path = ""
+        #         #     if model.has_verts_bending_constraints:
+        #         #         specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
+        #         #         if args.vert_bending_reduced:
+        #         #             specify_path = specify_path + "reduced_" + str(args.vert_bending_num_components) + "_"
+        #         #
+        #         #     if model.has_edge_spring_constraints:
+        #         #         specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
+        #         #         if args.edge_spring_reduced:
+        #         #             specify_path = specify_path + "reduced_" + str(args.edge_spring_num_components) + "_"
+        #         #
+        #         #     if model.has_tris_strain_constraints:
+        #         #         specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+        #         #         if args.tri_strain_reduced:
+        #         #             specify_path = specify_path + "reduced_" + str(args.tri_strain_num_components) + "_"
+        #         #     if model.has_tets_strain_constraints:
+        #         #         specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+        #         #         if args.tet_strain_reduced:
+        #         #             specify_path = specify_path + "reduced_" + str(args.tet_strain_num_components) + "_"
+        #         #     if model.has_tets_deformation_gradient_constraints:
+        #         #         specify_path = specify_path + "tets_deformation_gradient_wi" + str(
+        #         #             args.deformation_gradient_constraint_wi) + "_"
+        #         #         if args.tet_deformation_reduced:
+        #         #             specify_path = specify_path + "reduced_" + str(args.tet_deformation_num_components)+ "_"
+        #         #
+        #         #     output_path += "/" + object_name + "/" + specify_path
+        #
+        #         # mouse_down_handler = MouseDownHandler(lambda: model.positions.shape[0] > 0, picking_state, solver, physics_params)
+        #         # mouse_move_handler = MouseMoveHandler(lambda: model.positions.shape[0] > 0, picking_state, model, lambda: fext)
+        #         fext_dragging = mouse_move_handler.fext
+        #
+        #         pre_draw_handler = PreDrawHandler(lambda: model.positions.shape[0] > 0, args, solver, fext ,
+        #                                           record_info=record_fom_info, record_path=output_path)
+        #         # print(solver.frame)
+        #     if args.is_simulating:
+        #         pre_draw_handler.set_animating(True)
+        #         pre_draw_handler.handle()
 
         # Inside interactive_testing_callback
-        io = psim.GetIO()
-        if io.MouseClicked[0]:  # left-click
-            screen_coords = io.MousePos
-            current_x, current_y = screen_coords
-            pick_result = ps.pick(screen_coords=screen_coords)
-
-            if pick_result.is_hit and pick_result.structure_name == "model":
-                # Get modifier
-                if io.KeyCtrl:
-                    # dragging mode
-                    modifier = "ctrl"
-                elif io.KeyShift:
-                    # add positional constraint
-                    modifier = "shift"
-
-                else:
-                    modifier = None
-
-                v_id = pick_result.local_index
-                pos = pick_result.position
-
-                picking_state.vertex = v_id
-                picking_state.is_picking = (modifier == "ctrl")
-                picking_state.mouse_x = current_x
-                picking_state.mouse_y = current_y
-                print(f"Picked vertex {v_id} at screen {screen_coords} -> position {pos} --> modifier {modifier}")
-
-                mouse_down_handler.handle_click(pick_result, button="left", modifier=modifier)
-            if picking_state.is_picking and mouse_move_handler is not None:
-
-                mouse_move_handler.handle_mouse_move()
-
-        if psim.Button("Cancel Picking"):
-            picking_state.is_picking = False
-            model.picked_vert = [False] *len(model.picked_vert )
-
-        if psim.CollapsingHeader("Visualization"):
-            changed, wire = psim.Checkbox("Wireframe", ps.get_surface_mesh("mesh").get_edge_width() > 0.0)
-            if wire:
-                ps.get_surface_mesh("mesh").set_edge_width(1.0)
-            else:
-                ps.get_surface_mesh("mesh").set_edge_width(0.0)
-            ps.get_surface_mesh("mesh").set_point_radius(psim.InputFloat("Point size", 0.02), relative=True)
-
+        # io = psim.GetIO()
+        # if io.MouseClicked[0]:  # left-click
+        #     screen_coords = io.MousePos
+        #     current_x, current_y = screen_coords
+        #     pick_result = ps.pick(screen_coords=screen_coords)
+        #
+        #     if pick_result.is_hit and pick_result.structure_name == "model":
+        #         # Get modifier
+        #         if io.KeyCtrl:
+        #             # dragging mode
+        #             modifier = "ctrl"
+        #         elif io.KeyShift:
+        #             # add positional constraint
+        #             modifier = "shift"
+        #
+        #         else:
+        #             modifier = None
+        #
+        #         v_id = pick_result.local_index
+        #         pos = pick_result.position
+        #
+        #         picking_state.vertex = v_id
+        #         picking_state.is_picking = (modifier == "ctrl")
+        #         picking_state.mouse_x = current_x
+        #         picking_state.mouse_y = current_y
+        #         print(f"Picked vertex {v_id} at screen {screen_coords} -> position {pos} --> modifier {modifier}")
+        #
+        #         mouse_down_handler.handle_click(pick_result, button="left", modifier=modifier)
+        #     if picking_state.is_picking and mouse_move_handler is not None:
+        #
+        #         mouse_move_handler.handle_mouse_move()
+        #
+        # if psim.Button("Cancel Picking"):
+        #     picking_state.is_picking = False
+        #     model.picked_vert = [False] *len(model.picked_vert )
+        #
+        # if psim.CollapsingHeader("Visualization"):
+        #     changed, wire = psim.Checkbox("Wireframe", ps.get_surface_mesh("mesh").get_edge_width() > 0.0)
+        #     if wire:
+        #         ps.get_surface_mesh("mesh").set_edge_width(1.0)
+        #     else:
+        #         ps.get_surface_mesh("mesh").set_edge_width(0.0)
+        #     ps.get_surface_mesh("mesh").set_point_radius(psim.InputFloat("Point size", 0.02), relative=True)
+        #
+        # psim.End()
         psim.End()
-
     return callback

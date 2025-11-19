@@ -1,6 +1,6 @@
 import os
 import gdist  # for geodesics on tri mesh
-import skfmm  # for geodesics on tet mesh
+# import skfmm  # for geodesics on tet mesh
 import numpy as np
 import polyscope as ps
 

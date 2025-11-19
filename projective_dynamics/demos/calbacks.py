@@ -15,7 +15,7 @@ from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler, Pi
 
 from Simulators import animSnapBasesSolver, Solver
 # import trimesh
-import meshio
+# import meshio
 from utils import check_dir_exists, read_mesh_file
 from scipy.spatial import cKDTree
 from scipy.spatial.transform import Rotation as R
@@ -129,13 +129,13 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
             object_name = "bar"
 
             check_dir_exists(os.path.join(output_path, object_name))
-            mesh = meshio.Mesh(
-                points=V,
-                cells=[
-                    ("triangle", F),
-                    ("tetra", T)
-                ]
-            )
+            # mesh = meshio.Mesh(
+            #     points=V,
+            #     cells=[
+            #         ("triangle", F),
+            #         ("tetra", T)
+            #     ]
+            # )
             # mesh.write(os.path.join(output_path, object_name, object_name+".mesh"))
             #
             # mesh_surface = trimesh.Trimesh(vertices=V, faces=F)
@@ -1404,7 +1404,7 @@ def interacrive_testing_callback(args, record_fom_info = False, params=None, exp
         object_name = ""
 
         record = False
-        system_name = "Bar"
+        system_name = "User_defined"
 
         def make_sim_path(args):
             nonlocal output_path
@@ -1482,9 +1482,9 @@ def interacrive_testing_callback(args, record_fom_info = False, params=None, exp
                             f.write(f"{key}: {value}\n")
 
             if system_name == "User_defined":
-                V, T, F = read_mesh_file("../data/spot.mesh")
+                V, T, F = read_mesh_file("../data/sphere.mesh")
                 reset_simulation_model(V, F, T, should_rescale=True)
-                object_name = "Bunny"
+                object_name = "sphere"
 
                 if record_fom_info:
                     make_sim_path(args)
@@ -1492,6 +1492,8 @@ def interacrive_testing_callback(args, record_fom_info = False, params=None, exp
                     with open(output_path + "/args.txt", "w") as f:
                         for key, value in vars(args).items():
                             f.write(f"{key}: {value}\n")
+                model.fix_surface_side_vertices(args.positional_constraint_wi, side="left")
+
             solver.set_dirty()
 
         if model is not None:

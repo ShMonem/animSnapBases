@@ -940,8 +940,8 @@ class DeformableMesh:
         self.velocities = np.zeros_like(self.positions)
 
         # for position subspaces
-        self.positions_reduced = None
-        self.velocities_reduced = None
+        self.reduced_positions = None
+        self.reduced_velocities = None
 
         self.fixed_flags = [False] * n
         self.picked_vert = [False] * n

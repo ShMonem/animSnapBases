@@ -93,12 +93,12 @@ def main(param: Config_parameters):
 
             tets_plots_pca(bases, param)
 
-        ## uncomment to store .bin format
-        # if param.store_bases:
-        #     start = 1
-        #     end = bases.numComp
-        #     step = 1
-        #     bases.store_components_to_files(start, end, step, ".bin")
+        # uncomment to store .bin format
+        if param.store_bases:
+            start = 1
+            end = bases.numComp
+            step = 1
+            bases.store_components_to_files(start, end, step, ".bin")
 
         bases.store_components_n_interpol_points()
 
@@ -195,7 +195,7 @@ if __name__ == '__main__':
 
     # mesh = "bar"
     # subspace = "vertbendSubspace"
-    json_file = "config/examples/posSubspace/bar_testing_posSubspace.json"
+    json_file = "config/examples/posSubspace/bar_gFall_posSubspace.json"
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
     parser.add_argument('--mesh', type=str, default="mesh", help='Give a character mesh')

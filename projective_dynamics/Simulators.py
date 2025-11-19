@@ -6,8 +6,10 @@ from utils import check_dir_exists, compute_surface_geodesics, visualize_samples
 from lbs import ConstraintsProjectionSubspace, PositionsSubspace
 import os
 from joblib import Parallel, delayed
-from scipy.spatial import KDTree
+# from scipy.spatial import KDTree
 import torch
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 
 verts_bending_p = {}
@@ -55,7 +57,8 @@ class animSnapBasesSolver:
         self.dirty = True
         self.A = None
         self.cholesky = None
-        self.cholesky_list = []
+        self.animSnap_cholesky_list = []
+        self.project_to_subspace_solver = []
         self.dt = None
         self.frame = 0
         self.args = args
@@ -95,7 +98,7 @@ class animSnapBasesSolver:
         self.max_p_snapshots_num = args.max_p_snapshots_num
         self.max_q_snapshots_num = args.max_p_snapshots_num
 
-
+        self.involved_constraints = []
         self.snapBases_interpolation_list = {"deim_pod", "deim_pod_vectorized", "deim_pca_blocks",
                                              "geom_pca_blocks_with_St", "adv_pca_blocks_with_St_partitioning", "adv_pca_blocks"}
 
@@ -132,7 +135,6 @@ class animSnapBasesSolver:
         # Only reset the constraint that has changed
         if self.args.vert_bending_constraint and self.model.bending_constraints_changed:
             self.model.add_vertex_bending_constraint(self.args.vert_bending_constraint_wi)
-
             self.model.bending_constraints_changed = False
             if self.bending.is_reduced:
                 self.bending.subspace_projection_ready = False
@@ -210,6 +212,24 @@ class animSnapBasesSolver:
 
             if not self.position_subspace_ready:  # only once
                 if self.position_reduction_type in {"PCA"}:
+
+                    global_mat = torch.from_numpy(np.diag(self.model.mass) / (self.dt * self.dt)).to(device)
+
+
+                    if self.model.has_positional_constraints:
+                        global_mat+= self.model.positional_assembly_ST @ self.model.positional_assembly_ST.T
+                    if self.model.has_verts_bending_constraints:
+                        global_mat+= self.model.verts_bending_assembly_ST @ self.model.verts_bending_assembly_ST.T
+                    if self.model.has_edge_spring_constraints:
+                        global_mat+= self.model.edge_spring_assembly_ST @ self.model.edge_spring_assembly_ST.T
+                    if self.model.has_tris_strain_constraints:
+                        global_mat+= self.model.tris_strain_assembly_ST @ self.model.tris_strain_assembly_ST.T
+                    if self.model.has_tets_strain_constraints:
+                        global_mat+= self.model.tets_strain_assembly_ST @ self.model.tets_strain_assembly_ST.T
+                    if self.model.has_tets_deformation_gradient_constraints:
+                        global_mat+= self.model.tets_deformation_gradient_assembly_ST @ self.model.tets_deformation_gradient_assembly_ST.T
+
+
                     def build_U_hat(U):
                         # U: (N, r, 3)
                         N, r, _ = U.shape
@@ -225,38 +245,38 @@ class animSnapBasesSolver:
 
                         return U_hat
 
-                    def build_N_byN_global_mat():
-                        """
-                        lhs_matrix: (N,N) scipy.sparse matrix (CSC or CSR)
-                        constraints: list of constraint objects
-                            each c must provide:
-                                c.getSelectionMatrix()  -> SciPy sparse matrix (N, k)
-                                c.getWeight()           -> scalar
-                        """
-                        M = np.diag(mass)
-                        N = M.shape[0]
-
-                        # Accumulate triplets here
-                        rows = []
-                        cols = []
-                        data = []
-
-                        for c in self.model.constraints:
-                            S = c.selection_matrix()  # SciPy sparse (N × k)
-
-                            # Multiply S^T * S (still sparse)
-                            STS = (S.T @ S).tocoo()  # (k × k)
-
-                            # Append weighted triplets
-                            rows.extend(STS.row)
-                            cols.extend(STS.col)
-                            data.extend(STS.data)
-
-                        # Build conMat from triplets
-                        conMat = sp.coo_matrix((data, (rows, cols)), shape=M.shape).tocsc()
-
-                        # Add to lhs (in-place compatible)
-                        return M + conMat
+                    # def build_N_byN_global_mat():
+                    #     """
+                    #     lhs_matrix: (N,N) scipy.sparse matrix (CSC or CSR)
+                    #     constraints: list of constraint objects
+                    #         each c must provide:
+                    #             c.getSelectionMatrix()  -> SciPy sparse matrix (N, k)
+                    #             c.getWeight()           -> scalar
+                    #     """
+                    #     M = np.diag(mass)
+                    #     N = M.shape[0]
+                    #
+                    #     # Accumulate triplets here
+                    #     rows = []
+                    #     cols = []
+                    #     data = []
+                    #
+                    #     for c in self.model.constraints:
+                    #         S = c.selection_matrix()  # SciPy sparse (N × k)
+                    #
+                    #         # Multiply S^T * S (still sparse)
+                    #         STS = (S.T @ S).tocoo()  # (k × k)
+                    #
+                    #         # Append weighted triplets
+                    #         rows.extend(STS.row)
+                    #         cols.extend(STS.col)
+                    #         data.extend(STS.data)
+                    #
+                    #     # Build conMat from triplets
+                    #     conMat = sp.coo_matrix((data, (rows, cols)), shape=M.shape).tocsc()
+                    #
+                    #     # Add to lhs (in-place compatible)
+                    #     return M + conMat
 
                     dir = args.geom_positions_basis_dir
                     file = args.geom_positions_basis_file
@@ -264,13 +284,17 @@ class animSnapBasesSolver:
                     upload_file = os.path.join(dir, file)
                     local_data = np.load(upload_file)
                     U_tmp = local_data["components"].swapaxes(0, 1)[:,:num_components, :]  # (N, r, 3) TODO:test
-
-                    # stack XYZ into a single (3N, r) basis
-                    # U: (N, r, 3)
-                    N, r, _ = U_tmp.shape
-                    # global_mat = build_N_byN_global_mat()
                     self.U = build_U_hat(U_tmp)
-                    print(  f"Created animSnap positions basis of size {self.U.shape}.")
+                    print(f"Created animSnap positions basis of size {U_tmp.shape}.")
+                    UtMU = self.U.T @ full_global_mat @ self.U
+
+                    if issparse(full_global_mat):
+                        tr = UtMU.diagonal().sum()
+                    else:
+                        tr = np.trace(UtMU)
+                    la = 1e-8 * tr / UtMU.shape[0]  # scale-aware lambda (to add Tikhonov regularization)
+
+                    self.cholesky = sp.linalg.factorized(UtMU + la * np.eye(UtMU.shape[0]))
 
                 elif self.position_reduction_type == "LBS":
                     pos_subspace = PositionsSubspace(self.args.pos_radial_r_muliplier,self.model.positions, faces=self.model.faces,
@@ -279,20 +303,21 @@ class animSnapBasesSolver:
                     self.U = pos_subspace.U
                     print(  f"Created LBS positions basis via skinning weights of size {self.U.shape}.")
 
+                    UtMU = self.U.T @ full_global_mat @ self.U
+
+                    if issparse(full_global_mat):
+                        tr = UtMU.diagonal().sum()
+                    else:
+                        tr = np.trace(UtMU)
+                    la = 1e-8 * tr / UtMU.shape[0]  # scale-aware lambda (to add Tikhonov regularization)
+
+                    self.cholesky = sp.linalg.factorized(UtMU + la * np.eye(UtMU.shape[0]))
+
+
                 else:
                     raise ValueError("Position reduction not yet implemented")
 
                 self.position_subspace_ready = True
-
-            UtMU = self.U.T @ full_global_mat @ self.U
-
-            if issparse(full_global_mat):
-                tr = UtMU.diagonal().sum()
-            else:
-                tr = np.trace(UtMU)
-            la = 1e-8 * tr / UtMU.shape[0]  # scale-aware lambda (to add Tikhonov regularization)
-
-            self.cholesky = sp.linalg.factorized(UtMU + la * np.eye(UtMU.shape[0]))
 
 
     def prepare_lbs_reduced_group(self, has_group_constraints, reduced_group, group_name,
@@ -760,6 +785,9 @@ class animSnapBasesSolver:
         return np.zeros_like(unflatten(q_t))
 
     def step(self, fext, num_iterations=1, use_3d_rhs_form=True):
+        reduced_projection = None
+        masses = None
+        reduced_momentum = None
 
         N = self.model.positions.shape[0]
         self.model.positions_corrections = np.zeros_like(self.model.positions)
@@ -769,18 +797,16 @@ class animSnapBasesSolver:
         dt2 = dt * dt
         dt2_inv = 1.0 / dt2
 
-        a = fext / self.model.mass[:, None]  # elementwise divide
+        a = fext / self.model.mass[:, None]  # acceleration
         explicit = self.model.positions + dt * self.model.velocities + dt2 * a
 
         for v in range(self.model.positions.shape[0]):
-            self.model.resolve_collision(v, explicit, self.model.positions_corrections)
+                self.model.resolve_collision(v, explicit, self.model.positions_corrections)
 
-        sn = flatten(explicit)
-
+        sn = flatten(explicit.copy())
         masses = np.zeros(3 * N)
         for i in range(N):
             masses[3 * i:3 * i + 3] = dt2_inv * self.model.mass[i] * sn[3 * i:3 * i + 3]
-
 
         q = sn.copy()
 
@@ -796,27 +822,23 @@ class animSnapBasesSolver:
                                               self.project_to_triangles_strain_manifold,
                                               self.project_to_tetrahedrons_strain_manifold,
                                               self.project_to_tetrahedrons_deformation_gradient_manifold])
-                b += sum(result)  # much faster and more efficient
-
+                b += sum(result)  # S.T p
             else:  # can be used for full sim only
                 for constraint in self.model.constraints:
                     constraint.project_wi_SiT_pi(q, b)
-            b += unflatten(masses)
+
+            b += unflatten(masses)   # M s/h² + S.T p/S.T V p   (N, 3)
 
             if self.has_reduced_position:
                 if self.position_reduction_type in {"LBS", "PCA"}:
                     # from full to reduced
-                    M3 = np.repeat(self.model.mass, 3)  # (3N,)
-                    b = np.linalg.solve( self.U.T @ np.diag(M3) @ self.U, self.U.T @ np.diag(M3) @ b.flatten())
-                    # b = self.U.T @ b.reshape(-1)
+                    b = self.U.T @ b.reshape(-1)   # U.T(M s/h² + S.T p/S.T V p)   (N, 3)
                     q = self.U @ self.cholesky(b.flatten())
                 else:
                     raise ValueError("unknown position reductoin")
-
             else:
-
-                b = b.flatten()
-                q = self.cholesky(b)
+                b = b.flatten()  # (3N,)
+                q = self.cholesky(b)  # (3N,)
 
         q_next = unflatten(q)
         q_next = self.model.resolve_self_collision_fast(q_next)

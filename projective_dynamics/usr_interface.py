@@ -1,5 +1,5 @@
 import os.path
-
+import igl
 import polyscope as ps
 import polyscope.imgui as psim
 import numpy as np
@@ -7,6 +7,9 @@ import pygame
 import os
 pygame.init()
 info = pygame.display.Info()
+# import torch
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 class PhysicsParams:
     def __init__(self):
         self.is_gravity_active = False
@@ -147,57 +150,78 @@ class PreDrawHandler:
             return
 
         model = self.solver.model
-        mass_value = float(self.physics_params.mass_per_particle)
-
-        # -- 1. Update mass
-        for i in range(model.mass.shape[0]):
-            if model.is_fixed(i):
-                continue
-            if not np.isclose(model.mass[i], mass_value, atol=1e-5):
-                model.mass[i] = mass_value
-                self.solver.set_dirty()
-
-        # -- 2. Apply gravity & simulate if animating
-        if self._animating:
-            gravity = 9.81 if self.physics_params.is_gravity_active else 0.0
-            self.fext[:, 1] -= gravity * self.physics_params.mass_per_particle
-
-            if not self.solver.ready():
-                self.solver.prepare(self.physics_params, store_fom_info=self.record_info, record_path=self.record_path)
-
-            self.solver.step(self.fext, self.physics_params.solver_iterations)
-
-            # Reset fext and update mesh
-            self.fext[:] = 0.0
-
-            if self.solver.has_reduced_constraint_projectios:
-                color = (64 / 255, 224 / 255, 208 / 255)  # turquoise
-            else:
-                color = (0.4, 0.4, 0.9)  # light_purple
-
-            if ps.has_surface_mesh("model"):
-                ps.remove_surface_mesh("model")
-
-            ps.register_surface_mesh("model", model.positions, model.faces, color=color, edge_width=1.0)
-
-            # update_camera_to_mesh_center(model)
-            ps.reset_camera_to_home_view()
-
-            if self.record_info:
-                filename = os.path.join(self.record_path, "frame"+str(self.solver.frame)+".png")
-                ps.screenshot(filename, transparent_bg=True)
 
         # -- 3. Show fixed points
         fixed_indices = [i for i, fix in enumerate(model.get_fixed_indices()) if fix]
         picked_indices = [i for i, pick in enumerate(model.get_picked_verts()) if pick]
 
+        # # -- 1. Update mass
+        mass_value = float(self.physics_params.mass_per_particle)
+        for i in range(model.mass.shape[0]):
+            if model.is_fixed(i):
+                continue
+            if not np.isclose(model.mass[i], model.mass_init[i], atol=1e-10):
+                model.mass[i] = model.mass_init[i]
+                self.solver.set_dirty()
+
+        # -- 2. Apply gravity & simulate if animating
+        if self._animating:
+            gravity = 9.81 if self.physics_params.is_gravity_active else 0.0
+            # self.fext[:, 1] -= gravity * self.physics_params.mass_per_particle
+            self.fext[:, 1] -= gravity * model.mass
+            self.fext[fixed_indices] = 0
+
+
+            if not self.solver.ready():
+                self.solver.prepare(self.physics_params, store_fom_info=self.record_info, record_path=self.record_path)
+            self.solver.step(self.fext, self.physics_params.solver_iterations)
+            # Reset fext and update mesh
+            self.fext[:] = 0.0
+
+            if self.solver.has_reduced_constraint_projections and not self.solver.has_reduced_position:
+                if self.solver.constraint_projection_reduction_type in {"LBS"}:
+                    color = (255/255, 140/255, 0/255)  # dark orange
+                else:  # animSanpBasis
+                    # color = (0 / 255, 100 / 255, 0 / 255)  # green?
+
+                    color = (0/255, 100/255, 0/255)      # darkgreen
+
+            elif self.solver.has_reduced_position and not self.solver.has_reduced_constraint_projections:
+                if self.solver.position_reduction_type in {"LBS"}:
+                    color = (204/255, 85/255, 0/255)  # orange
+                else: # animSanpBasis
+                    color = (144/255, 238/255, 144/255)   # lightgreen / pale green
+
+            elif self.solver.has_reduced_position and self.solver.has_reduced_constraint_projections:
+                color = (211/255, 211/255, 211/255)    # lightgray
+            else:
+                color = (0.4, 0.4, 0.9)  # light_purple  FOM
+
+            if ps.has_surface_mesh("model"):
+                ps.remove_surface_mesh("model")
+
+            # update_camera_to_mesh_center(model)
+            # ps.reset_camera_to_home_view()
+            ps.register_surface_mesh("model", model.positions, model.faces, color=color, edge_width=1.0)
+
+            if self.record_info:
+                filename = os.path.join(self.record_path, "frame"+str(self.solver.frame))
+                ps.screenshot(filename+".png", transparent_bg=True)
+                igl.write_triangle_mesh(filename+".off", model.positions, model.faces)
+
+
 
         if fixed_indices:
+            # model.positions[fixed_indices] = model.init_positions[fixed_indices]
             fixed_positions = model.positions[fixed_indices]
+
             ps.register_point_cloud("fixed_points", fixed_positions, color=(1.0, 0.0, 0.0))
             # ps.register_point_cloud("fixed_points", model.positions[0:2], color=(1.0, 1.0, 0.0))
-
             ps.get_point_cloud("fixed_points").set_radius(0.01, relative=True)
+        else:
+            if ps.has_point_cloud("fixed_points"):
+                ps.remove_point_cloud("fixed_points")
+
 
         if picked_indices:
             picked_positions = model.positions[picked_indices]
@@ -206,6 +230,7 @@ class PreDrawHandler:
         else:
             if ps.has_point_cloud("picked_points"):
                 ps.remove_point_cloud("picked_points")
+
 
 
 

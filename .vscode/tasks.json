@@ -1,0 +1,36 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run animSnapBases main",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "${workspaceFolder}/projective_dynamics/main.py"
+            ],
+            "options": {
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}"
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": {
+                "owner": "python",
+                "pattern": {
+                    "regexp": "File \"(.*)\", line (\\d+)",
+                    "file": 1,
+                    "line": 2
+                }
+            }
+        }
+    ]
+}

@@ -2,9 +2,9 @@
 	"object":
 	{
 		"experiment_dir": "projective_dynamics/output/",
-		"mesh": "bar",
-		"volumetric": true,
-		"experiment": "bar_automated_deformationgradient/",
+		"mesh": "cloth",
+		"volumetric": false,
+		"experiment": "cloth_automated_bend_spring_strain_snapshots/",
 		"snap_format": ".off"
 	},
 	"vertexPos_bases":
@@ -24,21 +24,21 @@
 		},
 		"constraintType":
 		{
-			"name": "tets_deformation_gradient",
-			"elements": "_tets",
-			"p_snaps_folder": "/constraint_projection/FOM/tets_deformation_gradient_wi100000000.0_",
-			"pos_snaps_folder": "/position_snapshots/FOM/tets_deformation_gradient_wi100000000.0_",
+			"name": "edge_spring",
+			"elements": "_edges",
+			"p_snaps_folder": "/constraint_projection/FOM/verts_bending_wi0.1_edge_spring_wi1000000.0_tris_strain_wi0.01_",
+			"pos_snaps_folder": "/position_snapshots/FOM/verts_bending_wi0.1_edge_spring_wi1000000.0_tris_strain_wi0.01_",
 			"geom_pos_snaps_folder": "/position_snapshots/deim/",
 			"assembly_file_name": "assembly_ST.npz",
-			"assembly_key": "tets_deformation_gradient",
-			"snaps_pattern_full_p": "/tets_deformation_gradient_p.npz",
+			"assembly_key": "edge_spring",
+			"snaps_pattern_full_p": "/edge_spring_p.npz",
 			"constrained_elements": "",
-			"rowSize": 3
+			"rowSize": 1
 		},
 		"snapshots":
 		{
-			"max_numFrames": 140,
-			"numFrames": 70,
+			"max_numFrames": 440,
+			"numFrames": 220,
 			"frame_increment": 2,
 			"read_all_from_first": true,
 			"processed_snapshots_file": "/processed_snapshots/",
@@ -48,9 +48,9 @@
 		},
 		"basis_type": "pca_blocks_with_St",
 		"interpolation_type": "geom",
-		"desired_num_components": 1000,
+		"desired_num_components": -1,
 		"numComponents_verts": 5,
-		"bases_res_tol": 1e-40,
+		"bases_res_tol": 667,
 		"dim": 3,
 		"constraintsDim": 1,
 		"max_element_per_geom_vert": 100000000,

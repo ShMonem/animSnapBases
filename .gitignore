@@ -22,7 +22,7 @@ input_data/bunny/_gravitationalFall/
 .idea
 
 /test/
-venv_requirements.txt
+venv_requirements_old.txt
 /input_data/
 /.polyscope.ini
 /imgui.ini
@@ -43,3 +43,4 @@ projective_dynamics/imgui.ini
 projective_dynamics/output/
 time_logs.txt
 
+/.vscode/

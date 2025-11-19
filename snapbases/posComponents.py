@@ -44,7 +44,7 @@ class posComponents:  # Components == bases
         # self.output_animation_file = "animations.h5"
 
         self.measures_at_largeDeforVerts = None  # singVals & resNorm computed at 'K' largest deformation verts
-        self.fileNameBases = "q_pos_"
+        self.fileNameBases = "positionSubspace"
 
         self.param = param
 
@@ -325,6 +325,23 @@ class posComponents:  # Components == bases
         for k in range(start, end + 1, step):
             store_components(basesFile, numframes, k, numverts, 3, self.comps[:k, :, :], fileType, 'K')
         print('done.')
+
+    @log_time("")
+    def store_components_n_interpol_points(self):
+        print('Storing basis to one file ...', end='', flush=True)
+
+        data = {}
+        data["components"] = self.comps
+        data["weights"] = self.weigs
+
+        # the below attributes can be used to highlight elements in the nl_reduction_test, as below
+        # geom_verts = nlConst_bases.geom_interpol_verts[:visualize_geom_elements_at_K]
+        # highlight_elements = nlConst_bases.geom_alpha[:nlConst_bases.geom_alpha_ranges[visualize_geom_elements_at_K - 1]]
+        basesFile = os.path.join(self.param.vertPos_output_directory, self.fileNameBases)
+
+        np.savez(basesFile, **data)
+
+        print("done!")
 
     @log_time("")
     def store_animations(self, output_bases_dir):

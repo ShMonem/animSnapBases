@@ -206,6 +206,8 @@ class Config_parameters:
 
         self.snapshots_format = config["object"]["snap_format"]  # either ".off" or ".ply"
 
+        self.snap_file_patten = config["object"]["snap_file_patten"]  # either ".off" or ".ply"
+
         if self.compute_pos_bases:
             # testing state (only decoration for file name)
             # _Released / _Debugging / _Testing
@@ -245,19 +247,16 @@ class Config_parameters:
             self.input_pos_snapshots_dir = self.snapshots_repo_dir \
                                            + self.name + "/" \
                                            + self.experiment \
-                                           + "/position_snapshots/"
 
             self.input_snapshots_pattern = self.snapshots_repo_dir \
                                       + self.name + "/" \
                                       + self.experiment \
-                                      + "/position_snapshots/" \
                                       + self.snapshots_folder \
-                                      + "/pos_*" + self.snapshots_format
+                                      + self.snap_file_patten + self.snapshots_format
 
             self.input_snapshots_files_name = self.snapshots_repo_dir \
                                            + self.name + "/" \
                                            + self.experiment \
-                                           + "/position_snapshots/" \
                                            + self.snapshots_folder \
                                            + "/pos_"
 

@@ -13,7 +13,7 @@ from Constraint_projections import DeformableMesh
 from geometry import get_simple_bar_model, get_simple_cloth_model, get_simple_bar_model_with_surface_points_only, compute_lumped_mass_matrix
 from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler, PickingState
 
-from Simulators import animSnapBasesSolver, Solver
+from Simulators import animSnapBasesSolver
 # import trimesh
 # import meshio
 from utils import check_dir_exists, read_mesh_file
@@ -68,10 +68,6 @@ def my_mouse_move_callback(xpos, ypos):
 def get_solver_class_from_name(args):
     if args.solver == "animSnapBasesSolver":
         return animSnapBasesSolver(args)
-    elif args.solver == "Solver":
-        return Solver()
-    elif args.solver == "animSnapSolverTorch":
-        return animSnapSolverTorch(args)
     else:
         raise ValueError("Unknown solver name")
 
@@ -164,25 +160,25 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
 
 
                 specify_path = ""
-                if model.has_verts_bending_constraints:
+                if args.vert_bending_constraint:
                     specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
                     if args.vert_bending_reduced :
                         specify_path = specify_path + "reduced_" + str(args.vert_bending_num_components) +"_"
 
-                if model.has_edge_spring_constraints:
+                if args.edge_constraint:
                     specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
                     if args.edge_spring_reduced :
                         specify_path = specify_path + "reduced_" + str(args.edge_spring_num_components) +"_"
 
-                if model.has_tris_strain_constraints:
+                if args.tri_strain_constraint:
                     specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
                     if args.tri_strain_reduced :
                         specify_path = specify_path + "reduced_" + str(args.tri_strain_num_components) +"_"
-                if model.has_tets_strain_constraints:
+                if args.tet_strain_constraint:
                     specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
                     if args.tet_strain_reduced :
                         specify_path = specify_path + "reduced_" + str(args.tet_strain_num_components) +"_"
-                if model.has_tets_deformation_gradient_constraints:
+                if args.tet_deformation_constraint:
                     specify_path = specify_path + "tets_deformation_gradient_wi" + str(args.deformation_gradient_constraint_wi) + "_"
                     if args.tet_deformation_reduced :
                         specify_path = specify_path + "reduced_"+ str(args.tet_deformation_num_components)+"_"
@@ -220,7 +216,7 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
         #     model.fix_cloth_corners(side="right")
 
 
-        elif solver.frame == 144:
+        elif solver.frame == args.max_p_snapshots_num + 10:
             print("Stopping simulation.")
             is_simulating = False
             ps.unshow()

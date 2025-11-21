@@ -188,14 +188,14 @@ if __name__ == '__main__':
     #                    "geom/cloth_automated_geom_triStrainSubspace.json",
     #                    "geom/bar_automated_geom_tetDeformationGradientSubspace.json
 
-    #                    "posSubspace/bar_gFall_posSubspace.json"
+    #                    "posSubspace/bar_automated_deformationgradient_posSubspace.json"
 
 
 
 
     # mesh = "bar"
     # subspace = "vertbendSubspace"
-    json_file = "config/examples/posSubspace/bar_gFall_posSubspace.json"
+    json_file = "config/examples/geom/bar_automated_geom_tetDeformationGradientSubspace.json"
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
     parser.add_argument('--mesh', type=str, default="mesh", help='Give a character mesh')

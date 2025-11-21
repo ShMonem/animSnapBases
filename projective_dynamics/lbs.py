@@ -284,7 +284,8 @@ class PositionsSubspace:
                     col_idx.append(j * 4 + 3)
                     data.append(w * self.rest_pos[i, 2])
 
-        self.U = sp.coo_matrix((data, (row_idx, col_idx)), shape=(n * 3, 4 * self.num_components)).tocsr()
+        U = sp.coo_matrix((data, (row_idx, col_idx)), shape=(n * 3, 4 * self.num_components)).tocsr()
+        self.U = np.hstack((U.toarray(), np.ones((U.shape[0], 1))))
 
 class ConstraintsProjectionSubspace:
     def __init__(self, r_multiplier, basis_scale, constraint_name, vertices, faces=None, tets=None, num_components=-1, num_samples=-1):

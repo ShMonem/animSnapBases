@@ -6,7 +6,7 @@
 		"volumetric": true,
 		"experiment": "bar_automated_deformationgradient/",
 		"snap_format": ".off",
-        "snap_file_patten": "/frame_*"
+        "snap_file_patten": "/frame*"
 	},
 	"vertexPos_bases":
 		{
@@ -29,7 +29,7 @@
 			"elements": "_tets",
 			"p_snaps_folder": "/FOM/tets_deformation_gradient_wi100.0_",
 			"pos_snaps_folder": "/FOM/tets_deformation_gradient_wi100.0_",
-			"geom_pos_snaps_folder": "/position_snapshots/deim/",
+			"geom_pos_snaps_folder": "not_sat_yet",
 			"assembly_file_name": "assembly_ST.npz",
 			"assembly_key": "tets_deformation_gradient",
 			"snaps_pattern_full_p": "/tets_deformation_gradient_p.npz",

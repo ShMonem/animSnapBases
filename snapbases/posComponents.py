@@ -318,6 +318,12 @@ class posComponents:  # Components == bases
         fileType can be either '.bin' or '.npy'
         """
         print('Storing bases ...', end='', flush=True)
+
+        # store a copy of the .json for regular check
+        with open(self.param.vertPos_output_directory + "/args.txt", "w") as f:
+            for key, value in vars(self.param).items():
+                f.write(f"{key}: {value}\n")
+
         numframes, numverts = self.pos_snapshots.frs, self.pos_snapshots.nVerts
 
         basesFile = os.path.join(self.param.vertPos_output_directory, self.fileNameBases)

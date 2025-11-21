@@ -197,12 +197,8 @@ class Config_parameters:
 
         self.compute_pos_bases =config["vertexPos_bases"]['computeState']["compute"]
         # weighted selection matrix that maps constraints projections to position space
-        self.tet_mesh_file = self.snapshots_repo_dir \
-                    + self.name + "/" \
-                    + self.name + ".mesh"
-        self.tri_mesh_file = self.snapshots_repo_dir \
-                    + self.name + "/" \
-                    + self.name + ".obj"
+        self.tet_mesh_file = "data/" + self.name + ".mesh"
+        self.tri_mesh_file = "data/" +  self.name + ".obj"
 
         self.snapshots_format = config["object"]["snap_format"]  # either ".off" or ".ply"
 

@@ -101,12 +101,163 @@ def reset_simulation_model(V, F, T, should_rescale=False, params=None, hight=1):
         camera_location=(0.0, 0.0, 3.0)  # Camera is 3 units above, looking down
     )
 
+
+def make_sim_path(output_path, solver, args, object_name, experiment, record_fom_info):
+    check_dir_exists(os.path.join(output_path, object_name))
+
+    sim_case = "FOM"
+
+    if solver.has_reduced_position and not solver.has_reduced_constraint_projections:
+        sim_case = "positions_reduced/" + args.position_basis_type
+    elif solver.has_reduced_constraint_projections and not solver.has_reduced_position:
+        sim_case = "constraint_projections_reduced/" + args.constraint_projection_basis_type
+
+    elif solver.has_reduced_constraint_projections and solver.has_reduced_position:
+        sim_case = "positions_and_constraint_projections_reduced/" + args.position_basis_type + "_" + args.constraint_projection_basis_type
+
+    specify_path = ""
+    if args.vert_bending_constraint:
+        specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
+        if args.vert_bending_reduced:
+            specify_path = specify_path + "reduced_" + str(args.vert_bending_num_components) + "_"
+
+    if args.edge_constraint:
+        specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
+        if args.edge_spring_reduced:
+            specify_path = specify_path + "reduced_" + str(args.edge_spring_num_components) + "_"
+
+    if args.tri_strain_constraint:
+        specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+        if args.tri_strain_reduced:
+            specify_path = specify_path + "reduced_" + str(args.tri_strain_num_components) + "_"
+    if args.tet_strain_constraint:
+        specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
+        if args.tet_strain_reduced:
+            specify_path = specify_path + "reduced_" + str(args.tet_strain_num_components) + "_"
+    if args.tet_deformation_constraint:
+        specify_path = specify_path + "tets_deformation_gradient_wi" + str(
+            args.deformation_gradient_constraint_wi) + "_"
+        if args.tet_deformation_reduced:
+            specify_path = specify_path + "reduced_" + str(args.tet_deformation_num_components) + "_"
+    output_path += "/" + object_name + "/" + experiment + "/" + sim_case + "/" + specify_path + "/"
+    check_dir_exists(output_path)
+
+    solver.set_record_path(output_path)
+    solver.set_store_p(record_fom_info)
+    solver.set_store_q(record_fom_info)
+
+    return output_path
+
 # Example callbacks called in main.py
-def bar_automated_deformationgradient_callback(args, record_fom_info = False, params=None,experiment="bar_automated_deformationgradient"):
+def bar_automated_deformationgradient_callback(args, record_fom_info = False,
+                                               params=None,
+                                               experiment="bar_automated_deformationgradient",
+                                               run_holding_sides_under_gravity = True,
+                                               run_twisting=True):
     global model, fext, solver
     solver = get_solver_class_from_name(args)
     is_simulating = args.is_simulating
     output_path = args.output_dir
+
+    total_frames = 0
+    # setting frames for different experiments
+    if run_holding_sides_under_gravity:
+        holding_sides_start_frame = total_frames
+        release_left_side_frame = holding_sides_start_frame + 40
+        release_right_side_frame = release_left_side_frame + 40
+        total_frames += release_right_side_frame + 20
+    if run_twisting:
+        twisting_start_frame = total_frames
+        max_theta = 4*np.pi
+        number_twisting_frames = 40
+        total_frames += number_twisting_frames
+
+    # functions for twisting motion
+    def make_angle_schedule(num_frames, theta_max, ease="cosine", hold_frames=0):
+        """
+        Returns angles theta(t) from 0 -> theta_max over num_frames, optionally with hold.
+        """
+        t = np.linspace(0.0, 1.0, num_frames)
+
+        if ease == "linear":
+            s = t
+        elif ease == "cosine":
+            # smooth start/end
+            s = 0.5 - 0.5 * np.cos(np.pi * t)
+        elif ease == "smoothstep":
+            s = t * t * (3 - 2 * t)
+        else:
+            raise ValueError(f"Unknown ease: {ease}")
+
+        theta = theta_max * s
+
+        if hold_frames > 0:
+            theta = np.concatenate([theta, np.full(hold_frames, theta_max)])
+
+        return theta
+
+    def create_surface_twist_motions_x(V, surface_verts, theta_max, num_frames, axis_center_yz="mean", ease="cosine", hold_frames=0,):
+        """
+        Build per-vertex motion arrays for twisting a surface around x-axis.
+
+        Parameters
+        ----------
+        V : (n,3) ndarray
+            Rest/current vertex positions (reference for motion).
+        surface_verts : list[int]
+            Vertex indices on the chosen surface.
+        theta_max : float
+            Maximum rotation angle in radians (e.g. np.pi/2 for 90 degrees).
+        num_frames : int
+            Frames used to ramp from 0 to theta_max.
+        axis_center_yz : {"mean","median",(y0,z0)}
+            Defines the rotation axis line: x-axis shifted to (y0,z0).
+        ease : {"linear","cosine","smoothstep"}
+            Easing for angle over time.
+        hold_frames : int
+            Extra frames to hold at theta_max.
+
+        Returns
+        -------
+        motions : dict[int, (T,3) ndarray]
+            motions[vi][t] is the displacement to apply at frame t for vertex vi.
+        """
+        surface_verts = list(surface_verts)
+        yz = V[surface_verts, 1:3]
+
+        if isinstance(axis_center_yz, tuple) or isinstance(axis_center_yz, list) or (
+                isinstance(axis_center_yz, np.ndarray) and axis_center_yz.shape == (2,)):
+            y0, z0 = float(axis_center_yz[0]), float(axis_center_yz[1])
+        else:
+            if axis_center_yz == "mean":
+                y0, z0 = yz.mean(axis=0)
+            elif axis_center_yz == "median":
+                y0, z0 = np.median(yz, axis=0)
+            else:
+                raise ValueError("axis_center_yz must be 'mean', 'median', or (y0,z0)")
+
+        theta = make_angle_schedule(num_frames, theta_max, ease=ease, hold_frames=hold_frames)
+        T = len(theta)
+
+        c = np.cos(theta)  # (T,)
+        s = np.sin(theta)  # (T,)
+
+        motions = {}
+        for vi in surface_verts:
+            y, z = V[vi, 1], V[vi, 2]
+            dy, dz = y - y0, z - z0
+
+            # Rotate (dy,dz) by theta(t) in yz plane
+            y_rot = y0 + c * dy - s * dz
+            z_rot = z0 + s * dy + c * dz
+
+            m = np.zeros((T, 3), dtype=float)
+            m[:, 1] = y_rot - y
+            m[:, 2] = z_rot - z
+            motions[vi] = m
+
+        return motions , (y0, z0)
+
     def callback():
         nonlocal output_path, is_simulating
         psim.TextUnformatted("== Projective Dynamics ==")
@@ -115,83 +266,20 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
         if solver.frame == 0:
             print("Frame 0: Creating cloth and fixing left/right corners")
 
-            # params.edit_system_args(args, "Bar")
-
             V, T, F = read_mesh_file("../data/bar.mesh")
 
+            # params.edit_system_args(args, "Bar")
             # V, T, F, _ = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
 
             reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
+
             object_name = "bar"
-
-            check_dir_exists(os.path.join(output_path, object_name))
-            # mesh = meshio.Mesh(
-            #     points=V,
-            #     cells=[
-            #         ("triangle", F),
-            #         ("tetra", T)
-            #     ]
-            # )
-            # mesh.write(os.path.join(output_path, object_name, object_name+".mesh"))
-            #
-            # mesh_surface = trimesh.Trimesh(vertices=V, faces=F)
-            # mesh_surface.export(os.path.join(output_path, object_name, object_name + ".obj"))
-
             psim.PushItemWidth(200)
             psim.TextUnformatted("== Projective Dynamics ==")
             psim.Separator()
 
-            model.fix_surface_side_vertices(args.positional_constraint_wi, side="left")
-            model.fix_surface_side_vertices(args.positional_constraint_wi, side="right")
-
-
-            def make_sim_path(args):
-                nonlocal output_path
-
-                sim_case = "FOM"
-
-                if  solver.has_reduced_position and not solver.has_reduced_constraint_projections:
-                    sim_case = "positions_reduced/" + args.position_basis_type
-                elif solver.has_reduced_constraint_projections and not solver.has_reduced_position:
-                    sim_case = "constraint_projections_reduced/" + args.constraint_projection_basis_type
-
-                elif solver.has_reduced_constraint_projections and solver.has_reduced_position:
-                    sim_case = "positions_and_constraint_projections_reduced/" + args.position_basis_type +"_"+ args.constraint_projection_basis_type
-
-
-                specify_path = ""
-                if args.vert_bending_constraint:
-                    specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
-                    if args.vert_bending_reduced :
-                        specify_path = specify_path + "reduced_" + str(args.vert_bending_num_components) +"_"
-
-                if args.edge_constraint:
-                    specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
-                    if args.edge_spring_reduced :
-                        specify_path = specify_path + "reduced_" + str(args.edge_spring_num_components) +"_"
-
-                if args.tri_strain_constraint:
-                    specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
-                    if args.tri_strain_reduced :
-                        specify_path = specify_path + "reduced_" + str(args.tri_strain_num_components) +"_"
-                if args.tet_strain_constraint:
-                    specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
-                    if args.tet_strain_reduced :
-                        specify_path = specify_path + "reduced_" + str(args.tet_strain_num_components) +"_"
-                if args.tet_deformation_constraint:
-                    specify_path = specify_path + "tets_deformation_gradient_wi" + str(args.deformation_gradient_constraint_wi) + "_"
-                    if args.tet_deformation_reduced :
-                        specify_path = specify_path + "reduced_"+ str(args.tet_deformation_num_components)+"_"
-                output_path += "/" + object_name + "/" + experiment + "/" + sim_case + "/" + specify_path + "/"
-                check_dir_exists(output_path)
-
-                solver.set_record_path(output_path)
-                solver.set_store_p(record_fom_info)
-                solver.set_store_q(record_fom_info)
-
-
             if record_fom_info:
-                make_sim_path(args)
+                output_path = make_sim_path(output_path, solver, args, object_name, experiment, record_fom_info)
                 # record parameters for tracking
                 with open(output_path + "/args.txt", "w") as f:
                     for key, value in vars(args).items():
@@ -199,21 +287,49 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
 
             solver.set_dirty()
 
-        elif solver.frame == 40:
-            print("Frame 10: Releasing left side")
-            model.release_surface_side_vertices(side="left")
-            solver.set_dirty()
+        if run_holding_sides_under_gravity:
+            if solver.frame == holding_sides_start_frame:
+                model.fix_surface_side_vertices(args.positional_constraint_wi, side="left")
+                model.fix_surface_side_vertices(args.positional_constraint_wi, side="right")
 
+            if solver.frame == release_left_side_frame:
+                print(f"Frame {solver.frame}: Releasing left side")
+                model.release_surface_side_vertices(side="left")
 
-        elif solver.frame == 80:
-            print("Frame 10: Releasing right side")
-            model.release_surface_side_vertices(side="right")
+            if solver.frame == release_right_side_frame:
+                print(f"Frame {solver.frame}: Releasing right side")
+                model.release_surface_side_vertices(side="right")
 
-        # elif solver.frame == 140:
-        #     print("Frame 30: Releasing all corners")
-        #     model.release_cloth_corners(side="top")
-        #     model.release_cloth_corners(side="bottom")
-        #     model.fix_cloth_corners(side="right")
+        if run_twisting:
+            if solver.frame == twisting_start_frame:
+                print(f"Frame {solver.frame}: Start twisting fames")
+
+                V, T, F = read_mesh_file("../data/bar.mesh")
+
+                reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
+
+                model.fix_surface_side_vertices(args.positional_constraint_wi, side="right")
+
+                side_verts = model.toggle_pick_surface_side_vertices( side="left", return_surface_verts=True) # pick
+
+                motions, axis_yz = create_surface_twist_motions_x(
+                    V=V,
+                    surface_verts=side_verts,
+                    theta_max=max_theta,  # 180 degrees
+                    num_frames=number_twisting_frames,
+                    axis_center_yz="mean",
+                    ease="linear",
+                    hold_frames=0
+                )
+                for vi in side_verts:
+                    model.add_positional_constraint(
+                        vi,
+                        wi=args.positional_constraint_wi,
+                        motion_type="user_defined",
+                        frames_series=motions[vi],
+                        frame_reset=solver.frame
+                    )
+                solver.set_dirty()
 
 
         elif solver.frame == args.max_p_snapshots_num + 10:
@@ -249,7 +365,6 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False, pa
             if model.has_tris_strain_constraints:
                 psim.BulletText(f"Triangles strain constraint: {len(model.tris_strain_constraints)}")
                 psim.BulletText(f"wi: { str(args.strain_limit_constraint_wi) }")
-
 
         psim.End()
 
@@ -747,7 +862,7 @@ def cloth_test(args, record_fom_info = False, params=None,experiment="cloth_auto
                     num_rotations=1,
                     total_frames=100)
                 model.add_positional_constraint(initial_i, args.positional_constraint_wi,
-                                                motion_type="user_defined", frame_shift=rotation_series)
+                                                motion_type="user_defined", frames_series=rotation_series)
 
                 model.picked_vert[initial_i] = True
 
@@ -1107,7 +1222,7 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
             psim.TextUnformatted("== Projective Dynamics ==")
             psim.Separator()
 
-            model.fix_surface_side_vertices(side="top")
+            model.fix_surface_side_vertices(args.positional_constraint_wi, side="top")
             # model.fix_cloth_corners(side="bottom")
 
             # find the closest vertex to center
@@ -1127,7 +1242,7 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
             model.reset_constraints_attributes()
 
             model.add_positional_constraint(poked_points[0], args.positional_constraint_wi,
-                                            motion_type="user_defined", frame_shift=poking_series)
+                                            motion_type="user_defined", frames_series=poking_series)
             print("Poking - positional constraint added to center vertex")
 
             model.picked_vert[poked_points[0]] = True
@@ -1181,7 +1296,7 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
 
             if i < poked_points.shape[0]:
                 model.add_positional_constraint(poked_points[i], args.positional_constraint_wi,
-                                                motion_type="user_defined", frame_shift=poking_series)
+                                                motion_type="user_defined", frames_series=poking_series)
                 model.picked_vert[poked_points[i]] = True
                 solver.set_dirty()
                 print(f"Poking - positional constraint added to {i} vertex")
@@ -1226,12 +1341,12 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
 
             for v in top_side_verts:
                 model.add_positional_constraint(v, args.positional_constraint_wi,
-                                            motion_type="user_defined", frame_shift=stretch_motion_top, frame_reset=solver.frame)
+                                            motion_type="user_defined", frames_series=stretch_motion_top, frame_reset=solver.frame)
                 model.picked_vert[v] = True
 
             for v in bottom_side_verts:
                 model.add_positional_constraint(v, args.positional_constraint_wi,
-                                            motion_type="user_defined", frame_shift=stretch_motion_bottom, frame_reset=solver.frame)
+                                            motion_type="user_defined", frames_series=stretch_motion_bottom, frame_reset=solver.frame)
                 model.picked_vert[v] = True
 
             print("Stretching - positional constraint added to top and bottom sides.")
@@ -1272,12 +1387,12 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
             stretch_motion_left = - stretch_motion_right
             for v in right_side_verts:
                 model.add_positional_constraint(v, args.positional_constraint_wi,
-                                            motion_type="user_defined", frame_shift=stretch_motion_right, frame_reset=solver.frame)
+                                            motion_type="user_defined", frames_series=stretch_motion_right, frame_reset=solver.frame)
                 model.picked_vert[v] = True
 
             for v in left_side_verts:
                 model.add_positional_constraint(v, args.positional_constraint_wi,
-                                            motion_type="user_defined", frame_shift=stretch_motion_left, frame_reset=solver.frame)
+                                            motion_type="user_defined", frames_series=stretch_motion_left, frame_reset=solver.frame)
                 model.picked_vert[v] = True
 
             solver.set_dirty()
@@ -1312,9 +1427,9 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
             psim.TextUnformatted("== Projective Dynamics ==")
             psim.Separator()
 
-            top_side_verts = model.fix_surface_side_vertices(side="top", fix_it=True, return_target=True)  # fix
+            top_side_verts = model.fix_surface_side_vertices(args.positional_constraint_wi, side="top", fix_it=True, return_target=True)  # fix
             # return indices and not fix
-            bottom_side_verts = model.fix_surface_side_vertices(side="bottom", fix_it=False, return_target=True)
+            bottom_side_verts = model.fix_surface_side_vertices(args.positional_constraint_wi, side="bottom", fix_it=False, return_target=True)
 
             # Apply any desired constraints
             model.immobilize()
@@ -1333,7 +1448,7 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
                     num_rotations=1,
                     total_frames=100)
                 model.add_positional_constraint(initial_i, args.positional_constraint_wi,
-                                                motion_type="user_defined", frame_shift=rotation_series, frame_reset=solver.frame)
+                                                motion_type="user_defined", frames_series=rotation_series, frame_reset=solver.frame)
 
                 model.picked_vert[initial_i] = True
 

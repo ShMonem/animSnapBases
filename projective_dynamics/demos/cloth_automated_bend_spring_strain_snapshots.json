@@ -12,7 +12,8 @@
   },
   "visualization_params": {
     "window_open": true,
-    "is_simulating": false
+    "is_simulating": false,
+    "height_shift": 2
   },
     "solver_params": {
       "name": "animSnapBasesSolver",
@@ -58,6 +59,7 @@
   "position_reduction": {
     "positions_reduced": false,
     "name": "LBS",
+    "properties": "",
     "num_components": 300,
     "r_muliplier": 6.1
   },
@@ -93,6 +95,8 @@
   "directories": {
     "output": "output/",
     "positions_basis": "",
+    "geom_positions_basis_dir": "",
+    "geom_positions_basis_file": "positionSubspace.npz",
     "geom_interpolation_basis_dir": "../results/cloth/cloth_automated_bend_spring_strain_snapshots/p_bases/",
     "geom_interpolation_basis_file": "components_interpol_alphas_interpol_verts_interpol_alpha_ranges.npz",
     "geom_basis": ""

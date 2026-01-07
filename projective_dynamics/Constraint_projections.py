@@ -90,7 +90,7 @@ class Constraint(ABC):
         pass
 
 class PositionalConstraint(Constraint):
-    def __init__(self, id, indices, wi, positions, motion_type='fixed', frame_shift=None, frame_reset=0):
+    def __init__(self, id, indices, wi, positions, motion_type='fixed', frames_series=None, frame_reset=0):
         super().__init__(id, indices, wi)
         self.name = "positional"
         assert len(indices) == 1
@@ -100,8 +100,8 @@ class PositionalConstraint(Constraint):
         self.build_SiT(positions.shape[0])
         self.type = motion_type
         
-        if self.type == "user_defined" and frame_shift is not None:
-            self.position_shift = frame_shift
+        if self.type == "user_defined" and frames_series is not None:
+            self.position_shift = frames_series
             self.frame_reset = frame_reset
 
     def build_SiT(self, position_dim):
@@ -1132,10 +1132,6 @@ class DeformableMesh:
         for i in range(V.shape[0]):
             if (side == "left" and V[i, axis] < threshold) or (side == "right" and V[i, axis] > threshold):
                 self.fix(i)
-        #         if side == "left" :
-        #             self.add_positional_constraint(i, args.positional_constraint_wi, motion_type="linear", shift= 1)
-        #         if side == "right" :
-        #             self.add_positional_constraint(i, args.positional_constraint_wi, motion_type="linear", shift= -1)
 
     def fix_surface_side_vertices(self, wi, side="left", fix_it = True, return_target=False):
         """
@@ -1154,6 +1150,30 @@ class DeformableMesh:
 
         if return_target:
             return surface_targets
+        else:
+            pass
+
+    def toggle_pick_surface_side_vertices(self, side="left", return_surface_verts=False):
+        """
+        Returns list of vertex indices on the chosen side surface,
+        and marks them as picked for visualization.
+        """
+        # Ensure sides are computed
+        if not hasattr(self, "_side_surface_verts") or side not in getattr(self, "_side_surface_verts", {}):
+            self.compute_sides_and_corner_indices()
+
+        surface_verts = list(self._side_surface_verts.get(side, []))
+
+        # Mark picked (works if picked_vert is dict or boolean array)
+        if hasattr(self, "picked_vert") and self.picked_vert is not None:
+            for vi in surface_verts:
+                try:
+                    self.picked_vert[vi] = not self.picked_vert[vi]
+                except Exception:
+                    # If picked_vert is e.g. a dict-like but not settable by int
+                    pass
+        if return_surface_verts:
+            return surface_verts
         else:
             pass
 
@@ -1284,9 +1304,9 @@ class DeformableMesh:
 
         return vertex_stars
 
-    def add_positional_constraint(self, vi, wi=1e9, motion_type='fixed', frame_shift=None, frame_reset=0):
+    def add_positional_constraint(self, vi, wi=1e9, motion_type='fixed', frames_series=None, frame_reset=0):
         self.has_positional_constraints = True
-        c = PositionalConstraint(vi, [vi], wi * self.mass_normalization , self.positions, motion_type, frame_shift, frame_reset)
+        c = PositionalConstraint(vi, [vi], wi * self.mass_normalization , self.positions, motion_type, frames_series, frame_reset)
         # self.constraints.append(c)
 
         # build assembly

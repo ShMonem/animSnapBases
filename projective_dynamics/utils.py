@@ -1,3 +1,7 @@
+# This file is part of the animSnapBases project (https://github.com/ShMonem/animSnapBases).
+# Copyright animSnapBases Shaimaa Monem. All rights reserved.
+# License: Apache-2.0
+
 import os
 import gdist  # for geodesics on tri mesh
 # import skfmm  # for geodesics on tet mesh
@@ -201,3 +205,35 @@ def visualize_samples(V, F=None, T=None, samples=None, show_wireframe=False, poi
         sampled_positions = V[samples]
         ps.register_point_cloud("Sampled Vertices", sampled_positions, radius=point_radius, color=(1, 0, 0))
         print(f"✅ Displaying {len(samples)} sampled vertices out of {len(V)} total.")
+
+
+def compute_face_normals(V, F):
+    """
+    Compute per-face normals (unnormalized, area-weighted).
+    """
+    v0 = V[F[:, 0]]
+    v1 = V[F[:, 1]]
+    v2 = V[F[:, 2]]
+
+    # Cross product gives area-weighted normal
+    face_normals = np.cross(v1 - v0, v2 - v0)
+    return face_normals
+
+def compute_vertex_normals(V, F):
+    """
+    Compute per-vertex normals as area-weighted averages of adjacent face normals.
+    """
+    n_verts = V.shape[0]
+    v_normals = np.zeros((n_verts, 3), dtype=float)
+
+    face_normals = compute_face_normals(V, F)
+
+    for i in range(3):
+        np.add.at(v_normals, F[:, i], face_normals)
+
+    # Normalize
+    norms = np.linalg.norm(v_normals, axis=1)
+    nonzero = norms > 1e-12
+    v_normals[nonzero] /= norms[nonzero][:, None]
+
+    return v_normals

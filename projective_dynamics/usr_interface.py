@@ -1,3 +1,7 @@
+# This file is part of the animSnapBases project (https://github.com/ShMonem/animSnapBases).
+# Copyright animSnapBases Shaimaa Monem. All rights reserved.
+# License: Apache-2.0
+
 import os.path
 import igl
 import polyscope as ps
@@ -208,8 +212,6 @@ class PreDrawHandler:
                 filename = os.path.join(self.record_path, "frame"+str(self.solver.frame))
                 ps.screenshot(filename+".png", transparent_bg=True)
                 igl.write_triangle_mesh(filename+".off", model.positions, model.faces)
-
-
 
         if fixed_indices:
             # model.positions[fixed_indices] = model.init_positions[fixed_indices]

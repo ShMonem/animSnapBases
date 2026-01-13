@@ -1,3 +1,6 @@
+# This file is part of the animSnapBases project (https://github.com/ShMonem/animSnapBases).
+# Copyright animSnapBases Shaimaa Monem. All rights reserved.
+# License: Apache-2.0
 
 import json
 import os
@@ -29,6 +32,7 @@ class Config_parameters:
 
     def add_visualization_args(self, parser):
         visualization = self.system_params ["visualization_params"]
+        parser.add_argument("--experiments_labels", type=str, default=visualization["experiments_labels"])
         parser.add_argument("--window_open", type=str, default= visualization["window_open"])
         parser.add_argument("--is_simulating", type=str, default= visualization["is_simulating"])
 

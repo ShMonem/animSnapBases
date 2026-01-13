@@ -1,4 +1,7 @@
-# constraint_projections_torch.py
+# This file is part of the animSnapBases project (https://github.com/ShMonem/animSnapBases).
+# Copyright animSnapBases Shaimaa Monem. All rights reserved.
+# License: Apache-2.0
+
 import torch
 from torch import Tensor
 from abc import ABC, abstractmethod

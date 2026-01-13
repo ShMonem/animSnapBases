@@ -25,7 +25,8 @@ def main(args, record_fom_info = False, case=None, params=None):
     elif case == "cloth_automated_bend":
         callback = demos.calbacks.cloth_automated_bend_callback(args, record_fom_info, params)
     elif case == "bar_automated_deformationgradient":
-        callback = demos.calbacks.bar_automated_deformationgradient_callback(args, record_fom_info, params)
+        callback = demos.calbacks.bar_automated_callback(args, record_fom_info, params,
+                                                         experiment = "automated_deformationgradient")
 
     else:
         callback = None

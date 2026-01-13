@@ -16,7 +16,7 @@ from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler, Pi
 from Simulators import animSnapBasesSolver
 # import trimesh
 # import meshio
-from utils import check_dir_exists, read_mesh_file
+from utils import check_dir_exists, read_mesh_file, compute_vertex_normals
 from scipy.spatial import cKDTree
 from scipy.spatial.transform import Rotation as R
 
@@ -30,14 +30,8 @@ picking_state = PickingState()
 mouse_down_handler = None
 mouse_move_handler = None
 
-# picking_state = {
-#     "is_picking": False,
-#     "vertex": 0,
-#     "mouse_x": 0,
-#     "mouse_y": 0,
-#     "force": 400.0,
-# }
-
+# ----------------------------------------------------------------------------------------------------------------------
+# Helper functions
 def set_up_mouse_handler(args, model, fext):
     # Inside your setup before starting polyscope.show()
     global  mouse_down_handler, mouse_move_handler
@@ -100,8 +94,9 @@ def reset_simulation_model(V, F, T, should_rescale=False, params=None, hight=1):
         target=(0.0, 0.0, 0.0),  # Look at the origin (the floor)
         camera_location=(0.0, 0.0, 3.0)  # Camera is 3 units above, looking down
     )
+# ----------------------------------------------------------------------------------------------------------------------
 
-
+""" Functions to create series of motion for positional constraints"""
 def make_sim_path(output_path, solver, args, object_name, experiment, record_fom_info):
     check_dir_exists(os.path.join(output_path, object_name))
 
@@ -147,116 +142,356 @@ def make_sim_path(output_path, solver, args, object_name, experiment, record_fom
     solver.set_store_q(record_fom_info)
 
     return output_path
+# ----------------------------------------------------------------------------------------------------------------------
+# Twisting motion
+def make_angle_schedule(num_frames, theta_max, ease="cosine", hold_frames=0):
+    """
+    Returns angles theta(t) from 0 -> theta_max over num_frames, optionally with hold.
+    """
+    t = np.linspace(0.0, 1.0, num_frames)
 
+    if ease == "linear":
+        s = t
+    elif ease == "cosine":
+        # smooth start/end
+        s = 0.5 - 0.5 * np.cos(np.pi * t)
+    elif ease == "smoothstep":
+        s = t * t * (3 - 2 * t)
+    else:
+        raise ValueError(f"Unknown ease: {ease}")
+
+    theta = theta_max * s
+
+    if hold_frames > 0:
+        theta = np.concatenate([theta, np.full(hold_frames, theta_max)])
+
+    return theta
+
+def create_surface_twist_motions_x(V, surface_verts, theta_max, num_frames, axis_center_yz="mean", ease="cosine",
+                                   hold_frames=0, ):
+    """
+    Build per-vertex motion arrays for twisting a surface around x-axis.
+
+    Parameters
+    ----------
+    V : (n,3) ndarray
+        Rest/current vertex positions (reference for motion).
+    surface_verts : list[int]
+        Vertex indices on the chosen surface.
+    theta_max : float
+        Maximum rotation angle in radians (e.g. np.pi/2 for 90 degrees).
+    num_frames : int
+        Frames used to ramp from 0 to theta_max.
+    axis_center_yz : {"mean","median",(y0,z0)}
+        Defines the rotation axis line: x-axis shifted to (y0,z0).
+    ease : {"linear","cosine","smoothstep"}
+        Easing for angle over time.
+    hold_frames : int
+        Extra frames to hold at theta_max.
+
+    Returns
+    -------
+    motions : dict[int, (T,3) ndarray]
+        motions[vi][t] is the displacement to apply at frame t for vertex vi.
+    """
+    surface_verts = list(surface_verts)
+    yz = V[surface_verts, 1:3]
+
+    if isinstance(axis_center_yz, tuple) or isinstance(axis_center_yz, list) or (
+            isinstance(axis_center_yz, np.ndarray) and axis_center_yz.shape == (2,)):
+        y0, z0 = float(axis_center_yz[0]), float(axis_center_yz[1])
+    else:
+        if axis_center_yz == "mean":
+            y0, z0 = yz.mean(axis=0)
+        elif axis_center_yz == "median":
+            y0, z0 = np.median(yz, axis=0)
+        else:
+            raise ValueError("axis_center_yz must be 'mean', 'median', or (y0,z0)")
+
+    theta = make_angle_schedule(num_frames, theta_max, ease=ease, hold_frames=hold_frames)
+    T = len(theta)
+
+    c = np.cos(theta)  # (T,)
+    s = np.sin(theta)  # (T,)
+
+    motions = {}
+    for vi in surface_verts:
+        y, z = V[vi, 1], V[vi, 2]
+        dy, dz = y - y0, z - z0
+
+        # Rotate (dy,dz) by theta(t) in yz plane
+        y_rot = y0 + c * dy - s * dz
+        z_rot = z0 + s * dy + c * dz
+
+        m = np.zeros((T, 3), dtype=float)
+        m[:, 1] = y_rot - y
+        m[:, 2] = z_rot - z
+        motions[vi] = m
+
+    return motions, (y0, z0)
+
+# Stretch or squeez motion
+def create_xyz_stretch_motion_with_jumps(f_l, f_j, k, displacement_xyz=(1.0, 0.0, 0.0)):
+        """
+        Generate a multi-axis motion that repeats k times:
+          - motion phase: linearly interpolate from 0 to target displacement and back over f_l frames
+          - pause phase: hold at rest (zeros) for f_j frames
+
+        :param f_l: Frames per motion cycle (excluding jump)
+        :param f_j: Frames per pause (jump)
+        :param k: Number of motion+pause cycles
+        :param displacement_xyz: (dx, dy, dz) tuple of peak displacement along each axis
+        :return: (total_frames, 3) array of displacement per frame
+        """
+        dx, dy, dz = displacement_xyz
+        motion = []
+
+        for _ in range(k):
+            # -- Motion phase: 0 -> displacement -> 0
+            half = f_l // 2
+            phase1 = np.linspace(0, 1, half, endpoint=False)
+            phase2 = np.linspace(1, 0, f_l - half)
+
+            motion_phase = np.concatenate([phase1, phase2])[:, None]  # shape (f_l, 1)
+            disp_phase = motion_phase * np.array([[dx, dy, dz]])  # broadcast to (f_l, 3)
+
+            # -- Pause phase: hold at zero
+            pause_phase = np.zeros((f_j, 3))
+
+            # -- Append both
+            motion.append(disp_phase)
+            motion.append(pause_phase)
+
+        motion_array = np.concatenate(motion, axis=0)  # shape: (k * (f_l + f_j), 3)
+        return motion_array
+
+# Poking in piked direction (vert normal, x, y,z) motion, at given seeds
+def compute_voronoi_seeds_incremental(positions, k, start_idx=None, visualize=True, title="Voronoi Partitioning (Euclidean Approximation)"):
+    """
+    Select k Voronoi seeds on a mesh using incremental farthest-point sampling.
+
+    Parameters:
+        positions: (n, 3) numpy array of vertex positions
+        k: int, number of seeds to return
+        start_idx: optional int, index of first seed (default = closest to centroid)
+
+    Returns:
+        seeds: list of k vertex indices
+    """
+    n = positions.shape[0]
+
+    # Start from the closest point to the centroid if not given
+    if start_idx is None:
+        center = positions.mean(axis=0)
+        start_idx = np.argmin(np.linalg.norm(positions - center, axis=1))
+
+    seeds = [start_idx]
+    dists = np.linalg.norm(positions - positions[start_idx], axis=1)
+
+    for _ in range(1, k):
+        # Find the point with maximum distance to the nearest seed
+        min_dists = dists
+        next_idx = np.argmax(min_dists)
+        seeds.append(next_idx)
+
+        # Update minimum distances to the new seed
+        new_dists = np.linalg.norm(positions - positions[next_idx], axis=1)
+        dists = np.minimum(dists, new_dists)
+
+    # Assign each vertex to the nearest seed
+    tree = cKDTree(positions[seeds])
+    labels = tree.query(positions)[1]  # nearest seed index
+    if visualize:
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(positions[:, 0], positions[:, 1], positions[:, 2], c=labels, cmap='tab20', s=5)
+        ax.scatter(positions[seeds, 0], positions[seeds, 1], positions[seeds, 2], c='black', s=30, label="Seeds")
+        ax.set_title(title)
+        ax.legend()
+        plt.show()
+
+    return np.array(seeds), labels
+
+def create_poking_motions_at_given_seeds(
+    V,
+    seeds,
+    direction="normal",     # "normal" or "x"/"y"/"z"
+    F=None,                 # required if direction="normal"
+    f_l=40,                 # frames for motion phase
+    f_j=20,                 # frames for rest phase
+    amplitude=1.0,          # displacement magnitude (same units as V)
+    repeats=1,              # how many poke cycles per seed (when sequential)
+    mode="sequential",      # "sequential" or "simultaneous"
+    normalize_dir=True,     # normalize direction vectors
+):
+    def create_poke_wave_with_rest(f_l, f_j, z_range=1.0):
+        """
+        One poke cycle:
+          motion phase length f_l: 0 -> -A -> +A -> -A -> 0 (piecewise linear)
+          rest phase length f_j: zeros
+        Returns: (f_l + f_j,) array
+        """
+        quarter = f_l // 4
+        A = float(z_range)
+        z_values = np.concatenate([
+            np.linspace(0, -A, quarter, endpoint=False),
+            np.linspace(-A, +A, quarter, endpoint=False),
+            np.linspace(+A, -A, quarter, endpoint=False),
+            np.linspace(-A, 0, f_l - 3 * quarter)  # fill remainder
+        ])
+        pause = np.zeros(f_j, dtype=float)
+        return np.concatenate([z_values, pause])
+    """
+    Returns:
+        motions: dict[int, (T,3) ndarray]  # per seed vertex
+        T: total frames
+        dirs: (len(seeds),3) array of direction vectors used (in vertex order)
+    """
+    seeds = list(map(int, seeds))
+    n_seeds = len(seeds)
+
+    # --- choose direction vectors for each seed ---
+    if direction in ("x", "y", "z"):
+        axis = {"x": 0, "y": 1, "z": 2}[direction]
+        d = np.zeros(3, dtype=float)
+        d[axis] = 1.0
+        dirs = np.repeat(d[None, :], n_seeds, axis=0)
+    elif direction == "normal":
+        if F is None:
+            raise ValueError("F (faces) must be provided when direction='normal'")
+        VN = compute_vertex_normals(V, F)
+        dirs = VN[seeds].copy()
+    else:
+        raise ValueError("direction must be one of: 'normal', 'x', 'y', 'z'")
+
+    if normalize_dir:
+        norms = np.linalg.norm(dirs, axis=1)
+        nz = norms > 1e-12
+        dirs[nz] /= norms[nz][:, None]
+
+    # --- build the base wave ---
+    single_cycle = create_poke_wave_with_rest(f_l=f_l, f_j=f_j, z_range=amplitude)
+
+    if mode == "simultaneous":
+        # everyone uses same timeline, repeated 'repeats' times
+        wave = np.tile(single_cycle, repeats)
+        T = len(wave)
+
+        motions = {}
+        for si, vi in enumerate(seeds):
+            m = wave[:, None] * dirs[si][None, :]  # (T,1)*(1,3) -> (T,3)
+            motions[vi] = m
+        return motions, T, dirs
+
+    elif mode == "sequential":
+        # seed0 cycle(s), then seed1 cycle(s), ...
+        wave_per_seed = np.tile(single_cycle, repeats)
+        L = len(wave_per_seed)
+        T = n_seeds * L
+
+        motions = {vi: np.zeros((T, 3), dtype=float) for vi in seeds}
+
+        for s_idx, vi in enumerate(seeds):
+            t0 = s_idx * L
+            t1 = t0 + L
+            motions[vi][t0:t1, :] = wave_per_seed[:, None] * dirs[s_idx][None, :]
+
+        return motions, T, dirs
+
+    else:
+        raise ValueError("mode must be 'sequential' or 'simultaneous'")
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Set which callback experiments to run according to args
+def set_automated_experiments(object, args):
+    callback_experiments = []
+    predefined_experiments_labels = args.experiments_labels # list of numbers
+
+    if object == "bar":
+        predefined_experiments_in_order = ["holding_releasing_sides", # 0
+                                           "twisting",      # 1
+                                           "stretching",    # 2
+                                           "squeezing",     # 3
+                                           "poking",        # 4
+                                           "free_falling"]       # -1
+    elif object == "cloth":
+        predefined_experiments_in_order = [""] #TODO
+    else:
+        raise ValueError(f"Object {object} has unknown automated experiments yet!")
+
+    for label in predefined_experiments_labels:
+        print(f"Adding {predefined_experiments_in_order[label]} to automated experiments.")
+        callback_experiments.append(predefined_experiments_in_order[label])
+
+    return callback_experiments
+
+# ----------------------------------------------------------------------------------------------------------------------
 # Example callbacks called in main.py
-def bar_automated_deformationgradient_callback(args, record_fom_info = False,
+def bar_automated_callback(args, record_fom_info = False,
                                                params=None,
-                                               experiment="bar_automated_deformationgradient",
-                                               run_holding_sides_under_gravity = True,
-                                               run_twisting=True):
+                                               object = "bar",
+                                               experiment="automated_deformationgradient",
+                                               ):
+    experiment = object + "_" + experiment
     global model, fext, solver
     solver = get_solver_class_from_name(args)
     is_simulating = args.is_simulating
     output_path = args.output_dir
+    init_positions, init_faces, init_tets = None, None, None
 
+    callback_experiments = set_automated_experiments(object, args)
     total_frames = 0
+
+    run_holding_releasing_sides = "holding_releasing_sides" in callback_experiments
+    run_twisting = "twisting" in callback_experiments
+    run_stretching = "stretching" in callback_experiments
+    run_gravitational_fall = "free_falling" in callback_experiments
+    run_squeezing = "squeezing" in callback_experiments
+    run_poking = "poking" in callback_experiments
+
     # setting frames for different experiments
-    if run_holding_sides_under_gravity:
+    if run_holding_releasing_sides:
+        run_holding_sides_under_gravity = True
+        frames_between_actions = 40
         holding_sides_start_frame = total_frames
-        release_left_side_frame = holding_sides_start_frame + 40
-        release_right_side_frame = release_left_side_frame + 40
-        total_frames += release_right_side_frame + 20
+        release_left_side_frame = holding_sides_start_frame + frames_between_actions
+        release_right_side_frame = release_left_side_frame + frames_between_actions
+        total_frames += release_right_side_frame + frames_between_actions
+
     if run_twisting:
-        twisting_start_frame = total_frames
-        max_theta = 4*np.pi
         number_twisting_frames = 40
+        release_picking_after_num_frames = 20  # num frames counted from start of twisting
+        max_theta = 4 * np.pi  # determine how many rotations in the twist
+
+        twisting_start_frame = total_frames
+        release_twisting_start_frame = twisting_start_frame + release_picking_after_num_frames
         total_frames += number_twisting_frames
 
-    # functions for twisting motion
-    def make_angle_schedule(num_frames, theta_max, ease="cosine", hold_frames=0):
-        """
-        Returns angles theta(t) from 0 -> theta_max over num_frames, optionally with hold.
-        """
-        t = np.linspace(0.0, 1.0, num_frames)
+    if run_stretching:
+        number_stretching_frames = 20
+        release_picking_after_num_frames = 20
+        stretching_start_frame = total_frames
+        release_stretching_start_frame = stretching_start_frame + release_picking_after_num_frames
+        total_frames += number_stretching_frames
 
-        if ease == "linear":
-            s = t
-        elif ease == "cosine":
-            # smooth start/end
-            s = 0.5 - 0.5 * np.cos(np.pi * t)
-        elif ease == "smoothstep":
-            s = t * t * (3 - 2 * t)
-        else:
-            raise ValueError(f"Unknown ease: {ease}")
+    if run_squeezing:
+        number_squeezing_frames = 20
+        release_picking_after_num_frames = 20
+        squeezing_start_frame = total_frames
+        release_squeezing_start_frame = squeezing_start_frame + release_picking_after_num_frames
+        total_frames += number_squeezing_frames
 
-        theta = theta_max * s
+    if run_poking:
+        number_poking_points = 2
+        number_frames_per_poke = 20
+        number_frames_rest_per_poke = 10
+        poking_start_frame = total_frames
+        total_frames += number_poking_points * number_frames_per_poke
 
-        if hold_frames > 0:
-            theta = np.concatenate([theta, np.full(hold_frames, theta_max)])
-
-        return theta
-
-    def create_surface_twist_motions_x(V, surface_verts, theta_max, num_frames, axis_center_yz="mean", ease="cosine", hold_frames=0,):
-        """
-        Build per-vertex motion arrays for twisting a surface around x-axis.
-
-        Parameters
-        ----------
-        V : (n,3) ndarray
-            Rest/current vertex positions (reference for motion).
-        surface_verts : list[int]
-            Vertex indices on the chosen surface.
-        theta_max : float
-            Maximum rotation angle in radians (e.g. np.pi/2 for 90 degrees).
-        num_frames : int
-            Frames used to ramp from 0 to theta_max.
-        axis_center_yz : {"mean","median",(y0,z0)}
-            Defines the rotation axis line: x-axis shifted to (y0,z0).
-        ease : {"linear","cosine","smoothstep"}
-            Easing for angle over time.
-        hold_frames : int
-            Extra frames to hold at theta_max.
-
-        Returns
-        -------
-        motions : dict[int, (T,3) ndarray]
-            motions[vi][t] is the displacement to apply at frame t for vertex vi.
-        """
-        surface_verts = list(surface_verts)
-        yz = V[surface_verts, 1:3]
-
-        if isinstance(axis_center_yz, tuple) or isinstance(axis_center_yz, list) or (
-                isinstance(axis_center_yz, np.ndarray) and axis_center_yz.shape == (2,)):
-            y0, z0 = float(axis_center_yz[0]), float(axis_center_yz[1])
-        else:
-            if axis_center_yz == "mean":
-                y0, z0 = yz.mean(axis=0)
-            elif axis_center_yz == "median":
-                y0, z0 = np.median(yz, axis=0)
-            else:
-                raise ValueError("axis_center_yz must be 'mean', 'median', or (y0,z0)")
-
-        theta = make_angle_schedule(num_frames, theta_max, ease=ease, hold_frames=hold_frames)
-        T = len(theta)
-
-        c = np.cos(theta)  # (T,)
-        s = np.sin(theta)  # (T,)
-
-        motions = {}
-        for vi in surface_verts:
-            y, z = V[vi, 1], V[vi, 2]
-            dy, dz = y - y0, z - z0
-
-            # Rotate (dy,dz) by theta(t) in yz plane
-            y_rot = y0 + c * dy - s * dz
-            z_rot = z0 + s * dy + c * dz
-
-            m = np.zeros((T, 3), dtype=float)
-            m[:, 1] = y_rot - y
-            m[:, 2] = z_rot - z
-            motions[vi] = m
-
-        return motions , (y0, z0)
+    if run_gravitational_fall:
+        number_gravitational_fall_frames = 120
+        gravitational_fall_start_frame = total_frames
+        total_frames += number_gravitational_fall_frames
 
     def callback():
         nonlocal output_path, is_simulating
@@ -267,6 +502,7 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False,
             print("Frame 0: Creating cloth and fixing left/right corners")
 
             V, T, F = read_mesh_file("../data/bar.mesh")
+            init_positions, init_tets, init_faces = V, T, F # TODO : reset positions instead of mpdel later
 
             # params.edit_system_args(args, "Bar")
             # V, T, F, _ = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
@@ -287,7 +523,7 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False,
 
             solver.set_dirty()
 
-        if run_holding_sides_under_gravity:
+        if run_holding_releasing_sides:
             if solver.frame == holding_sides_start_frame:
                 model.fix_surface_side_vertices(args.positional_constraint_wi, side="left")
                 model.fix_surface_side_vertices(args.positional_constraint_wi, side="right")
@@ -300,39 +536,168 @@ def bar_automated_deformationgradient_callback(args, record_fom_info = False,
                 print(f"Frame {solver.frame}: Releasing right side")
                 model.release_surface_side_vertices(side="right")
 
-        if run_twisting:
-            if solver.frame == twisting_start_frame:
-                print(f"Frame {solver.frame}: Start twisting fames")
+        if run_twisting and solver.frame == twisting_start_frame:
+            print(f"Frame {solver.frame}: Start twisting under gravity fames")
 
-                V, T, F = read_mesh_file("../data/bar.mesh")
+            V, T, F = read_mesh_file("../data/bar.mesh")
 
-                reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
 
-                model.fix_surface_side_vertices(args.positional_constraint_wi, side="right")
+            model.fix_surface_side_vertices(args.positional_constraint_wi, side="right")
 
-                side_verts = model.toggle_pick_surface_side_vertices( side="left", return_surface_verts=True) # pick
+            side_verts = model.toggle_pick_surface_side_vertices( side="left", return_surface_verts=True) # pick
 
-                motions, axis_yz = create_surface_twist_motions_x(
-                    V=V,
-                    surface_verts=side_verts,
-                    theta_max=max_theta,  # 180 degrees
-                    num_frames=number_twisting_frames,
-                    axis_center_yz="mean",
-                    ease="linear",
-                    hold_frames=0
+            motions, axis_yz = create_surface_twist_motions_x(
+                V=V,
+                surface_verts=side_verts,
+                theta_max=-max_theta,  # 180 degrees
+                num_frames=number_twisting_frames,
+                axis_center_yz="mean",
+                ease="linear",
+                hold_frames=10
+            )
+            for vi in side_verts:
+                model.add_positional_constraint(
+                    vi,
+                    wi=args.positional_constraint_wi,
+                    motion_type="user_defined",
+                    frames_series=motions[vi],
+                    frame_reset=solver.frame
                 )
-                for vi in side_verts:
-                    model.add_positional_constraint(
-                        vi,
-                        wi=args.positional_constraint_wi,
-                        motion_type="user_defined",
-                        frames_series=motions[vi],
-                        frame_reset=solver.frame
-                    )
-                solver.set_dirty()
+            # solver.set_dirty()
 
+        if run_twisting and solver.frame == release_twisting_start_frame:
+            print(f"Frame {solver.frame}: Releasing left side")
+            side_verts = model.toggle_pick_surface_side_vertices( side="left", return_surface_verts=True) # pick
 
-        elif solver.frame == args.max_p_snapshots_num + 10:
+            for vi in side_verts:
+                model.remove_positional_constraint(vi)
+            solver.set_dirty()
+
+        if run_stretching and solver.frame == stretching_start_frame:
+            print(f"Frame {solver.frame}: Start stretching under gravity fames")
+
+            V, T, F = read_mesh_file("../data/bar.mesh")
+
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
+            model.compute_sides_and_corner_indices()
+            right_side_verts = model._side_surface_verts["right"]
+            left_side_verts = model._side_surface_verts["left"]
+
+            # Generate serise for streatching
+            stretch_motion_x_axis_right = create_xyz_stretch_motion_with_jumps(number_stretching_frames, 0,
+                                                                      1,
+                                                                      displacement_xyz=(0.4, 0.0, 0.0))
+            stretch_motion_x_axis_left = - stretch_motion_x_axis_right
+
+            for v in right_side_verts:
+                model.add_positional_constraint(v, args.positional_constraint_wi,
+                                            motion_type="user_defined", frames_series=stretch_motion_x_axis_right, frame_reset=solver.frame)
+                model.picked_vert[v] = True
+
+            for v in left_side_verts:
+                model.add_positional_constraint(v, args.positional_constraint_wi,
+                                            motion_type="user_defined", frames_series=stretch_motion_x_axis_left, frame_reset=solver.frame)
+                model.picked_vert[v] = True
+
+            solver.set_dirty()
+            print("Stretching - positional constraint added to right and left sides.")
+
+        if run_stretching and solver.frame == release_stretching_start_frame:
+            print(f"Frame {solver.frame}: Start stretching under no gravity fames")
+
+            V, T, F = read_mesh_file("../data/bar.mesh")
+
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
+            model.compute_sides_and_corner_indices()
+            right_side_verts = model._side_surface_verts["right"]
+            left_side_verts = model._side_surface_verts["left"]
+
+            args.is_gravity_active = False
+            # Generate serise for streatching
+            stretch_motion_x_axis_right = create_xyz_stretch_motion_with_jumps(number_stretching_frames, 0,
+                                                                      1,
+                                                                      displacement_xyz=(0.6, 0.0, 0.0))
+            stretch_motion_x_axis_left = - stretch_motion_x_axis_right
+
+            for v in right_side_verts:
+                model.add_positional_constraint(v, args.positional_constraint_wi,
+                                            motion_type="user_defined", frames_series=stretch_motion_x_axis_right, frame_reset=solver.frame)
+                model.picked_vert[v] = True
+
+            for v in left_side_verts:
+                model.add_positional_constraint(v, args.positional_constraint_wi,
+                                            motion_type="user_defined", frames_series=stretch_motion_x_axis_left, frame_reset=solver.frame)
+                model.picked_vert[v] = True
+
+            solver.set_dirty()
+            print("Stretching - positional constraint added to right and left sides.")
+
+        if run_squeezing and solver.frame == squeezing_start_frame:
+            print(f"Frame {solver.frame}: Start squeezing under gravity fames")
+
+            V, T, F = read_mesh_file("../data/bar.mesh")
+
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
+            model.compute_sides_and_corner_indices()
+            right_side_verts = model._side_surface_verts["right"]
+            left_side_verts = model._side_surface_verts["left"]
+
+            # Generate serise for streatching
+            squeezing_motion_x_axis_right = - create_xyz_stretch_motion_with_jumps(number_squeezing_frames, 0,
+                                                                      1,
+                                                                      displacement_xyz=(0.2, 0.0, 0.0))
+            squeezing_motion_x_axis_left = - squeezing_motion_x_axis_right
+
+            for v in right_side_verts:
+                model.add_positional_constraint(v, args.positional_constraint_wi,
+                                            motion_type="user_defined", frames_series=squeezing_motion_x_axis_right, frame_reset=solver.frame)
+                model.picked_vert[v] = True
+
+            for v in left_side_verts:
+                model.add_positional_constraint(v, args.positional_constraint_wi,
+                                            motion_type="user_defined", frames_series=squeezing_motion_x_axis_left, frame_reset=solver.frame)
+                model.picked_vert[v] = True
+
+            solver.set_dirty()
+            print("Squeezing - positional constraint added to right and left sides.")
+
+        if run_poking and solver.frame == poking_start_frame:
+            poked_points, lables = compute_voronoi_seeds_incremental(model.init_positions, number_poking_points, visualize=False)
+
+            poking_motion, T, dir = create_poking_motions_at_given_seeds(model.positions,
+                                                                        poked_points,
+                                                                        direction="normal",     # "normal" or "x"/"y"/"z"
+                                                                        F=model.faces,              # required if direction="normal"
+                                                                        f_l=number_frames_per_poke, # frames for motion phase
+                                                                        f_j=number_frames_rest_per_poke,  # frames for rest phase
+                                                                        amplitude=0.1,          # displacement magnitude (same units as V)
+                                                                        repeats=1,              # how many poke cycles per seed (when sequential)
+                                                                        mode="sequential",      # "sequential" or "simultaneous"
+                                                                        normalize_dir=True,     # normalize direction vectors
+                                                                    )
+            model.add_positional_constraint(poked_points[0], args.positional_constraint_wi,
+                                            motion_type="user_defined", frames_series=poking_motion[0], frame_reset=solver.frame)
+            print("Poking - positional constraint added to first vertex")
+
+            model.picked_vert[poked_points[0]] = True
+
+        if run_gravitational_fall and solver.frame == gravitational_fall_start_frame:
+            print(f"Frame {solver.frame}: Starting free fall frames")
+
+            V, T, F = read_mesh_file("../data/bar.mesh")
+
+            # params.edit_system_args(args, "Bar")
+            # V, T, F, _ = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
+
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
+
+            object_name = "bar"
+            psim.PushItemWidth(200)
+            psim.TextUnformatted("== Projective Dynamics ==")
+            psim.Separator()
+
+        if solver.frame == args.max_p_snapshots_num + 10:
             print("Stopping simulation.")
             is_simulating = False
             ps.unshow()
@@ -1038,7 +1403,7 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
         dists = np.linalg.norm(V[:, :2] - center_2d, axis=1)
         center_idx = np.argmin(dists)
 
-        # Sample seeds using farthest point sampling
+        # Sample seeds using the furthest point sampling
         seeds = [center_idx]
         remaining = set(range(V.shape[0]))
         remaining.remove(center_idx)

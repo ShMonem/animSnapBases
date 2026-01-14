@@ -34,12 +34,12 @@
   "constraints": {
     "apply_constraints": false,
     "vert_bending_constraint": false,
-    "edge_spring_constraint": false,
+    "edge_spring_constraint": true,
     "tri_strain_constraint": false,
     "tet_strain_constraint": false,
     "tet_deformation_constraint": true,
 
-    "is_gravity_active": true,
+    "is_gravity_active": false,
 
     "fix_left_side": true,
     "fix_right_side": true,

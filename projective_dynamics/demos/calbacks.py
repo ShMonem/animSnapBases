@@ -335,9 +335,9 @@ def create_poking_motions_at_given_seeds(
         A = float(z_range)
         z_values = np.concatenate([
             np.linspace(0, -A, quarter, endpoint=False),
-            np.linspace(-A, +A, quarter, endpoint=False),
-            np.linspace(+A, -A, quarter, endpoint=False),
-            np.linspace(-A, 0, f_l - 3 * quarter)  # fill remainder
+            np.linspace(-A, 0, quarter, endpoint=False),
+            np.linspace(0, +A, quarter, endpoint=False),
+            np.linspace(+A, 0, f_l - 3 * quarter)
         ])
         pause = np.zeros(f_j, dtype=float)
         return np.concatenate([z_values, pause])
@@ -387,16 +387,17 @@ def create_poking_motions_at_given_seeds(
         # seed0 cycle(s), then seed1 cycle(s), ...
         wave_per_seed = np.tile(single_cycle, repeats)
         L = len(wave_per_seed)
-        T = n_seeds * L
+        # T = n_seeds * L
 
-        motions = {vi: np.zeros((T, 3), dtype=float) for vi in seeds}
+        motions = {vi: np.zeros((L, 3), dtype=float) for vi in range(len(seeds))}
 
         for s_idx, vi in enumerate(seeds):
-            t0 = s_idx * L
-            t1 = t0 + L
-            motions[vi][t0:t1, :] = wave_per_seed[:, None] * dirs[s_idx][None, :]
+            # t0 = s_idx * L
+            # t1 = t0 + L
+            # motions[vi][t0:t1, :] = wave_per_seed[:, None] * dirs[s_idx][None, :]
+            motions[s_idx]= wave_per_seed[:, None] * dirs[s_idx][None, :]
 
-        return motions, T, dirs
+        return motions, L, dirs
 
     else:
         raise ValueError("mode must be 'sequential' or 'simultaneous'")
@@ -483,10 +484,15 @@ def bar_automated_callback(args, record_fom_info = False,
 
     if run_poking:
         number_poking_points = 2
-        number_frames_per_poke = 20
+        number_frames_per_poke = 10
         number_frames_rest_per_poke = 10
+        poking_amplitude = 0.1
+        poked_points_count = 0
         poking_start_frame = total_frames
-        total_frames += number_poking_points * number_frames_per_poke
+        total_frames += number_poking_points * (number_frames_per_poke + number_frames_rest_per_poke)
+        poking_end_frame = total_frames
+
+        poked_points, poking_motion = None, None
 
     if run_gravitational_fall:
         number_gravitational_fall_frames = 120
@@ -494,7 +500,7 @@ def bar_automated_callback(args, record_fom_info = False,
         total_frames += number_gravitational_fall_frames
 
     def callback():
-        nonlocal output_path, is_simulating
+        nonlocal output_path, is_simulating, poked_points, poking_motion, poked_points_count
         psim.TextUnformatted("== Projective Dynamics ==")
         psim.Separator()
         # Frame 0: create mesh and apply initial constraints
@@ -536,7 +542,7 @@ def bar_automated_callback(args, record_fom_info = False,
                 print(f"Frame {solver.frame}: Releasing right side")
                 model.release_surface_side_vertices(side="right")
 
-        if run_twisting and solver.frame == twisting_start_frame:
+        elif run_twisting and solver.frame == twisting_start_frame:
             print(f"Frame {solver.frame}: Start twisting under gravity fames")
 
             V, T, F = read_mesh_file("../data/bar.mesh")
@@ -566,7 +572,7 @@ def bar_automated_callback(args, record_fom_info = False,
                 )
             # solver.set_dirty()
 
-        if run_twisting and solver.frame == release_twisting_start_frame:
+        elif run_twisting and solver.frame == release_twisting_start_frame:
             print(f"Frame {solver.frame}: Releasing left side")
             side_verts = model.toggle_pick_surface_side_vertices( side="left", return_surface_verts=True) # pick
 
@@ -574,7 +580,7 @@ def bar_automated_callback(args, record_fom_info = False,
                 model.remove_positional_constraint(vi)
             solver.set_dirty()
 
-        if run_stretching and solver.frame == stretching_start_frame:
+        elif run_stretching and solver.frame == stretching_start_frame:
             print(f"Frame {solver.frame}: Start stretching under gravity fames")
 
             V, T, F = read_mesh_file("../data/bar.mesh")
@@ -603,7 +609,7 @@ def bar_automated_callback(args, record_fom_info = False,
             solver.set_dirty()
             print("Stretching - positional constraint added to right and left sides.")
 
-        if run_stretching and solver.frame == release_stretching_start_frame:
+        elif run_stretching and solver.frame == release_stretching_start_frame:
             print(f"Frame {solver.frame}: Start stretching under no gravity fames")
 
             V, T, F = read_mesh_file("../data/bar.mesh")
@@ -633,7 +639,7 @@ def bar_automated_callback(args, record_fom_info = False,
             solver.set_dirty()
             print("Stretching - positional constraint added to right and left sides.")
 
-        if run_squeezing and solver.frame == squeezing_start_frame:
+        elif run_squeezing and solver.frame == squeezing_start_frame:
             print(f"Frame {solver.frame}: Start squeezing under gravity fames")
 
             V, T, F = read_mesh_file("../data/bar.mesh")
@@ -662,16 +668,16 @@ def bar_automated_callback(args, record_fom_info = False,
             solver.set_dirty()
             print("Squeezing - positional constraint added to right and left sides.")
 
-        if run_poking and solver.frame == poking_start_frame:
+        elif run_poking and solver.frame == poking_start_frame:
             poked_points, lables = compute_voronoi_seeds_incremental(model.init_positions, number_poking_points, visualize=False)
 
-            poking_motion, T, dir = create_poking_motions_at_given_seeds(model.positions,
+            poking_motion, _, _ = create_poking_motions_at_given_seeds(model.positions,
                                                                         poked_points,
                                                                         direction="normal",     # "normal" or "x"/"y"/"z"
                                                                         F=model.faces,              # required if direction="normal"
                                                                         f_l=number_frames_per_poke, # frames for motion phase
                                                                         f_j=number_frames_rest_per_poke,  # frames for rest phase
-                                                                        amplitude=0.1,          # displacement magnitude (same units as V)
+                                                                        amplitude=poking_amplitude,          # displacement magnitude (same units as V)
                                                                         repeats=1,              # how many poke cycles per seed (when sequential)
                                                                         mode="sequential",      # "sequential" or "simultaneous"
                                                                         normalize_dir=True,     # normalize direction vectors
@@ -682,7 +688,23 @@ def bar_automated_callback(args, record_fom_info = False,
 
             model.picked_vert[poked_points[0]] = True
 
-        if run_gravitational_fall and solver.frame == gravitational_fall_start_frame:
+        elif (run_poking and poking_end_frame >= solver.frame > poking_start_frame
+                and (solver.frame - poking_start_frame) % (number_frames_per_poke+number_frames_rest_per_poke) == 0) :
+
+            lable = (solver.frame - poking_start_frame) // (number_frames_per_poke+number_frames_rest_per_poke)
+            model.remove_positional_constraint(poked_points[lable-1])
+            solver.set_dirty()
+
+            if solver.frame < poking_end_frame:
+                print(f"Poking - positional constraint added to {lable}th vertex")
+                model.add_positional_constraint(poked_points[lable], args.positional_constraint_wi,
+                                                motion_type="user_defined", frames_series=poking_motion[lable],
+                                                frame_reset=solver.frame)
+                model.picked_vert[poked_points[lable]] = True
+            else:
+                print("End of poking experiment.")
+
+        elif run_gravitational_fall and solver.frame == gravitational_fall_start_frame:
             print(f"Frame {solver.frame}: Starting free fall frames")
 
             V, T, F = read_mesh_file("../data/bar.mesh")

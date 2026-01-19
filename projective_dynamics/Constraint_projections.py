@@ -999,6 +999,8 @@ class DeformableMesh:
         self.tets_deformation_gradient_stacked_p = None
         self.tets_deformation_constraints_changed = True
 
+    def set_positions_to_initial(self):
+        self.positions = self.init_positions.copy()
 
     def set_init_hight(self, value=1):
         self.init_hight_shift = value

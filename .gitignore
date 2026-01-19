@@ -44,3 +44,4 @@ projective_dynamics/output/
 time_logs.txt
 
 /.vscode/
+/projective_dynamics/demos/calback_experiments_frames.py

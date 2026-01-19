@@ -31,8 +31,18 @@ picking_state = PickingState()
 mouse_down_handler = None
 mouse_move_handler = None
 
+# Dicts for collecting snapshots
 tets_deformation_gradient_p = {}
 positions = {}
+
+# Experiments to run
+run_holding_releasing_sides = False
+run_twisting = False
+run_stretching = False
+run_falling = False
+run_squeezing = False
+run_poking = False
+
 # ----------------------------------------------------------------------------------------------------------------------
 # Helper functions
 def set_up_mouse_handler(args, model, fext):
@@ -407,6 +417,7 @@ def create_poking_motions_at_given_seeds(
 # ----------------------------------------------------------------------------------------------------------------------
 # Set which callback experiments to run according to args
 def set_automated_experiments(object, args):
+    global run_holding_releasing_sides, run_twisting, run_stretching, run_squeezing, run_poking, run_falling
     callback_experiments = []
     predefined_experiments_labels = args.experiments_labels # list of numbers
 
@@ -426,22 +437,6 @@ def set_automated_experiments(object, args):
         print(f"Adding {predefined_experiments_in_order[label]} to automated experiments.")
         callback_experiments.append(predefined_experiments_in_order[label])
 
-    return callback_experiments
-
-# ----------------------------------------------------------------------------------------------------------------------
-# Example callbacks called in main.py
-def bar_automated_callback(args, record_fom_info = False,
-                                               params=None,
-                                               object = "bar",
-                                               experiment="automated_deformationgradient",
-                                               ):
-    experiment = object + "_" + experiment
-    global model, fext, solver
-    solver = get_solver_class_from_name(args)
-    is_simulating = args.is_simulating
-    output_dir = args.output_dir
-
-    callback_experiments = set_automated_experiments(object, args)
     run_holding_releasing_sides = "holding_releasing_sides" in callback_experiments
     run_twisting = "twisting" in callback_experiments
     run_stretching = "stretching" in callback_experiments
@@ -449,7 +444,6 @@ def bar_automated_callback(args, record_fom_info = False,
     run_squeezing = "squeezing" in callback_experiments
     run_poking = "poking" in callback_experiments
 
-    total_frames=0
     # setting frames for different experiments (dependent: required to be sat in sequence)
     if run_holding_releasing_sides:
         setfr.set_holding_releasing_sides_frame_counts(object, args.is_gravity_active)
@@ -469,8 +463,25 @@ def bar_automated_callback(args, record_fom_info = False,
     if run_falling:
         setfr.set_falling_frame_counts(object, args.is_gravity_active)
 
-    if total_frames > args.max_p_snapshots_num:
-        solver.set_max_recorded_frames(total_frames)
+    if setfr.total_frames > args.max_p_snapshots_num:
+        solver.set_max_recorded_frames(setfr.total_frames)
+
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Example callbacks called in main.py
+def bar_automated_callback(args, record_fom_info = False,
+                                               params=None,
+                                               object = "bar",
+                                               experiment="automated_deformationgradient",
+                                               ):
+    experiment = object + "_" + experiment
+    global model, fext, solver
+    solver = get_solver_class_from_name(args)
+    is_simulating = args.is_simulating
+    output_dir = args.output_dir
+
+    set_automated_experiments(object, args)
 
     def callback():
         nonlocal output_dir, is_simulating
@@ -758,6 +769,26 @@ def bar_automated_callback(args, record_fom_info = False,
         psim.End()
 
     return callback
+
+
+def cloth_automated_callback(args, record_fom_info = False,
+                                               params=None,
+                                               object = "cloth",
+                                               experiment="automated_deformationgradient",
+                                               ):
+    experiment = object + "_" + experiment
+    global model, fext, solver
+    solver = get_solver_class_from_name(args)
+    is_simulating = args.is_simulating
+    output_dir = args.output_dir
+
+    set_automated_experiments(object, args)
+    psim.PushItemWidth(200)
+    psim.TextUnformatted("== Projective Dynamics ==")
+    psim.Separator()
+
+
+
 
 def cloth_automated_bend_spring_strain_callback(args, record_fom_info = False, params=None,experiment="cloth_automated_bend_spring_strain"):
     global model, fext, solver

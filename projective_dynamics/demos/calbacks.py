@@ -6,9 +6,9 @@ import polyscope as ps
 import polyscope.imgui as psim
 import matplotlib.pyplot as plt
 from scipy.spatial import distance_matrix
-from scipy.sparse.csgraph import shortest_path
-from scipy.spatial import KDTree
-import config
+# from scipy.sparse.csgraph import shortest_path
+# from scipy.spatial import KDTree
+# import config
 from Constraint_projections import DeformableMesh
 from geometry import get_simple_bar_model, get_simple_cloth_model, get_simple_bar_model_with_surface_points_only, compute_lumped_mass_matrix
 from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler, PickingState
@@ -18,8 +18,9 @@ from Simulators import animSnapBasesSolver
 # import meshio
 from utils import check_dir_exists, read_mesh_file, compute_vertex_normals
 from scipy.spatial import cKDTree
-from scipy.spatial.transform import Rotation as R
-
+# from scipy.spatial.transform import Rotation as R
+from demos.calback_experiments_frames import *
+import demos.calback_experiments_frames as setfr
 
 # declare global variables
 model = None
@@ -30,6 +31,8 @@ picking_state = PickingState()
 mouse_down_handler = None
 mouse_move_handler = None
 
+tets_deformation_gradient_p = {}
+positions = {}
 # ----------------------------------------------------------------------------------------------------------------------
 # Helper functions
 def set_up_mouse_handler(args, model, fext):
@@ -111,16 +114,15 @@ def make_sim_path(output_path, solver, args, object_name, experiment, record_fom
         sim_case = "positions_and_constraint_projections_reduced/" + args.position_basis_type + "_" + args.constraint_projection_basis_type
 
     specify_path = ""
+    # add the name of constraint type, followed by "reduced_<num_components>" (if reduced).
     if args.vert_bending_constraint:
         specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
         if args.vert_bending_reduced:
             specify_path = specify_path + "reduced_" + str(args.vert_bending_num_components) + "_"
-
     if args.edge_constraint:
         specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
         if args.edge_spring_reduced:
             specify_path = specify_path + "reduced_" + str(args.edge_spring_num_components) + "_"
-
     if args.tri_strain_constraint:
         specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
         if args.tri_strain_reduced:
@@ -134,7 +136,7 @@ def make_sim_path(output_path, solver, args, object_name, experiment, record_fom
             args.deformation_gradient_constraint_wi) + "_"
         if args.tet_deformation_reduced:
             specify_path = specify_path + "reduced_" + str(args.tet_deformation_num_components) + "_"
-    output_path += "/" + object_name + "/" + experiment + "/" + sim_case + "/" + specify_path + "/"
+    output_path += "/" + object_name + "/" + experiment + "/" + sim_case + "/" + specify_path + "/" + "gravity_active_"+str(args.is_gravity_active) +"/"
     check_dir_exists(output_path)
 
     solver.set_record_path(output_path)
@@ -410,11 +412,11 @@ def set_automated_experiments(object, args):
 
     if object == "bar":
         predefined_experiments_in_order = ["holding_releasing_sides", # 0
-                                           "twisting",      # 1
-                                           "stretching",    # 2
-                                           "squeezing",     # 3
-                                           "poking",        # 4
-                                           "free_falling"]       # -1
+                                           "twisting",                # 1
+                                           "stretching",              # 2
+                                           "squeezing",               # 3
+                                           "poking",                  # 4
+                                           "free_falling"]            # -1
     elif object == "cloth":
         predefined_experiments_in_order = [""] #TODO
     else:
@@ -437,78 +439,46 @@ def bar_automated_callback(args, record_fom_info = False,
     global model, fext, solver
     solver = get_solver_class_from_name(args)
     is_simulating = args.is_simulating
-    output_path = args.output_dir
-    init_positions, init_faces, init_tets = None, None, None
+    output_dir = args.output_dir
 
     callback_experiments = set_automated_experiments(object, args)
-    total_frames = 0
-
     run_holding_releasing_sides = "holding_releasing_sides" in callback_experiments
     run_twisting = "twisting" in callback_experiments
     run_stretching = "stretching" in callback_experiments
-    run_gravitational_fall = "free_falling" in callback_experiments
+    run_falling = "free_falling" in callback_experiments
     run_squeezing = "squeezing" in callback_experiments
     run_poking = "poking" in callback_experiments
 
-    # setting frames for different experiments
+    total_frames=0
+    # setting frames for different experiments (dependent: required to be sat in sequence)
     if run_holding_releasing_sides:
-        run_holding_sides_under_gravity = True
-        frames_between_actions = 40
-        holding_sides_start_frame = total_frames
-        release_left_side_frame = holding_sides_start_frame + frames_between_actions
-        release_right_side_frame = release_left_side_frame + frames_between_actions
-        total_frames += release_right_side_frame + frames_between_actions
+        setfr.set_holding_releasing_sides_frame_counts(object, args.is_gravity_active)
 
     if run_twisting:
-        number_twisting_frames = 40
-        release_picking_after_num_frames = 20  # num frames counted from start of twisting
-        max_theta = 4 * np.pi  # determine how many rotations in the twist
-
-        twisting_start_frame = total_frames
-        release_twisting_start_frame = twisting_start_frame + release_picking_after_num_frames
-        total_frames += number_twisting_frames
+        setfr.set_twisting_frame_counts(object, args.is_gravity_active)
 
     if run_stretching:
-        number_stretching_frames = 20
-        release_picking_after_num_frames = 20
-        stretching_start_frame = total_frames
-        release_stretching_start_frame = stretching_start_frame + release_picking_after_num_frames
-        total_frames += number_stretching_frames
+        setfr.set_stretching_frame_counts(object, args.is_gravity_active)
 
     if run_squeezing:
-        number_squeezing_frames = 20
-        release_picking_after_num_frames = 20
-        squeezing_start_frame = total_frames
-        release_squeezing_start_frame = squeezing_start_frame + release_picking_after_num_frames
-        total_frames += number_squeezing_frames
+        setfr.set_squeezing_frame_counts(object, args.is_gravity_active)
 
     if run_poking:
-        number_poking_points = 2
-        number_frames_per_poke = 10
-        number_frames_rest_per_poke = 10
-        poking_amplitude = 0.1
-        poked_points_count = 0
-        poking_start_frame = total_frames
-        total_frames += number_poking_points * (number_frames_per_poke + number_frames_rest_per_poke)
-        poking_end_frame = total_frames
+        setfr.set_poking_frame_counts(object, args.is_gravity_active)
 
-        poked_points, poking_motion = None, None
+    if run_falling:
+        setfr.set_falling_frame_counts(object, args.is_gravity_active)
 
-    if run_gravitational_fall:
-        number_gravitational_fall_frames = 120
-        gravitational_fall_start_frame = total_frames
-        total_frames += number_gravitational_fall_frames
+    if total_frames > args.max_p_snapshots_num:
+        solver.set_max_recorded_frames(total_frames)
 
     def callback():
-        nonlocal output_path, is_simulating, poked_points, poking_motion, poked_points_count
+        nonlocal output_dir, is_simulating
         psim.TextUnformatted("== Projective Dynamics ==")
         psim.Separator()
         # Frame 0: create mesh and apply initial constraints
         if solver.frame == 0:
-            print("Frame 0: Creating cloth and fixing left/right corners")
-
             V, T, F = read_mesh_file("../data/bar.mesh")
-            init_positions, init_tets, init_faces = V, T, F # TODO : reset positions instead of mpdel later
 
             # params.edit_system_args(args, "Bar")
             # V, T, F, _ = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
@@ -521,43 +491,54 @@ def bar_automated_callback(args, record_fom_info = False,
             psim.Separator()
 
             if record_fom_info:
-                output_path = make_sim_path(output_path, solver, args, object_name, experiment, record_fom_info)
+                output_dir = make_sim_path(output_dir, solver, args, object_name, experiment, record_fom_info)
                 # record parameters for tracking
-                with open(output_path + "/args.txt", "w") as f:
+                with open(output_dir + "/args.txt", "w") as f:
                     for key, value in vars(args).items():
                         f.write(f"{key}: {value}\n")
 
             solver.set_dirty()
 
-        if run_holding_releasing_sides:
-            if solver.frame == holding_sides_start_frame:
-                model.fix_surface_side_vertices(args.positional_constraint_wi, side="left")
-                model.fix_surface_side_vertices(args.positional_constraint_wi, side="right")
+        if run_holding_releasing_sides and solver.frame == setfr.holding_sides_start_frame:
 
-            if solver.frame == release_left_side_frame:
-                print(f"Frame {solver.frame}: Releasing left side")
-                model.release_surface_side_vertices(side="left")
+            solver.recording_path = os.path.join(output_dir,"holding_releasing_sides")
+            solver.record_path_has_changed = True
+            check_dir_exists(solver.recording_path )
+            print(f"Frame {solver.frame}: Start hanging fames")
+            model.fix_surface_side_vertices(args.positional_constraint_wi, side="left")
+            model.fix_surface_side_vertices(args.positional_constraint_wi, side="right")
 
-            if solver.frame == release_right_side_frame:
-                print(f"Frame {solver.frame}: Releasing right side")
-                model.release_surface_side_vertices(side="right")
+        elif run_holding_releasing_sides and solver.frame == setfr.release_left_side_frame:
+            print(f"Frame {solver.frame}: Releasing left side")
+            model.release_surface_side_vertices(side="left")
 
-        elif run_twisting and solver.frame == twisting_start_frame:
-            print(f"Frame {solver.frame}: Start twisting under gravity fames")
+        elif run_holding_releasing_sides and solver.frame == setfr.release_right_side_frame:
+            print(f"Frame {solver.frame}: Releasing right side")
+            model.release_surface_side_vertices(side="right")
+
+        elif run_holding_releasing_sides and solver.frame == setfr.holding_sides_end_frame:
+            if record_fom_info:
+                solver.store_current_snapshots = True
+
+        elif run_twisting and solver.frame == setfr.twisting_start_frame:
+
+            solver.recording_path = os.path.join(output_dir, "twisting")
+            solver.record_path_has_changed = True
+            check_dir_exists(solver.recording_path)
+            print(f"Frame {solver.frame}: Start twisting fames")
 
             V, T, F = read_mesh_file("../data/bar.mesh")
-
             reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
 
             model.fix_surface_side_vertices(args.positional_constraint_wi, side="right")
-
+            solver.reference_frame = solver.frame
             side_verts = model.toggle_pick_surface_side_vertices( side="left", return_surface_verts=True) # pick
 
             motions, axis_yz = create_surface_twist_motions_x(
                 V=V,
                 surface_verts=side_verts,
-                theta_max=-max_theta,  # 180 degrees
-                num_frames=number_twisting_frames,
+                theta_max=-setfr.max_theta,  # 180 degrees
+                num_frames=setfr.number_twisting_frames,
                 axis_center_yz="mean",
                 ease="linear",
                 hold_frames=10
@@ -572,7 +553,7 @@ def bar_automated_callback(args, record_fom_info = False,
                 )
             # solver.set_dirty()
 
-        elif run_twisting and solver.frame == release_twisting_start_frame:
+        elif run_twisting and solver.frame == setfr.release_twisting_start_frame:
             print(f"Frame {solver.frame}: Releasing left side")
             side_verts = model.toggle_pick_surface_side_vertices( side="left", return_surface_verts=True) # pick
 
@@ -580,18 +561,27 @@ def bar_automated_callback(args, record_fom_info = False,
                 model.remove_positional_constraint(vi)
             solver.set_dirty()
 
-        elif run_stretching and solver.frame == stretching_start_frame:
-            print(f"Frame {solver.frame}: Start stretching under gravity fames")
+        elif run_twisting and solver.frame == setfr.twisting_end_frame:
+            if record_fom_info:
+                solver.store_current_snapshots = True
+
+        elif run_stretching and solver.frame == setfr.stretching_start_frame:
+
+            solver.recording_path = os.path.join(output_dir,"stretching")
+            solver.record_path_has_changed = True
+            check_dir_exists(solver.recording_path)
+            print(f"Frame {solver.frame}: Start stretching fames")
 
             V, T, F = read_mesh_file("../data/bar.mesh")
-
             reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
+            solver.reference_frame = solver.frame
+
             model.compute_sides_and_corner_indices()
             right_side_verts = model._side_surface_verts["right"]
             left_side_verts = model._side_surface_verts["left"]
 
             # Generate serise for streatching
-            stretch_motion_x_axis_right = create_xyz_stretch_motion_with_jumps(number_stretching_frames, 0,
+            stretch_motion_x_axis_right = create_xyz_stretch_motion_with_jumps(setfr.number_stretching_frames, 0,
                                                                       1,
                                                                       displacement_xyz=(0.4, 0.0, 0.0))
             stretch_motion_x_axis_left = - stretch_motion_x_axis_right
@@ -609,48 +599,36 @@ def bar_automated_callback(args, record_fom_info = False,
             solver.set_dirty()
             print("Stretching - positional constraint added to right and left sides.")
 
-        elif run_stretching and solver.frame == release_stretching_start_frame:
-            print(f"Frame {solver.frame}: Start stretching under no gravity fames")
+        elif run_stretching and solver.frame == setfr.release_stretching_start_frame:
 
-            V, T, F = read_mesh_file("../data/bar.mesh")
+            print(f"Frame {solver.frame}: Releasing left side")
+            side_verts = model.toggle_pick_surface_side_vertices(side="left", return_surface_verts=True)  # pick
 
-            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
-            model.compute_sides_and_corner_indices()
-            right_side_verts = model._side_surface_verts["right"]
-            left_side_verts = model._side_surface_verts["left"]
-
-            args.is_gravity_active = False
-            # Generate serise for streatching
-            stretch_motion_x_axis_right = create_xyz_stretch_motion_with_jumps(number_stretching_frames, 0,
-                                                                      1,
-                                                                      displacement_xyz=(0.6, 0.0, 0.0))
-            stretch_motion_x_axis_left = - stretch_motion_x_axis_right
-
-            for v in right_side_verts:
-                model.add_positional_constraint(v, args.positional_constraint_wi,
-                                            motion_type="user_defined", frames_series=stretch_motion_x_axis_right, frame_reset=solver.frame)
-                model.picked_vert[v] = True
-
-            for v in left_side_verts:
-                model.add_positional_constraint(v, args.positional_constraint_wi,
-                                            motion_type="user_defined", frames_series=stretch_motion_x_axis_left, frame_reset=solver.frame)
-                model.picked_vert[v] = True
-
+            for vi in side_verts:
+                model.remove_positional_constraint(vi)
             solver.set_dirty()
-            print("Stretching - positional constraint added to right and left sides.")
 
-        elif run_squeezing and solver.frame == squeezing_start_frame:
-            print(f"Frame {solver.frame}: Start squeezing under gravity fames")
+        elif run_stretching and solver.frame == setfr.stretching_end_frame:
+            if record_fom_info:
+                solver.store_current_snapshots = True
+
+        elif run_squeezing and solver.frame == setfr.squeezing_start_frame:
+
+            solver.recording_path = os.path.join(output_dir,"squeezing")
+            solver.record_path_has_changed = True
+            check_dir_exists(solver.recording_path)
+            print(f"Frame {solver.frame}: Start squeezing fames")
 
             V, T, F = read_mesh_file("../data/bar.mesh")
-
             reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
+            solver.reference_frame = solver.frame
+
             model.compute_sides_and_corner_indices()
             right_side_verts = model._side_surface_verts["right"]
             left_side_verts = model._side_surface_verts["left"]
 
             # Generate serise for streatching
-            squeezing_motion_x_axis_right = - create_xyz_stretch_motion_with_jumps(number_squeezing_frames, 0,
+            squeezing_motion_x_axis_right = - create_xyz_stretch_motion_with_jumps(setfr.number_squeezing_frames, 0,
                                                                       1,
                                                                       displacement_xyz=(0.2, 0.0, 0.0))
             squeezing_motion_x_axis_left = - squeezing_motion_x_axis_right
@@ -668,58 +646,82 @@ def bar_automated_callback(args, record_fom_info = False,
             solver.set_dirty()
             print("Squeezing - positional constraint added to right and left sides.")
 
-        elif run_poking and solver.frame == poking_start_frame:
-            poked_points, lables = compute_voronoi_seeds_incremental(model.init_positions, number_poking_points, visualize=False)
+        elif run_squeezing and solver.frame == setfr.squeezing_end_frame:
+            if record_fom_info:
+                solver.store_current_snapshots = True
 
-            poking_motion, _, _ = create_poking_motions_at_given_seeds(model.positions,
-                                                                        poked_points,
+        elif run_poking and solver.frame == setfr.poking_start_frame:
+
+            solver.recording_path = os.path.join(output_dir, "poking")
+            solver.record_path_has_changed = True
+            check_dir_exists(solver.recording_path)
+            print(f"Frame {solver.frame}: Start poking frames")
+
+            V, T, F = read_mesh_file("../data/bar.mesh")
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
+            solver.reference_frame = solver.frame
+
+            setfr.poked_points, setfr.labels = compute_voronoi_seeds_incremental(model.init_positions, setfr.number_poking_points, visualize=False)
+
+            setfr.poking_motion, _, _ = create_poking_motions_at_given_seeds(model.positions,
+                                                                        setfr.poked_points,
                                                                         direction="normal",     # "normal" or "x"/"y"/"z"
                                                                         F=model.faces,              # required if direction="normal"
-                                                                        f_l=number_frames_per_poke, # frames for motion phase
-                                                                        f_j=number_frames_rest_per_poke,  # frames for rest phase
-                                                                        amplitude=poking_amplitude,          # displacement magnitude (same units as V)
+                                                                        f_l=setfr.number_frames_per_poke, # frames for motion phase
+                                                                        f_j=setfr.number_frames_rest_per_poke,  # frames for rest phase
+                                                                        amplitude=setfr.poking_amplitude,          # displacement magnitude (same units as V)
                                                                         repeats=1,              # how many poke cycles per seed (when sequential)
                                                                         mode="sequential",      # "sequential" or "simultaneous"
                                                                         normalize_dir=True,     # normalize direction vectors
                                                                     )
-            model.add_positional_constraint(poked_points[0], args.positional_constraint_wi,
-                                            motion_type="user_defined", frames_series=poking_motion[0], frame_reset=solver.frame)
+            model.add_positional_constraint(setfr.poked_points[0], args.positional_constraint_wi,
+                                            motion_type="user_defined", frames_series=setfr.poking_motion[0], frame_reset=solver.frame)
             print("Poking - positional constraint added to first vertex")
 
-            model.picked_vert[poked_points[0]] = True
+            model.picked_vert[setfr.poked_points[0]] = True
+            setfr.poking_count +=1
 
-        elif (run_poking and poking_end_frame >= solver.frame > poking_start_frame
-                and (solver.frame - poking_start_frame) % (number_frames_per_poke+number_frames_rest_per_poke) == 0) :
+        elif (run_poking and setfr.poking_end_frame > solver.frame > setfr.poking_start_frame
+                and (solver.frame - setfr.poking_start_frame) % (setfr.number_frames_per_poke+setfr.number_frames_rest_per_poke) == 0) :
 
-            lable = (solver.frame - poking_start_frame) // (number_frames_per_poke+number_frames_rest_per_poke)
-            model.remove_positional_constraint(poked_points[lable-1])
+            label = (solver.frame - setfr.poking_start_frame) // (setfr.number_frames_per_poke+setfr.number_frames_rest_per_poke)
+            model.remove_positional_constraint(setfr.poked_points[label-1])
             solver.set_dirty()
 
-            if solver.frame < poking_end_frame:
-                print(f"Poking - positional constraint added to {lable}th vertex")
-                model.add_positional_constraint(poked_points[lable], args.positional_constraint_wi,
-                                                motion_type="user_defined", frames_series=poking_motion[lable],
+            if solver.frame < setfr.poking_end_frame and setfr.poking_count < setfr.number_poking_points:
+                print(f"Poking - positional constraint added to {label+1}th vertex")
+                model.add_positional_constraint(setfr.poked_points[label], args.positional_constraint_wi,
+                                                motion_type="user_defined", frames_series=setfr.poking_motion[label],
                                                 frame_reset=solver.frame)
-                model.picked_vert[poked_points[lable]] = True
-            else:
-                print("End of poking experiment.")
+                model.picked_vert[setfr.poked_points[label]] = True
+                setfr.poking_count += 1
 
-        elif run_gravitational_fall and solver.frame == gravitational_fall_start_frame:
+
+
+        elif run_poking and solver.frame == setfr.poking_end_frame:
+            if record_fom_info:
+                solver.store_current_snapshots = True
+
+        elif run_falling and solver.frame == setfr.gravitational_fall_start_frame:
+
+            solver.recording_path = os.path.join(output_dir,"free_falling")
+            solver.record_path_has_changed = True
+            check_dir_exists(solver.recording_path)
             print(f"Frame {solver.frame}: Starting free fall frames")
 
             V, T, F = read_mesh_file("../data/bar.mesh")
-
-            # params.edit_system_args(args, "Bar")
-            # V, T, F, _ = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
-
+            #
+            # # params.edit_system_args(args, "Bar")
+            # # V, T, F, _ = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
             reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
+            solver.reference_frame = solver.frame
 
-            object_name = "bar"
-            psim.PushItemWidth(200)
-            psim.TextUnformatted("== Projective Dynamics ==")
-            psim.Separator()
+        elif run_falling and solver.frame == setfr.gravitational_fall_end_frame:
+            if record_fom_info:
+                solver.store_current_snapshots = True
 
-        if solver.frame == args.max_p_snapshots_num + 10:
+        if solver.frame == solver.max_p_snapshots_num + 10:
+
             print("Stopping simulation.")
             is_simulating = False
             ps.unshow()
@@ -730,7 +732,7 @@ def bar_automated_callback(args, record_fom_info = False,
 
             pre_draw_handler = PreDrawHandler(
                 lambda: model.positions.shape[0] > 0, args, solver, fext,
-                record_info=record_fom_info, record_path=output_path
+                record_info=record_fom_info, record_path=solver.recording_path
             )
             pre_draw_handler.set_animating(True)
             pre_draw_handler.handle()
@@ -1621,7 +1623,7 @@ def cloth_snapshots(args, record_fom_info = False, params=None,experiment="cloth
             poking_series = create_poke_z_motion_with_jumps(poking_frames_per_point, rest_frames_per_point, poked_points.shape[0], z_range=poking_half_width)
 
             # How many frames to record
-            solver.set_max_p_frames(number_recorded_frames)
+            solver.set_max_recorded_frames(number_recorded_frames)
 
             # Apply any desired constraints
             model.immobilize()

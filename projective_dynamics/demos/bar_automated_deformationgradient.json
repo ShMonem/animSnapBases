@@ -11,7 +11,7 @@
     }
   },
   "visualization_params": {
-    "experiments_labels": [4],
+    "experiments_labels": [1, 2, 3, 4],
     "window_open": true,
     "is_simulating": true,
     "height_shift": 2
@@ -37,7 +37,7 @@
     "edge_spring_constraint": true,
     "tri_strain_constraint": false,
     "tet_strain_constraint": false,
-    "tet_deformation_constraint": true,
+    "tet_deformation_constraint": false,
 
     "is_gravity_active": false,
 

@@ -209,7 +209,7 @@ class PreDrawHandler:
             ps.register_surface_mesh("model", model.positions, model.faces, color=color, edge_width=1.0)
 
             if self.record_info:
-                filename = os.path.join(self.record_path, "frame"+str(self.solver.frame))
+                filename = os.path.join(self.record_path, "frame"+str(self.solver.frame - self.solver.reference_frame))
                 ps.screenshot(filename+".png", transparent_bg=True)
                 igl.write_triangle_mesh(filename+".off", model.positions, model.faces)
 

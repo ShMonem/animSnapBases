@@ -22,6 +22,8 @@ tets_deformation_gradient_p = {}
 positions = {}
 
 
+
+
 def flatten(p: np.ndarray) -> np.ndarray:
     """
     Converts an (N, 3) matrix to a (3N,) vector by stacking rows.
@@ -62,7 +64,10 @@ class animSnapBasesSolver:
         self.project_to_subspace_solver = []
         self.dt = None
         self.frame = 0
+        self.reference_frame = 0  # to reset the count when switching between different call back experiments
         self.args = args
+        self.recording_path = None
+        self.record_path_has_changed = True
 
         # Positions reduction
         self.U = None # animSnap positions basis U
@@ -95,7 +100,7 @@ class animSnapBasesSolver:
 
         self.store_stacked_projections = False
         self.store_positions = False
-        self.record_path = ""
+        self.store_current_snapshots = False
         self.max_p_snapshots_num = args.max_p_snapshots_num
         self.max_q_snapshots_num = args.max_p_snapshots_num
 
@@ -103,14 +108,26 @@ class animSnapBasesSolver:
         self.snapBases_interpolation_list = {"deim_pod", "deim_pod_vectorized", "deim_pca_blocks",
                                              "geom_pca_blocks_with_St", "adv_pca_blocks_with_St_partitioning", "adv_pca_blocks"}
 
-    def set_max_p_frames(self, value:int):
+    def set_max_recorded_frames(self, value:int):
         self.max_p_snapshots_num = value
+        self.max_q_snapshots_num = value
+
+    @staticmethod
+    def reset_positions_and_constraint_projections_snapshots():
+        global verts_bending_p, edge_spring_p, tris_strain_p, tets_strain_p, tets_deformation_gradient_p, positions
+        verts_bending_p = {}
+        edge_spring_p = {}
+        tris_strain_p = {}
+        tets_strain_p = {}
+        tets_deformation_gradient_p = {}
+        positions = {}
+
 
     def set_max_q_frames(self, value: int):
         self.max_q_snapshots_num = value
 
     def set_record_path(self, path: str):
-        self.record_path = path
+        self.recording_path = path
 
     def set_store_p(self, value: bool):
         self.store_stacked_projections = value
@@ -500,12 +517,11 @@ class animSnapBasesSolver:
 
             matrices = {}
             file_name = "assembly_ST"
-            # if self.model.has_positional_constraints :
-            #     matrices["positional" ] = self.model.positional_assembly_ST
 
             if self.model.has_verts_bending_constraints :
                 matrices["verts_bending" ] = self.model.verts_bending_assembly_ST.to_dense().cpu().detach().numpy()
-                np.savez(os.path.join(record_path , "verts_bending_constrained_indices.npz"), indices=self.model.verts_bending_indicies)
+                np.savez(os.path.join(record_path , "verts_bending_constrained_indices.npz"),
+                         indices=self.model.verts_bending_indicies)
 
             if self.model.has_edge_spring_constraints :
                 matrices["edge_spring" ] = self.model.edge_spring_assembly_ST.to_dense().cpu().detach().numpy()
@@ -546,7 +562,9 @@ class animSnapBasesSolver:
 
 
         if store_fom_info:
-            store_assembly_matrices()
+            if self.record_path_has_changed:
+                store_assembly_matrices()
+                self.record_path_has_changed = False
             self.set_store_p(store_fom_info)
 
         # triggers the solver to re-prepare the global matrix and update selection matrices if required
@@ -599,10 +617,13 @@ class animSnapBasesSolver:
 
         if self.store_stacked_projections:
             list[str(self.frame)] = p.to_dense().cpu().detach().numpy()
-            if self.frame == self.max_p_snapshots_num:
-                np.savez(os.path.join(self.record_path, name + ".npz"), **list)
-                self.set_store_p(False)
-                print(f"Frame {self.frame} : FOM snapshots stored to directory", os.path.join(self.record_path, name + ".npz") )
+            if self.frame == self.max_p_snapshots_num or self.store_current_snapshots:
+                np.savez(os.path.join(self.recording_path, name + ".npz"), **list)
+                if self.frame == self.max_p_snapshots_num: self.set_store_p(False)
+                print(f"Frame {self.frame} : FOM snapshots with size{len(list)}, \n... stored to directory", os.path.join(self.recording_path, name + ".npz") )
+                if self.store_current_snapshots:
+                    self.store_current_snapshots = False
+                    self.reset_positions_and_constraint_projections_snapshots()
 
         # update constraints projection term
         # if ST is sparse:
@@ -686,9 +707,7 @@ class animSnapBasesSolver:
 
             for i, c in enumerate(self.model.positional_constraints):
                 self.model.positional_stacked_p[i, :] = c.get_pi(q_t, self.frame)
-            # if self.store_stacked_projections:
-            #     np.savez(os.path.join(self.record_path, "positional_p_" + str(self.frame) + ".npz"),
-            #              self.model.positional_stacked_p)
+
             # update constraints projection term
             return self.model.positional_assembly_ST @ self.model.positional_stacked_p
         return np.zeros_like(unflatten(q_t))
@@ -825,10 +844,13 @@ class animSnapBasesSolver:
 
         if self.store_positions:
             positions[str(self.frame)] = q_next.copy()
-            if self.frame == self.max_q_snapshots_num:
-                np.savez(os.path.join(self.record_path, "positions.npz"), **positions)
-                self.set_store_q(False)
-                print(f"Frame {self.frame} : FOM snapshots stored to directory", os.path.join(self.record_path, "positions.npz") )
+            if self.frame == self.max_q_snapshots_num or self.store_current_snapshots:
+                np.savez(os.path.join(self.recording_path, "positions.npz"), **positions)
+                if self.frame == self.max_q_snapshots_num: self.set_store_q(False)
+                print(f"Frame {self.frame} : FOM snapshots with size{len(positions)} , \n... stored to directory", os.path.join(self.recording_path, "positions.npz") )
+                if self.store_current_snapshots:
+                    self.store_current_snapshots = False
+                    self.reset_positions_and_constraint_projections_snapshots() # reset snapshots dict
 
         print(self.frame)
         self.frame += 1

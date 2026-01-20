@@ -1047,46 +1047,149 @@ class DeformableMesh:
         # self.tets_deformation_gradient_assembly_ST = None
         # self.tets_deformation_gradient_stacked_p = None
 
-    def compute_sides_and_corner_indices(self):
+    # def compute_sides_and_corner_indices(self):
+    #     """
+    #     Compute and cache the vertex indices of corners and side surfaces for each cloth side:
+    #     "left", "right", "top", "bottom".
+    #     """
+    #     threshold_ratio = self.threshold_fixing_ration
+    #     if self.positions is None:
+    #         return
+    #
+    #     if not hasattr(self, "_cloth_corner_indices"):
+    #         self._cloth_corner_indices = {}
+    #
+    #     positions = self.positions[:, :2]  # use only x and y
+    #     x = positions[:, 0]
+    #     y = positions[:, 1]
+    #
+    #     min_x, max_x = x.min(), x.max()
+    #     min_y, max_y = y.min(), y.max()
+    #     width = max_x - min_x
+    #     height = max_y - min_y
+    #
+    #     x_thresh = threshold_ratio * width
+    #     y_thresh = threshold_ratio * height
+    #
+    #     surface_verts = np.unique(self.faces.flatten()) if self.faces is not None else np.arange(len(x))
+    #
+    #     # Compute full surface vertices per side
+    #     self._side_surface_verts = {}
+    #
+    #     for side in ["left", "right", "top", "bottom"]:
+    #         if side == "left":
+    #             mask = x <= min_x + x_thresh
+    #         elif side == "right":
+    #             mask = x >= max_x - x_thresh
+    #         elif side == "bottom":
+    #             mask = y <= min_y + y_thresh
+    #         elif side == "top":
+    #             mask = y >= max_y - y_thresh
+    #
+    #         self._side_surface_verts[side] = np.intersect1d(np.where(mask)[0], surface_verts)
+
+    import numpy as np
+
+    def compute_sides_and_corner_indices(self, plane="xy"):
         """
-        Compute and cache the vertex indices of corners and side surfaces for each cloth side:
-        "left", "right", "top", "bottom".
+        Compute and cache vertex indices of corners and side surfaces in a chosen plane.
+
+        Works for cloth or bar meshes by selecting the plane that defines your 'sides':
+          - plane="xy": left/right by x, bottom/top by y   (typical cloth in XY)
+          - plane="xz": left/right by x, bottom/top by z   (typical bar along X with vertical Z)
+          - plane="yz": left/right by y, bottom/top by z   (less common)
+
+        Side names always map to:
+          - left  : min of first axis in the plane
+          - right : max of first axis in the plane
+          - bottom: min of second axis in the plane
+          - top   : max of second axis in the plane
+
+        Corners are the intersections:
+          - bottom_left, bottom_right, top_left, top_right
+
+        Uses self.threshold_fixing_ration as a relative band thickness.
         """
-        threshold_ratio = self.threshold_fixing_ration
+        thr = float(getattr(self, "threshold_fixing_ration", 0.02))
         if self.positions is None:
             return
 
-        if not hasattr(self, "_cloth_corner_indices"):
-            self._cloth_corner_indices = {}
+        # Ensure caches exist
+        if not hasattr(self, "_side_surface_verts"):
+            self._side_surface_verts = {}
+        if not hasattr(self, "_corner_indices"):
+            self._corner_indices = {}
 
-        positions = self.positions[:, :2]  # use only x and y
-        x = positions[:, 0]
-        y = positions[:, 1]
+        # Choose axes for the plane
+        plane = plane.lower()
+        if plane == "xy":
+            a_idx, b_idx = 0, 1
+        elif plane == "xz":
+            a_idx, b_idx = 0, 2
+        elif plane == "yz":
+            a_idx, b_idx = 1, 2
+        else:
+            raise ValueError("plane must be one of: 'xy', 'xz', 'yz'")
 
-        min_x, max_x = x.min(), x.max()
-        min_y, max_y = y.min(), y.max()
-        width = max_x - min_x
-        height = max_y - min_y
+        a = self.positions[:, a_idx]
+        b = self.positions[:, b_idx]
 
-        x_thresh = threshold_ratio * width
-        y_thresh = threshold_ratio * height
+        a_min, a_max = float(a.min()), float(a.max())
+        b_min, b_max = float(b.min()), float(b.max())
+        a_span = max(a_max - a_min, 1e-12)
+        b_span = max(b_max - b_min, 1e-12)
 
-        surface_verts = np.unique(self.faces.flatten()) if self.faces is not None else np.arange(len(x))
+        a_thresh = thr * a_span
+        b_thresh = thr * b_span
 
-        # Compute full surface vertices per side
+        # "surface_verts": if faces exist, restrict to vertices used by faces; else all
+        if self.faces is not None:
+            surface_verts = np.unique(self.faces.reshape(-1))
+        else:
+            surface_verts = np.arange(self.positions.shape[0], dtype=int)
+
+        # Side masks in the chosen plane
+        masks = {
+            "left": a <= a_min + a_thresh,
+            "right": a >= a_max - a_thresh,
+            "bottom": b <= b_min + b_thresh,
+            "top": b >= b_max - b_thresh,
+        }
+
+        # Side sets (restricted to surface_verts)
         self._side_surface_verts = {}
-
-        for side in ["left", "right", "top", "bottom"]:
-            if side == "left":
-                mask = x <= min_x + x_thresh
-            elif side == "right":
-                mask = x >= max_x - x_thresh
-            elif side == "bottom":
-                mask = y <= min_y + y_thresh
-            elif side == "top":
-                mask = y >= max_y - y_thresh
-
+        for side, mask in masks.items():
             self._side_surface_verts[side] = np.intersect1d(np.where(mask)[0], surface_verts)
+
+        # Corner sets = intersections of side sets
+        bl = np.intersect1d(self._side_surface_verts["bottom"], self._side_surface_verts["left"])
+        br = np.intersect1d(self._side_surface_verts["bottom"], self._side_surface_verts["right"])
+        tl = np.intersect1d(self._side_surface_verts["top"], self._side_surface_verts["left"])
+        tr = np.intersect1d(self._side_surface_verts["top"], self._side_surface_verts["right"])
+
+        # If the threshold band is very thin, intersections can be empty on coarse meshes.
+        # Fallback: pick closest vertex to each geometric corner in the plane.
+        def closest_to_corner(a_target, b_target):
+            # restrict search to surface verts for robustness
+            aa = a[surface_verts]
+            bb = b[surface_verts]
+            d2 = (aa - a_target) ** 2 + (bb - b_target) ** 2
+            return int(surface_verts[np.argmin(d2)])
+
+        if bl.size == 0: bl = np.array([closest_to_corner(a_min, b_min)], dtype=int)
+        if br.size == 0: br = np.array([closest_to_corner(a_max, b_min)], dtype=int)
+        if tl.size == 0: tl = np.array([closest_to_corner(a_min, b_max)], dtype=int)
+        if tr.size == 0: tr = np.array([closest_to_corner(a_max, b_max)], dtype=int)
+
+        self._corner_indices = {
+            "bottom_left": bl,
+            "bottom_right": br,
+            "top_left": tl,
+            "top_right": tr,
+        }
+
+        # (Optional) preserve your old name if other code depends on it
+        # self._cloth_corner_indices = self._corner_indices
 
     def get_fixed_indices(self):
         return self.fixed_flags
@@ -1201,22 +1304,24 @@ class DeformableMesh:
             self.unfix(vi)
 
 
-    def fix_cloth_corners(self, side="left"):
-        if not hasattr(self, "_cloth_corner_indices") or side not in self._cloth_corner_indices:
+    def fix_corners(self,wi, side="bottom_left"):
+        if not hasattr(self, "_corner_indices") or side not in self._corner_indices:
             self.compute_sides_and_corner_indices()
 
-        indices = self._cloth_corner_indices.get(side, [])
+        indices = self._corner_indices.get(side, [])
         for vi in indices:
-            self.fix(vi)
+            self.fix(vi, wi)
+            self.picked_vert[vi] = True
 
-
-    def release_cloth_corners(self, side="left"):
-        if not hasattr(self, "_cloth_corner_indices") or side not in self._cloth_corner_indices:
+    def release_corners(self, side="left"):
+        if not hasattr(self, "bottom_left") or side not in self._corner_indices:
             self.compute_sides_and_corner_indices()
 
-        indices = self._cloth_corner_indices.get(side, [])
+        indices = self._corner_indices.get(side, [])
         for vi in indices:
             self.unfix(vi)
+            self.picked_vert[vi] = False
+
 
     def immobilize(self):
         self.velocities[:] = 0

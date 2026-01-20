@@ -343,8 +343,6 @@ def bar_automated_callback(args, record_fom_info = False,
                 model.picked_vert[callb.poked_points[label]] = True
                 callb.poking_count += 1
 
-
-
         elif callb.run_poking and solver.frame == callb.poking_end_frame:
             if record_fom_info:
                 solver.store_current_snapshots = True
@@ -393,7 +391,7 @@ def bar_automated_callback(args, record_fom_info = False,
             if record_fom_info:
                 solver.store_current_snapshots = True
 
-
+        # End of Experiments -------------------------------------------------------------------------------------------
         if solver.frame == solver.max_p_snapshots_num + 10:
 
             print("Stopping simulation.")
@@ -449,9 +447,7 @@ def cloth_automated_callback(args, record_fom_info = False,
     if callb.total_frames > args.max_p_snapshots_num:
         solver.set_max_recorded_frames(callb.total_frames)
 
-    psim.PushItemWidth(200)
-    psim.TextUnformatted("== Projective Dynamics ==")
-    psim.Separator()
+
 
     def callback():
         nonlocal output_dir, is_simulating
@@ -464,8 +460,11 @@ def cloth_automated_callback(args, record_fom_info = False,
             params.edit_system_args(args, "Cloth")
 
             V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
-            reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
+            reset_simulation_model(V, F, None, should_rescale=True)
             object_name = "cloth"
+            psim.PushItemWidth(200)
+            psim.TextUnformatted("== Projective Dynamics ==")
+            psim.Separator()
 
             if record_fom_info:
                 output_dir = callb.make_sim_path(output_dir, solver, args, object_name, experiment, record_fom_info)
@@ -475,6 +474,193 @@ def cloth_automated_callback(args, record_fom_info = False,
                         f.write(f"{key}: {value}\n")
 
             solver.set_dirty()
+
+        if callb.run_holding_releasing_sides and solver.frame == callb.holding_sides_start_frame:
+
+            solver.recording_path = os.path.join(output_dir,"holding_releasing_sides")
+            solver.record_path_has_changed = True
+            check_dir_exists(solver.recording_path )
+            print(f"Frame {solver.frame}: Start hanging fames")
+            model.fix_surface_side_vertices(args.positional_constraint_wi, side="left")
+            model.fix_surface_side_vertices(args.positional_constraint_wi, side="right")
+
+        elif callb.run_holding_releasing_sides and solver.frame == callb.release_left_side_frame:
+            print(f"Frame {solver.frame}: Releasing left side")
+            model.release_surface_side_vertices(side="left")
+
+        elif callb.run_holding_releasing_sides and solver.frame == callb.release_right_side_frame:
+            print(f"Frame {solver.frame}: Releasing right side")
+            model.release_surface_side_vertices(side="right")
+
+        elif callb.run_holding_releasing_sides and solver.frame == callb.holding_sides_end_frame:
+            if record_fom_info:
+                solver.store_current_snapshots = True
+
+        elif callb.run_pinning and solver.frame == callb.pinning_corners_start_frame:
+            solver.recording_path = os.path.join(output_dir, "pinning")
+            solver.record_path_has_changed = True
+            check_dir_exists(solver.recording_path)
+            print(f"Frame {solver.frame}: Start Pinning fames")
+
+            V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
+            reset_simulation_model(V, F, None, should_rescale=True)
+
+            model.fix_corners(args.positional_constraint_wi, side="top_left")
+            model.fix_corners(args.positional_constraint_wi, side="top_right")
+            model.fix_corners(args.positional_constraint_wi, side="bottom_left")
+            model.fix_corners(args.positional_constraint_wi, side="bottom_right")
+
+        elif callb.run_pinning and solver.frame == callb.release_pinning_left_corner_frame:
+            # model.fix_cloth_corners(side="bottom")
+            print(f"Frame {solver.frame}: Releasing left corner")
+            model.release_corners(side="top_left")
+
+        elif callb.run_pinning and solver.frame == callb.release_pinning_right_corner_frame:
+            # model.fix_cloth_corners(side="bottom")
+            model.release_corners(side="top_right")
+            print(f"Frame {solver.frame}: Releasing left corner")
+
+        elif callb.run_stretching and solver.frame == callb.stretching_start_frame:
+
+            solver.recording_path = os.path.join(output_dir,"stretching")
+            solver.record_path_has_changed = True
+            check_dir_exists(solver.recording_path)
+            print(f"Frame {solver.frame}: Start stretching fames")
+
+            V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
+            reset_simulation_model(V, F, None, should_rescale=True)
+
+            solver.reference_frame = solver.frame
+
+            model.compute_sides_and_corner_indices()
+            right_side_verts = model._side_surface_verts["right"]
+            left_side_verts = model._side_surface_verts["left"]
+
+            # Generate serise for streatching
+            stretch_motion_x_axis_right = callb.create_xyz_stretch_motion_with_jumps(callb.number_stretching_frames, 0,
+                                                                      1,
+                                                                      displacement_xyz=(0.4, 0.0, 0.0))
+            stretch_motion_x_axis_left = - stretch_motion_x_axis_right
+
+            for v in right_side_verts:
+                model.add_positional_constraint(v, args.positional_constraint_wi,
+                                            motion_type="user_defined", frames_series=stretch_motion_x_axis_right, frame_reset=solver.frame)
+                model.picked_vert[v] = True
+
+            for v in left_side_verts:
+                model.add_positional_constraint(v, args.positional_constraint_wi,
+                                            motion_type="user_defined", frames_series=stretch_motion_x_axis_left, frame_reset=solver.frame)
+                model.picked_vert[v] = True
+
+            solver.set_dirty()
+            print("Stretching - positional constraint added to right and left sides.")
+
+        elif callb.run_stretching and solver.frame == callb.release_stretching_start_frame:
+
+            print(f"Frame {solver.frame}: Releasing left side")
+            side_verts = model.toggle_pick_surface_side_vertices(side="left", return_surface_verts=True)  # pick
+
+            for vi in side_verts:
+                model.remove_positional_constraint(vi)
+            solver.set_dirty()
+
+        elif callb.run_stretching and solver.frame == callb.stretching_end_frame:
+            if record_fom_info:
+                solver.store_current_snapshots = True
+
+        elif callb.run_poking and solver.frame == callb.poking_start_frame:
+
+            solver.recording_path = os.path.join(output_dir, "poking")
+            solver.record_path_has_changed = True
+            check_dir_exists(solver.recording_path)
+            print(f"Frame {solver.frame}: Start poking frames")
+
+            V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
+            reset_simulation_model(V, F, None, should_rescale=True)
+
+            solver.reference_frame = solver.frame
+
+            callb.poked_points, callb.labels = callb.compute_voronoi_seeds_incremental(model.init_positions, callb.number_poking_points, visualize=False)
+
+            callb.poking_motion, _, _ = callb.create_poking_motions_at_given_seeds(model.positions,
+                                                                        callb.poked_points,
+                                                                        direction="z",     # "normal" or "x"/"y"/"z"
+                                                                        F=model.faces,              # required if direction="normal"
+                                                                        f_l=callb.number_frames_per_poke, # frames for motion phase
+                                                                        f_j=callb.number_frames_rest_per_poke,  # frames for rest phase
+                                                                        amplitude=callb.poking_amplitude,          # displacement magnitude (same units as V)
+                                                                        repeats=1,              # how many poke cycles per seed (when sequential)
+                                                                        mode="sequential",      # "sequential" or "simultaneous"
+                                                                        normalize_dir=True,     # normalize direction vectors
+                                                                    )
+            model.add_positional_constraint(callb.poked_points[0], args.positional_constraint_wi,
+                                            motion_type="user_defined", frames_series=callb.poking_motion[0], frame_reset=solver.frame)
+            print("Poking - positional constraint added to first vertex")
+
+            model.picked_vert[callb.poked_points[0]] = True
+            callb.poking_count +=1
+
+        elif (callb.run_poking and callb.poking_end_frame > solver.frame > callb.poking_start_frame
+                and (solver.frame - callb.poking_start_frame) % (callb.number_frames_per_poke+callb.number_frames_rest_per_poke) == 0) :
+
+            label = (solver.frame - callb.poking_start_frame) // (callb.number_frames_per_poke+callb.number_frames_rest_per_poke)
+            model.remove_positional_constraint(callb.poked_points[label-1])
+            solver.set_dirty()
+
+            if solver.frame < callb.poking_end_frame and callb.poking_count < callb.number_poking_points:
+                print(f"Poking - positional constraint added to {label+1}th vertex")
+                model.add_positional_constraint(callb.poked_points[label], args.positional_constraint_wi,
+                                                motion_type="user_defined", frames_series=callb.poking_motion[label],
+                                                frame_reset=solver.frame)
+                model.picked_vert[callb.poked_points[label]] = True
+                callb.poking_count += 1
+
+        elif callb.run_poking and solver.frame == callb.poking_end_frame:
+            if record_fom_info:
+                solver.store_current_snapshots = True
+
+
+
+
+
+        # End of Experiments -------------------------------------------------------------------------------------------
+        if solver.frame == solver.max_p_snapshots_num + 10:
+
+            print("Stopping simulation.")
+            is_simulating = False
+            ps.unshow()
+            return
+
+        # Run a single simulation step
+        if model is not None and is_simulating:
+
+            pre_draw_handler = PreDrawHandler(
+                lambda: model.positions.shape[0] > 0, args, solver, fext,
+                record_info=record_fom_info, record_path=solver.recording_path
+            )
+            pre_draw_handler.set_animating(True)
+            pre_draw_handler.handle()
+
+        if model is not None:
+            psim.BulletText(f"Vertices: {model.positions.shape[0]}")
+            psim.BulletText(f"Triangles: {model.faces.shape[0]}")
+            psim.BulletText(f"Edges: {model.count_edges(model.faces)}")
+            # psim.BulletText(f"Tetrahedrons: {model.elements.shape[0]}")
+
+            if model.has_verts_bending_constraints:
+                psim.BulletText(f"Vertices bending constraint: {len(model.verts_bending_constraints)}")
+                psim.BulletText(f"wi: { str(args.vert_bending_constraint_wi) }")
+
+            if model.has_edge_spring_constraints:
+                psim.BulletText(f"Edge pring constraint: {len(model.edge_spring_constraints)}")
+                psim.BulletText(f"wi: { str(args.edge_constraint_wi) }")
+
+            if model.has_tris_strain_constraints:
+                psim.BulletText(f"Triangles strain constraint: {len(model.tris_strain_constraints)}")
+                psim.BulletText(f"wi: { str(args.strain_limit_constraint_wi) }")
+
+        psim.End()
+    return callback
 
 
 def cloth_automated_bend_spring_strain_callback(args, record_fom_info = False, params=None,experiment="cloth_automated_bend_spring_strain"):

@@ -16,7 +16,9 @@ def main(args, record_fom_info = False, case=None, params=None):
     elif case == "cloth_automated_bend_spring_strain_tests":
         callback = demos.calbacks.cloth_test(args, record_fom_info, params)
     elif case == "cloth_automated_bend_spring_strain":
-        callback = demos.calbacks.cloth_automated_bend_spring_strain_callback(args, record_fom_info, params)
+        callback = demos.calbacks.cloth_automated_callback(args, record_fom_info, params)
+
+        # callback = demos.calbacks.cloth_automated_bend_spring_strain_callback(args, record_fom_info, params)
     elif case == "cloth_automated_spring":
         callback = demos.calbacks.cloth_automated_bend_spring_strain_callback(args, record_fom_info, params,
                                                                               experiment="cloth_automated_spring")
@@ -59,7 +61,7 @@ if __name__ == '__main__':
     from config import Config_parameters
 
     param = Config_parameters()
-    example = "bar_automated_deformationgradient"
+    example = "cloth_automated_bend_spring_strain"
 
     param.reset_parameters("demos/"+example+".json")
 

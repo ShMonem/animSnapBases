@@ -11,6 +11,7 @@
     }
   },
   "visualization_params": {
+    "experiments_labels": [0],
     "window_open": true,
     "is_simulating": false,
     "height_shift": 2

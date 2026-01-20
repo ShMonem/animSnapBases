@@ -19,8 +19,8 @@ from Simulators import animSnapBasesSolver
 from utils import check_dir_exists, read_mesh_file, compute_vertex_normals
 from scipy.spatial import cKDTree
 # from scipy.spatial.transform import Rotation as R
-from demos.calback_experiments_frames import *
-import demos.calback_experiments_frames as setfr
+from demos.calback_utils import *
+import demos.calback_utils as callb
 
 # declare global variables
 model = None
@@ -35,13 +35,7 @@ mouse_move_handler = None
 tets_deformation_gradient_p = {}
 positions = {}
 
-# Experiments to run
-run_holding_releasing_sides = False
-run_twisting = False
-run_stretching = False
-run_falling = False
-run_squeezing = False
-run_poking = False
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Helper functions
@@ -107,366 +101,6 @@ def reset_simulation_model(V, F, T, should_rescale=False, params=None, hight=1):
         target=(0.0, 0.0, 0.0),  # Look at the origin (the floor)
         camera_location=(0.0, 0.0, 3.0)  # Camera is 3 units above, looking down
     )
-# ----------------------------------------------------------------------------------------------------------------------
-
-""" Functions to create series of motion for positional constraints"""
-def make_sim_path(output_path, solver, args, object_name, experiment, record_fom_info):
-    check_dir_exists(os.path.join(output_path, object_name))
-
-    sim_case = "FOM"
-
-    if solver.has_reduced_position and not solver.has_reduced_constraint_projections:
-        sim_case = "positions_reduced/" + args.position_basis_type
-    elif solver.has_reduced_constraint_projections and not solver.has_reduced_position:
-        sim_case = "constraint_projections_reduced/" + args.constraint_projection_basis_type
-
-    elif solver.has_reduced_constraint_projections and solver.has_reduced_position:
-        sim_case = "positions_and_constraint_projections_reduced/" + args.position_basis_type + "_" + args.constraint_projection_basis_type
-
-    specify_path = ""
-    # add the name of constraint type, followed by "reduced_<num_components>" (if reduced).
-    if args.vert_bending_constraint:
-        specify_path = specify_path + "verts_bending_wi" + str(args.vert_bending_constraint_wi) + "_"
-        if args.vert_bending_reduced:
-            specify_path = specify_path + "reduced_" + str(args.vert_bending_num_components) + "_"
-    if args.edge_constraint:
-        specify_path = specify_path + "edge_spring_wi" + str(args.edge_constraint_wi) + "_"
-        if args.edge_spring_reduced:
-            specify_path = specify_path + "reduced_" + str(args.edge_spring_num_components) + "_"
-    if args.tri_strain_constraint:
-        specify_path = specify_path + "tris_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
-        if args.tri_strain_reduced:
-            specify_path = specify_path + "reduced_" + str(args.tri_strain_num_components) + "_"
-    if args.tet_strain_constraint:
-        specify_path = specify_path + "tets_strain_wi" + str(args.strain_limit_constraint_wi) + "_"
-        if args.tet_strain_reduced:
-            specify_path = specify_path + "reduced_" + str(args.tet_strain_num_components) + "_"
-    if args.tet_deformation_constraint:
-        specify_path = specify_path + "tets_deformation_gradient_wi" + str(
-            args.deformation_gradient_constraint_wi) + "_"
-        if args.tet_deformation_reduced:
-            specify_path = specify_path + "reduced_" + str(args.tet_deformation_num_components) + "_"
-    output_path += "/" + object_name + "/" + experiment + "/" + sim_case + "/" + specify_path + "/" + "gravity_active_"+str(args.is_gravity_active) +"/"
-    check_dir_exists(output_path)
-
-    solver.set_record_path(output_path)
-    solver.set_store_p(record_fom_info)
-    solver.set_store_q(record_fom_info)
-
-    return output_path
-# ----------------------------------------------------------------------------------------------------------------------
-# Twisting motion
-def make_angle_schedule(num_frames, theta_max, ease="cosine", hold_frames=0):
-    """
-    Returns angles theta(t) from 0 -> theta_max over num_frames, optionally with hold.
-    """
-    t = np.linspace(0.0, 1.0, num_frames)
-
-    if ease == "linear":
-        s = t
-    elif ease == "cosine":
-        # smooth start/end
-        s = 0.5 - 0.5 * np.cos(np.pi * t)
-    elif ease == "smoothstep":
-        s = t * t * (3 - 2 * t)
-    else:
-        raise ValueError(f"Unknown ease: {ease}")
-
-    theta = theta_max * s
-
-    if hold_frames > 0:
-        theta = np.concatenate([theta, np.full(hold_frames, theta_max)])
-
-    return theta
-
-def create_surface_twist_motions_x(V, surface_verts, theta_max, num_frames, axis_center_yz="mean", ease="cosine",
-                                   hold_frames=0, ):
-    """
-    Build per-vertex motion arrays for twisting a surface around x-axis.
-
-    Parameters
-    ----------
-    V : (n,3) ndarray
-        Rest/current vertex positions (reference for motion).
-    surface_verts : list[int]
-        Vertex indices on the chosen surface.
-    theta_max : float
-        Maximum rotation angle in radians (e.g. np.pi/2 for 90 degrees).
-    num_frames : int
-        Frames used to ramp from 0 to theta_max.
-    axis_center_yz : {"mean","median",(y0,z0)}
-        Defines the rotation axis line: x-axis shifted to (y0,z0).
-    ease : {"linear","cosine","smoothstep"}
-        Easing for angle over time.
-    hold_frames : int
-        Extra frames to hold at theta_max.
-
-    Returns
-    -------
-    motions : dict[int, (T,3) ndarray]
-        motions[vi][t] is the displacement to apply at frame t for vertex vi.
-    """
-    surface_verts = list(surface_verts)
-    yz = V[surface_verts, 1:3]
-
-    if isinstance(axis_center_yz, tuple) or isinstance(axis_center_yz, list) or (
-            isinstance(axis_center_yz, np.ndarray) and axis_center_yz.shape == (2,)):
-        y0, z0 = float(axis_center_yz[0]), float(axis_center_yz[1])
-    else:
-        if axis_center_yz == "mean":
-            y0, z0 = yz.mean(axis=0)
-        elif axis_center_yz == "median":
-            y0, z0 = np.median(yz, axis=0)
-        else:
-            raise ValueError("axis_center_yz must be 'mean', 'median', or (y0,z0)")
-
-    theta = make_angle_schedule(num_frames, theta_max, ease=ease, hold_frames=hold_frames)
-    T = len(theta)
-
-    c = np.cos(theta)  # (T,)
-    s = np.sin(theta)  # (T,)
-
-    motions = {}
-    for vi in surface_verts:
-        y, z = V[vi, 1], V[vi, 2]
-        dy, dz = y - y0, z - z0
-
-        # Rotate (dy,dz) by theta(t) in yz plane
-        y_rot = y0 + c * dy - s * dz
-        z_rot = z0 + s * dy + c * dz
-
-        m = np.zeros((T, 3), dtype=float)
-        m[:, 1] = y_rot - y
-        m[:, 2] = z_rot - z
-        motions[vi] = m
-
-    return motions, (y0, z0)
-
-# Stretch or squeez motion
-def create_xyz_stretch_motion_with_jumps(f_l, f_j, k, displacement_xyz=(1.0, 0.0, 0.0)):
-        """
-        Generate a multi-axis motion that repeats k times:
-          - motion phase: linearly interpolate from 0 to target displacement and back over f_l frames
-          - pause phase: hold at rest (zeros) for f_j frames
-
-        :param f_l: Frames per motion cycle (excluding jump)
-        :param f_j: Frames per pause (jump)
-        :param k: Number of motion+pause cycles
-        :param displacement_xyz: (dx, dy, dz) tuple of peak displacement along each axis
-        :return: (total_frames, 3) array of displacement per frame
-        """
-        dx, dy, dz = displacement_xyz
-        motion = []
-
-        for _ in range(k):
-            # -- Motion phase: 0 -> displacement -> 0
-            half = f_l // 2
-            phase1 = np.linspace(0, 1, half, endpoint=False)
-            phase2 = np.linspace(1, 0, f_l - half)
-
-            motion_phase = np.concatenate([phase1, phase2])[:, None]  # shape (f_l, 1)
-            disp_phase = motion_phase * np.array([[dx, dy, dz]])  # broadcast to (f_l, 3)
-
-            # -- Pause phase: hold at zero
-            pause_phase = np.zeros((f_j, 3))
-
-            # -- Append both
-            motion.append(disp_phase)
-            motion.append(pause_phase)
-
-        motion_array = np.concatenate(motion, axis=0)  # shape: (k * (f_l + f_j), 3)
-        return motion_array
-
-# Poking in piked direction (vert normal, x, y,z) motion, at given seeds
-def compute_voronoi_seeds_incremental(positions, k, start_idx=None, visualize=True, title="Voronoi Partitioning (Euclidean Approximation)"):
-    """
-    Select k Voronoi seeds on a mesh using incremental farthest-point sampling.
-
-    Parameters:
-        positions: (n, 3) numpy array of vertex positions
-        k: int, number of seeds to return
-        start_idx: optional int, index of first seed (default = closest to centroid)
-
-    Returns:
-        seeds: list of k vertex indices
-    """
-    n = positions.shape[0]
-
-    # Start from the closest point to the centroid if not given
-    if start_idx is None:
-        center = positions.mean(axis=0)
-        start_idx = np.argmin(np.linalg.norm(positions - center, axis=1))
-
-    seeds = [start_idx]
-    dists = np.linalg.norm(positions - positions[start_idx], axis=1)
-
-    for _ in range(1, k):
-        # Find the point with maximum distance to the nearest seed
-        min_dists = dists
-        next_idx = np.argmax(min_dists)
-        seeds.append(next_idx)
-
-        # Update minimum distances to the new seed
-        new_dists = np.linalg.norm(positions - positions[next_idx], axis=1)
-        dists = np.minimum(dists, new_dists)
-
-    # Assign each vertex to the nearest seed
-    tree = cKDTree(positions[seeds])
-    labels = tree.query(positions)[1]  # nearest seed index
-    if visualize:
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.scatter(positions[:, 0], positions[:, 1], positions[:, 2], c=labels, cmap='tab20', s=5)
-        ax.scatter(positions[seeds, 0], positions[seeds, 1], positions[seeds, 2], c='black', s=30, label="Seeds")
-        ax.set_title(title)
-        ax.legend()
-        plt.show()
-
-    return np.array(seeds), labels
-
-def create_poking_motions_at_given_seeds(
-    V,
-    seeds,
-    direction="normal",     # "normal" or "x"/"y"/"z"
-    F=None,                 # required if direction="normal"
-    f_l=40,                 # frames for motion phase
-    f_j=20,                 # frames for rest phase
-    amplitude=1.0,          # displacement magnitude (same units as V)
-    repeats=1,              # how many poke cycles per seed (when sequential)
-    mode="sequential",      # "sequential" or "simultaneous"
-    normalize_dir=True,     # normalize direction vectors
-):
-    def create_poke_wave_with_rest(f_l, f_j, z_range=1.0):
-        """
-        One poke cycle:
-          motion phase length f_l: 0 -> -A -> +A -> -A -> 0 (piecewise linear)
-          rest phase length f_j: zeros
-        Returns: (f_l + f_j,) array
-        """
-        quarter = f_l // 4
-        A = float(z_range)
-        z_values = np.concatenate([
-            np.linspace(0, -A, quarter, endpoint=False),
-            np.linspace(-A, 0, quarter, endpoint=False),
-            np.linspace(0, +A, quarter, endpoint=False),
-            np.linspace(+A, 0, f_l - 3 * quarter)
-        ])
-        pause = np.zeros(f_j, dtype=float)
-        return np.concatenate([z_values, pause])
-    """
-    Returns:
-        motions: dict[int, (T,3) ndarray]  # per seed vertex
-        T: total frames
-        dirs: (len(seeds),3) array of direction vectors used (in vertex order)
-    """
-    seeds = list(map(int, seeds))
-    n_seeds = len(seeds)
-
-    # --- choose direction vectors for each seed ---
-    if direction in ("x", "y", "z"):
-        axis = {"x": 0, "y": 1, "z": 2}[direction]
-        d = np.zeros(3, dtype=float)
-        d[axis] = 1.0
-        dirs = np.repeat(d[None, :], n_seeds, axis=0)
-    elif direction == "normal":
-        if F is None:
-            raise ValueError("F (faces) must be provided when direction='normal'")
-        VN = compute_vertex_normals(V, F)
-        dirs = VN[seeds].copy()
-    else:
-        raise ValueError("direction must be one of: 'normal', 'x', 'y', 'z'")
-
-    if normalize_dir:
-        norms = np.linalg.norm(dirs, axis=1)
-        nz = norms > 1e-12
-        dirs[nz] /= norms[nz][:, None]
-
-    # --- build the base wave ---
-    single_cycle = create_poke_wave_with_rest(f_l=f_l, f_j=f_j, z_range=amplitude)
-
-    if mode == "simultaneous":
-        # everyone uses same timeline, repeated 'repeats' times
-        wave = np.tile(single_cycle, repeats)
-        T = len(wave)
-
-        motions = {}
-        for si, vi in enumerate(seeds):
-            m = wave[:, None] * dirs[si][None, :]  # (T,1)*(1,3) -> (T,3)
-            motions[vi] = m
-        return motions, T, dirs
-
-    elif mode == "sequential":
-        # seed0 cycle(s), then seed1 cycle(s), ...
-        wave_per_seed = np.tile(single_cycle, repeats)
-        L = len(wave_per_seed)
-        # T = n_seeds * L
-
-        motions = {vi: np.zeros((L, 3), dtype=float) for vi in range(len(seeds))}
-
-        for s_idx, vi in enumerate(seeds):
-            # t0 = s_idx * L
-            # t1 = t0 + L
-            # motions[vi][t0:t1, :] = wave_per_seed[:, None] * dirs[s_idx][None, :]
-            motions[s_idx]= wave_per_seed[:, None] * dirs[s_idx][None, :]
-
-        return motions, L, dirs
-
-    else:
-        raise ValueError("mode must be 'sequential' or 'simultaneous'")
-
-# ----------------------------------------------------------------------------------------------------------------------
-# Set which callback experiments to run according to args
-def set_automated_experiments(object, args):
-    global run_holding_releasing_sides, run_twisting, run_stretching, run_squeezing, run_poking, run_falling
-    callback_experiments = []
-    predefined_experiments_labels = args.experiments_labels # list of numbers
-
-    if object == "bar":
-        predefined_experiments_in_order = ["holding_releasing_sides", # 0
-                                           "twisting",                # 1
-                                           "stretching",              # 2
-                                           "squeezing",               # 3
-                                           "poking",                  # 4
-                                           "free_falling"]            # -1
-    elif object == "cloth":
-        predefined_experiments_in_order = [""] #TODO
-    else:
-        raise ValueError(f"Object {object} has unknown automated experiments yet!")
-
-    for label in predefined_experiments_labels:
-        print(f"Adding {predefined_experiments_in_order[label]} to automated experiments.")
-        callback_experiments.append(predefined_experiments_in_order[label])
-
-    run_holding_releasing_sides = "holding_releasing_sides" in callback_experiments
-    run_twisting = "twisting" in callback_experiments
-    run_stretching = "stretching" in callback_experiments
-    run_falling = "free_falling" in callback_experiments
-    run_squeezing = "squeezing" in callback_experiments
-    run_poking = "poking" in callback_experiments
-
-    # setting frames for different experiments (dependent: required to be sat in sequence)
-    if run_holding_releasing_sides:
-        setfr.set_holding_releasing_sides_frame_counts(object, args.is_gravity_active)
-
-    if run_twisting:
-        setfr.set_twisting_frame_counts(object, args.is_gravity_active)
-
-    if run_stretching:
-        setfr.set_stretching_frame_counts(object, args.is_gravity_active)
-
-    if run_squeezing:
-        setfr.set_squeezing_frame_counts(object, args.is_gravity_active)
-
-    if run_poking:
-        setfr.set_poking_frame_counts(object, args.is_gravity_active)
-
-    if run_falling:
-        setfr.set_falling_frame_counts(object, args.is_gravity_active)
-
-    if setfr.total_frames > args.max_p_snapshots_num:
-        solver.set_max_recorded_frames(setfr.total_frames)
-
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Example callbacks called in main.py
@@ -481,7 +115,9 @@ def bar_automated_callback(args, record_fom_info = False,
     is_simulating = args.is_simulating
     output_dir = args.output_dir
 
-    set_automated_experiments(object, args)
+    callb.set_automated_experiments(object, args)
+    if callb.total_frames > args.max_p_snapshots_num:
+        solver.set_max_recorded_frames(callb.total_frames)
 
     def callback():
         nonlocal output_dir, is_simulating
@@ -502,7 +138,7 @@ def bar_automated_callback(args, record_fom_info = False,
             psim.Separator()
 
             if record_fom_info:
-                output_dir = make_sim_path(output_dir, solver, args, object_name, experiment, record_fom_info)
+                output_dir = callb.make_sim_path(output_dir, solver, args, object_name, experiment, record_fom_info)
                 # record parameters for tracking
                 with open(output_dir + "/args.txt", "w") as f:
                     for key, value in vars(args).items():
@@ -510,7 +146,7 @@ def bar_automated_callback(args, record_fom_info = False,
 
             solver.set_dirty()
 
-        if run_holding_releasing_sides and solver.frame == setfr.holding_sides_start_frame:
+        if callb.run_holding_releasing_sides and solver.frame == callb.holding_sides_start_frame:
 
             solver.recording_path = os.path.join(output_dir,"holding_releasing_sides")
             solver.record_path_has_changed = True
@@ -519,19 +155,19 @@ def bar_automated_callback(args, record_fom_info = False,
             model.fix_surface_side_vertices(args.positional_constraint_wi, side="left")
             model.fix_surface_side_vertices(args.positional_constraint_wi, side="right")
 
-        elif run_holding_releasing_sides and solver.frame == setfr.release_left_side_frame:
+        elif callb.run_holding_releasing_sides and solver.frame == callb.release_left_side_frame:
             print(f"Frame {solver.frame}: Releasing left side")
             model.release_surface_side_vertices(side="left")
 
-        elif run_holding_releasing_sides and solver.frame == setfr.release_right_side_frame:
+        elif callb.run_holding_releasing_sides and solver.frame == callb.release_right_side_frame:
             print(f"Frame {solver.frame}: Releasing right side")
             model.release_surface_side_vertices(side="right")
 
-        elif run_holding_releasing_sides and solver.frame == setfr.holding_sides_end_frame:
+        elif callb.run_holding_releasing_sides and solver.frame == callb.holding_sides_end_frame:
             if record_fom_info:
                 solver.store_current_snapshots = True
 
-        elif run_twisting and solver.frame == setfr.twisting_start_frame:
+        elif callb.run_twisting and solver.frame == callb.twisting_start_frame:
 
             solver.recording_path = os.path.join(output_dir, "twisting")
             solver.record_path_has_changed = True
@@ -545,12 +181,12 @@ def bar_automated_callback(args, record_fom_info = False,
             solver.reference_frame = solver.frame
             side_verts = model.toggle_pick_surface_side_vertices( side="left", return_surface_verts=True) # pick
 
-            motions, axis_yz = create_surface_twist_motions_x(
+            motions, axis_yz = callb.create_surface_twist_motions(
                 V=V,
                 surface_verts=side_verts,
-                theta_max=-setfr.max_theta,  # 180 degrees
-                num_frames=setfr.number_twisting_frames,
-                axis_center_yz="mean",
+                theta_max=-callb.max_theta,  # 180 degrees
+                num_frames=callb.number_twisting_frames,
+                axis="x",
                 ease="linear",
                 hold_frames=10
             )
@@ -564,7 +200,7 @@ def bar_automated_callback(args, record_fom_info = False,
                 )
             # solver.set_dirty()
 
-        elif run_twisting and solver.frame == setfr.release_twisting_start_frame:
+        elif callb.run_twisting and solver.frame == callb.release_twisting_start_frame:
             print(f"Frame {solver.frame}: Releasing left side")
             side_verts = model.toggle_pick_surface_side_vertices( side="left", return_surface_verts=True) # pick
 
@@ -572,11 +208,11 @@ def bar_automated_callback(args, record_fom_info = False,
                 model.remove_positional_constraint(vi)
             solver.set_dirty()
 
-        elif run_twisting and solver.frame == setfr.twisting_end_frame:
+        elif callb.run_twisting and solver.frame == callb.twisting_end_frame:
             if record_fom_info:
                 solver.store_current_snapshots = True
 
-        elif run_stretching and solver.frame == setfr.stretching_start_frame:
+        elif callb.run_stretching and solver.frame == callb.stretching_start_frame:
 
             solver.recording_path = os.path.join(output_dir,"stretching")
             solver.record_path_has_changed = True
@@ -592,7 +228,7 @@ def bar_automated_callback(args, record_fom_info = False,
             left_side_verts = model._side_surface_verts["left"]
 
             # Generate serise for streatching
-            stretch_motion_x_axis_right = create_xyz_stretch_motion_with_jumps(setfr.number_stretching_frames, 0,
+            stretch_motion_x_axis_right = callb.create_xyz_stretch_motion_with_jumps(callb.number_stretching_frames, 0,
                                                                       1,
                                                                       displacement_xyz=(0.4, 0.0, 0.0))
             stretch_motion_x_axis_left = - stretch_motion_x_axis_right
@@ -610,7 +246,7 @@ def bar_automated_callback(args, record_fom_info = False,
             solver.set_dirty()
             print("Stretching - positional constraint added to right and left sides.")
 
-        elif run_stretching and solver.frame == setfr.release_stretching_start_frame:
+        elif callb.run_stretching and solver.frame == callb.release_stretching_start_frame:
 
             print(f"Frame {solver.frame}: Releasing left side")
             side_verts = model.toggle_pick_surface_side_vertices(side="left", return_surface_verts=True)  # pick
@@ -619,11 +255,11 @@ def bar_automated_callback(args, record_fom_info = False,
                 model.remove_positional_constraint(vi)
             solver.set_dirty()
 
-        elif run_stretching and solver.frame == setfr.stretching_end_frame:
+        elif callb.run_stretching and solver.frame == callb.stretching_end_frame:
             if record_fom_info:
                 solver.store_current_snapshots = True
 
-        elif run_squeezing and solver.frame == setfr.squeezing_start_frame:
+        elif callb.run_squeezing and solver.frame == callb.squeezing_start_frame:
 
             solver.recording_path = os.path.join(output_dir,"squeezing")
             solver.record_path_has_changed = True
@@ -639,7 +275,7 @@ def bar_automated_callback(args, record_fom_info = False,
             left_side_verts = model._side_surface_verts["left"]
 
             # Generate serise for streatching
-            squeezing_motion_x_axis_right = - create_xyz_stretch_motion_with_jumps(setfr.number_squeezing_frames, 0,
+            squeezing_motion_x_axis_right = - callb.create_xyz_stretch_motion_with_jumps(callb.number_squeezing_frames, 0,
                                                                       1,
                                                                       displacement_xyz=(0.2, 0.0, 0.0))
             squeezing_motion_x_axis_left = - squeezing_motion_x_axis_right
@@ -657,11 +293,11 @@ def bar_automated_callback(args, record_fom_info = False,
             solver.set_dirty()
             print("Squeezing - positional constraint added to right and left sides.")
 
-        elif run_squeezing and solver.frame == setfr.squeezing_end_frame:
+        elif callb.run_squeezing and solver.frame == callb.squeezing_end_frame:
             if record_fom_info:
                 solver.store_current_snapshots = True
 
-        elif run_poking and solver.frame == setfr.poking_start_frame:
+        elif callb.run_poking and solver.frame == callb.poking_start_frame:
 
             solver.recording_path = os.path.join(output_dir, "poking")
             solver.record_path_has_changed = True
@@ -672,48 +308,48 @@ def bar_automated_callback(args, record_fom_info = False,
             reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
             solver.reference_frame = solver.frame
 
-            setfr.poked_points, setfr.labels = compute_voronoi_seeds_incremental(model.init_positions, setfr.number_poking_points, visualize=False)
+            callb.poked_points, callb.labels = callb.compute_voronoi_seeds_incremental(model.init_positions, callb.number_poking_points, visualize=False)
 
-            setfr.poking_motion, _, _ = create_poking_motions_at_given_seeds(model.positions,
-                                                                        setfr.poked_points,
+            callb.poking_motion, _, _ = callb.create_poking_motions_at_given_seeds(model.positions,
+                                                                        callb.poked_points,
                                                                         direction="normal",     # "normal" or "x"/"y"/"z"
                                                                         F=model.faces,              # required if direction="normal"
-                                                                        f_l=setfr.number_frames_per_poke, # frames for motion phase
-                                                                        f_j=setfr.number_frames_rest_per_poke,  # frames for rest phase
-                                                                        amplitude=setfr.poking_amplitude,          # displacement magnitude (same units as V)
+                                                                        f_l=callb.number_frames_per_poke, # frames for motion phase
+                                                                        f_j=callb.number_frames_rest_per_poke,  # frames for rest phase
+                                                                        amplitude=callb.poking_amplitude,          # displacement magnitude (same units as V)
                                                                         repeats=1,              # how many poke cycles per seed (when sequential)
                                                                         mode="sequential",      # "sequential" or "simultaneous"
                                                                         normalize_dir=True,     # normalize direction vectors
                                                                     )
-            model.add_positional_constraint(setfr.poked_points[0], args.positional_constraint_wi,
-                                            motion_type="user_defined", frames_series=setfr.poking_motion[0], frame_reset=solver.frame)
+            model.add_positional_constraint(callb.poked_points[0], args.positional_constraint_wi,
+                                            motion_type="user_defined", frames_series=callb.poking_motion[0], frame_reset=solver.frame)
             print("Poking - positional constraint added to first vertex")
 
-            model.picked_vert[setfr.poked_points[0]] = True
-            setfr.poking_count +=1
+            model.picked_vert[callb.poked_points[0]] = True
+            callb.poking_count +=1
 
-        elif (run_poking and setfr.poking_end_frame > solver.frame > setfr.poking_start_frame
-                and (solver.frame - setfr.poking_start_frame) % (setfr.number_frames_per_poke+setfr.number_frames_rest_per_poke) == 0) :
+        elif (callb.run_poking and callb.poking_end_frame > solver.frame > callb.poking_start_frame
+                and (solver.frame - callb.poking_start_frame) % (callb.number_frames_per_poke+callb.number_frames_rest_per_poke) == 0) :
 
-            label = (solver.frame - setfr.poking_start_frame) // (setfr.number_frames_per_poke+setfr.number_frames_rest_per_poke)
-            model.remove_positional_constraint(setfr.poked_points[label-1])
+            label = (solver.frame - callb.poking_start_frame) // (callb.number_frames_per_poke+callb.number_frames_rest_per_poke)
+            model.remove_positional_constraint(callb.poked_points[label-1])
             solver.set_dirty()
 
-            if solver.frame < setfr.poking_end_frame and setfr.poking_count < setfr.number_poking_points:
+            if solver.frame < callb.poking_end_frame and callb.poking_count < callb.number_poking_points:
                 print(f"Poking - positional constraint added to {label+1}th vertex")
-                model.add_positional_constraint(setfr.poked_points[label], args.positional_constraint_wi,
-                                                motion_type="user_defined", frames_series=setfr.poking_motion[label],
+                model.add_positional_constraint(callb.poked_points[label], args.positional_constraint_wi,
+                                                motion_type="user_defined", frames_series=callb.poking_motion[label],
                                                 frame_reset=solver.frame)
-                model.picked_vert[setfr.poked_points[label]] = True
-                setfr.poking_count += 1
+                model.picked_vert[callb.poked_points[label]] = True
+                callb.poking_count += 1
 
 
 
-        elif run_poking and solver.frame == setfr.poking_end_frame:
+        elif callb.run_poking and solver.frame == callb.poking_end_frame:
             if record_fom_info:
                 solver.store_current_snapshots = True
 
-        elif run_falling and solver.frame == setfr.gravitational_fall_start_frame:
+        elif callb.run_falling and solver.frame == callb.gravitational_fall_start_frame:
 
             solver.recording_path = os.path.join(output_dir,"free_falling")
             solver.record_path_has_changed = True
@@ -727,9 +363,36 @@ def bar_automated_callback(args, record_fom_info = False,
             reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
             solver.reference_frame = solver.frame
 
-        elif run_falling and solver.frame == setfr.gravitational_fall_end_frame:
+        elif callb.run_falling and solver.frame == callb.gravitational_fall_end_frame:
             if record_fom_info:
                 solver.store_current_snapshots = True
+
+        elif callb.run_rotating and solver.frame == callb.rotating_start_frame:
+
+            solver.recording_path = os.path.join(output_dir, "rotating")
+            solver.record_path_has_changed = True
+            check_dir_exists(solver.recording_path)
+            print(f"Frame {solver.frame}: Starting rotating frames")
+
+            V, T, F = read_mesh_file("../data/bar.mesh")
+            #
+            # # params.edit_system_args(args, "Bar")
+            # # V, T, F, _ = get_simple_bar_model(args.bar_width, args.bar_height, args.bar_depth)
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
+            solver.reference_frame = solver.frame
+
+            callb.create_full_rotating_motion(V, callb.number_rotating_frames)
+
+        elif callb.run_rotating and callb.rotating_end_frame > solver.frame > callb.rotating_start_frame:
+            f = solver.frame - solver.reference_frame
+            model.positions[:] = callb.rotating_positions_series[f]
+
+        elif callb.run_rotating and solver.frame == callb.rotating_end_frame:
+            print(f"Frame {solver.frame}: Ending rotating frames")
+
+            if record_fom_info:
+                solver.store_current_snapshots = True
+
 
         if solver.frame == solver.max_p_snapshots_num + 10:
 
@@ -782,12 +445,36 @@ def cloth_automated_callback(args, record_fom_info = False,
     is_simulating = args.is_simulating
     output_dir = args.output_dir
 
-    set_automated_experiments(object, args)
+    callb.set_automated_experiments(object, args)
+    if callb.total_frames > args.max_p_snapshots_num:
+        solver.set_max_recorded_frames(callb.total_frames)
+
     psim.PushItemWidth(200)
     psim.TextUnformatted("== Projective Dynamics ==")
     psim.Separator()
 
+    def callback():
+        nonlocal output_dir, is_simulating
+        psim.TextUnformatted("== Projective Dynamics ==")
+        psim.Separator()
+        # Frame 0: create mesh and apply initial constraints
+        if solver.frame == 0:
+            print(f"Frame {solver.frame}: Creating cloth and fixing left/right corners")
 
+            params.edit_system_args(args, "Cloth")
+
+            V, F = get_simple_cloth_model(args.cloth_width, args.cloth_height)
+            reset_simulation_model(V, F, np.empty((0, 3)), should_rescale=True)
+            object_name = "cloth"
+
+            if record_fom_info:
+                output_dir = callb.make_sim_path(output_dir, solver, args, object_name, experiment, record_fom_info)
+                # record parameters for tracking
+                with open(output_dir + "/args.txt", "w") as f:
+                    for key, value in vars(args).items():
+                        f.write(f"{key}: {value}\n")
+
+            solver.set_dirty()
 
 
 def cloth_automated_bend_spring_strain_callback(args, record_fom_info = False, params=None,experiment="cloth_automated_bend_spring_strain"):

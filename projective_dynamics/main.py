@@ -16,7 +16,10 @@ def main(args, record_fom_info = False, case=None, params=None):
     elif case == "cloth_automated_bend_spring_strain_tests":
         callback = demos.calbacks.cloth_test(args, record_fom_info, params)
     elif case == "cloth_automated_bend_spring_strain":
-        callback = demos.calbacks.cloth_automated_callback(args, record_fom_info, params)
+
+        callback = demos.calbacks.automated_callback(args, record_fom_info,
+                                                     object_name = "cloth", object_mesh_file = "../data/cloth.obj",
+                                                     tetrahedralized=False, experiment=case)
 
         # callback = demos.calbacks.cloth_automated_bend_spring_strain_callback(args, record_fom_info, params)
     elif case == "cloth_automated_spring":
@@ -27,8 +30,11 @@ def main(args, record_fom_info = False, case=None, params=None):
     elif case == "cloth_automated_bend":
         callback = demos.calbacks.cloth_automated_bend_callback(args, record_fom_info, params)
     elif case == "bar_automated_deformationgradient":
-        callback = demos.calbacks.bar_automated_callback(args, record_fom_info, params,
-                                                         experiment = "automated_deformationgradient")
+        #     callback = demos.calbacks.bar_automated_callback(args, record_fom_info, params,
+        #                                                      experiment = "automated_deformationgradient")
+        callback = demos.calbacks.automated_callback(args, record_fom_info,
+                                                     object_name="bar", object_mesh_file="../data/bar.mesh",
+                                                 tetrahedralized=True, experiment=case)
 
     else:
         callback = None
@@ -61,7 +67,7 @@ if __name__ == '__main__':
     from config import Config_parameters
 
     param = Config_parameters()
-    example = "cloth_automated_bend_spring_strain"
+    example = "bar_automated_deformationgradient"
 
     param.reset_parameters("demos/"+example+".json")
 

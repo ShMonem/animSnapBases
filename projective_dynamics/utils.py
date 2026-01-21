@@ -237,3 +237,19 @@ def compute_vertex_normals(V, F):
     v_normals[nonzero] /= norms[nonzero][:, None]
 
     return v_normals
+
+def read_obj(filename):
+    vertices = []
+    faces = []
+    tetrahedrons = []
+    with open(filename, 'r') as file:
+        for line in file:
+            parts = line.split()
+            if not parts:
+                continue
+            if parts[0] == 'v':
+                vertices.append(list(map(float, parts[1:])))
+            elif parts[0] == 'f':
+                # Assumes that the OBJ file uses 1-based index
+                faces.append([int(p.split('/')[0]) - 1 for p in parts[1:]])
+    return np.array(vertices), np.array(faces)

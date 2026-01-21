@@ -10,6 +10,7 @@ from igl import edges, boundary_facets, barycenter, winding_number, copyleft
 from igl.copyleft import tetgen
 from numpy.linalg import svd, det, inv
 from scipy.sparse import lil_matrix, save_npz
+from torch.ao.nn.quantized.functional import threshold
 
 from utils import delete_matching_column
 from dataclasses import dataclass
@@ -1090,7 +1091,7 @@ class DeformableMesh:
 
     import numpy as np
 
-    def compute_sides_and_corner_indices(self, plane="xy"):
+    def compute_sides_and_corner_indices(self, plane="xy", threshold=0.02):
         """
         Compute and cache vertex indices of corners and side surfaces in a chosen plane.
 
@@ -1110,7 +1111,7 @@ class DeformableMesh:
 
         Uses self.threshold_fixing_ration as a relative band thickness.
         """
-        thr = float(getattr(self, "threshold_fixing_ration", 0.02))
+        thr = float(getattr(self, "threshold_fixing_ration", threshold))
         if self.positions is None:
             return
 
@@ -1241,7 +1242,7 @@ class DeformableMesh:
             if (side == "left" and V[i, axis] < threshold) or (side == "right" and V[i, axis] > threshold):
                 self.fix(i)
 
-    def fix_surface_side_vertices(self, wi, side="left", fix_it = True, return_target=False):
+    def fix_surface_side_vertices(self, wi, side="left", fix_it = True, return_target=False, threshold=0.02):
         """
         Fixes the surface vertices on the specified side of the cloth: "left", "right", "top", "bottom".
         """
@@ -1249,7 +1250,7 @@ class DeformableMesh:
             return
 
         if not hasattr(self, "_side_surface_verts") or side not in self._side_surface_verts:
-            self.compute_sides_and_corner_indices()
+            self.compute_sides_and_corner_indices(threshold=threshold)
 
         surface_targets = self._side_surface_verts.get(side, [])
         if fix_it:
@@ -1261,14 +1262,14 @@ class DeformableMesh:
         else:
             pass
 
-    def toggle_pick_surface_side_vertices(self, side="left", return_surface_verts=False):
+    def toggle_pick_surface_side_vertices(self, side="left", return_surface_verts=False, threshold=0.02):
         """
         Returns list of vertex indices on the chosen side surface,
         and marks them as picked for visualization.
         """
         # Ensure sides are computed
         if not hasattr(self, "_side_surface_verts") or side not in getattr(self, "_side_surface_verts", {}):
-            self.compute_sides_and_corner_indices()
+            self.compute_sides_and_corner_indices(threshold=threshold)
 
         surface_verts = list(self._side_surface_verts.get(side, []))
 
@@ -1304,18 +1305,18 @@ class DeformableMesh:
             self.unfix(vi)
 
 
-    def fix_corners(self,wi, side="bottom_left"):
+    def fix_corners(self,wi, side="bottom_left", threshold=0.02):
         if not hasattr(self, "_corner_indices") or side not in self._corner_indices:
-            self.compute_sides_and_corner_indices()
+            self.compute_sides_and_corner_indices(threshold=threshold)
 
         indices = self._corner_indices.get(side, [])
         for vi in indices:
             self.fix(vi, wi)
             self.picked_vert[vi] = True
 
-    def release_corners(self, side="left"):
+    def release_corners(self, side="left", threshold=0.02):
         if not hasattr(self, "bottom_left") or side not in self._corner_indices:
-            self.compute_sides_and_corner_indices()
+            self.compute_sides_and_corner_indices(threshold=threshold)
 
         indices = self._corner_indices.get(side, [])
         for vi in indices:

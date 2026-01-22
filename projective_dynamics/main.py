@@ -5,41 +5,54 @@ import argparse
 
 import cProfile
 import pstats
-def main(args, record_fom_info = False, case=None, params=None):
+def main(args, record_fom_info = False, case=None,object_name=None, mesh_file =None, tetrahedralized=False):
 
     import demos.calbacks
+    # Pre-designed experiments -----------------------------------------------------------------------------------------
+    # predefined_experiments_in_order = ["holding_releasing_sides",  # 0
+    #                                    "pinning_release_sides",  # 1
+    #                                    "twisting",  # 2
+    #                                    "stretching",  # 3
+    #                                    "squeezing",  # 4
+    #                                    "poking",  # 5
+    #                                    "free_falling",  # 6
+    #                                    "rotating",  # 7
+    #                                    ]
 
-    if case == "testing":
-        callback = demos.calbacks.interacrive_testing_callback(args, record_fom_info, params)
-    elif case == "cloth_automated_bend_spring_strain_snapshots":
-        callback = demos.calbacks.cloth_snapshots(args, record_fom_info, params)
-    elif case == "cloth_automated_bend_spring_strain_tests":
-        callback = demos.calbacks.cloth_test(args, record_fom_info, params)
-    elif case == "cloth_automated_bend_spring_strain":
+    # if case == "testing":
+    #     callback = demos.calbacks.interacrive_testing_callback(args, record_fom_info, params)
+    # ------------------------------------------------------------------------------------------------------------------
+    if case == "cloth_bend":
+        args.vert_bending_constraint = True
+        args.experiments_labels = [6]   # free fall
 
-        callback = demos.calbacks.automated_callback(args, record_fom_info,
-                                                     object_name = "cloth", object_mesh_file = "../data/cloth.obj",
-                                                     tetrahedralized=False, experiment=case)
+    elif case == "cloth_spring":
+        args.edge_constraint = True
+        args.experiments_labels = [2, 3]  # twisting, stretching
 
-        # callback = demos.calbacks.cloth_automated_bend_spring_strain_callback(args, record_fom_info, params)
-    elif case == "cloth_automated_spring":
-        callback = demos.calbacks.cloth_automated_bend_spring_strain_callback(args, record_fom_info, params,
-                                                                              experiment="cloth_automated_spring")
-    elif case == "cloth_automated_strain":
-        callback = demos.calbacks.cloth_automated_strain_callback(args, record_fom_info, params)
-    elif case == "cloth_automated_bend":
-        callback = demos.calbacks.cloth_automated_bend_callback(args, record_fom_info, params)
-    elif case == "bar_automated_deformationgradient":
-        #     callback = demos.calbacks.bar_automated_callback(args, record_fom_info, params,
-        #                                                      experiment = "automated_deformationgradient")
-        callback = demos.calbacks.automated_callback(args, record_fom_info,
-                                                     object_name="bar", object_mesh_file="../data/bar.mesh",
-                                                 tetrahedralized=True, experiment=case)
+    elif case == "cloth_strain":
+        args.tri_strain_constraint = True
+        args.experiments_labels = [5]  # poking
+        args.is_gravity_active = False
+        args.strain_limit_constraint_wi =0.02
+
+    elif case == "cloth_bend_spring_strain":
+        args.vert_bending_constraint = True
+        args.edge_constraint = True
+        args.tri_strain_constraint = True
+
+    elif case == "bar_deformationgradient":
+        args.tet_deformation_constraint = True
+
+    elif case == "bar_tetstrain":
+        args.tet_strain_constraint = True
 
     else:
-        callback = None
-        raise ValueError("callback not set to a true value!")
+        raise ValueError("Callback not set to a true value!")
 
+    callback = demos.calbacks.automated_callback(args, record_fom_info,
+                                                 object_name=object_name, object_mesh_file=mesh_file,
+                                                 tetrahedralized=tetrahedralized, experiment=case)
 
     # Register callback
     ps.init()
@@ -52,12 +65,13 @@ def main(args, record_fom_info = False, case=None, params=None):
 if __name__ == '__main__':
     # -----------------------------------------------------------------------------------------------------------------
     # available demos:
-    #["cloth_automated_bend_spring_strain.json",
-    # "cloth_automated_bend.json",
-    # "cloth_automated_spring.json",
-    # "cloth_automated_strain.json",
-    # "cloth_automated_bend_spring_strain_snapshots.json"
-    # "bar_automated_deformationgradient.json"]
+    #[
+    # "cloth_bend.json",
+    # "cloth_spring",
+    # "cloth_strain",
+    # "cloth_bend_spring_strain"
+    # "bar_tetstrain",
+    # "bar_deformationgradient"]
 
     # # ---------------- build parser argument ----------------
     parser = argparse.ArgumentParser()
@@ -67,9 +81,23 @@ if __name__ == '__main__':
     from config import Config_parameters
 
     param = Config_parameters()
-    example = "bar_automated_deformationgradient"
+    example = "cloth_spring"
 
-    param.reset_parameters("demos/"+example+".json")
+    mesh_file = None
+    tetrahedralized = False
+    object_name = None
+
+    if example in {"bar_deformationgradient", "bar_tetstrain"}:
+        param.reset_parameters("demos/bar_params.json")
+        object_name= "bar"
+        mesh_file = "../data/bar.mesh"
+        tetrahedralized = True
+    elif example in {"cloth_bend", "cloth_spring", "cloth_strain", "cloth_bend_spring_strain" }:
+        param.reset_parameters("demos/cloth_params.json")
+        object_name= "cloth"
+        mesh_file = "../data/cloth.obj"
+        tetrahedralized = False
+
 
     # Add visualization params
     param.add_visualization_args(parser)
@@ -98,9 +126,11 @@ if __name__ == '__main__':
     if debug:
         with cProfile.Profile() as pr:
             main(args,
-                 record_fom_info = record_projection_data,
-                 case = example,
-                 params = param)
+                 record_fom_info=record_projection_data,
+                 case=example,
+                 object_name=object_name,
+                 mesh_file=mesh_file,
+                 tetrahedralized=tetrahedralized)
 
         stats = pstats.Stats(pr)
         stats.sort_stats(pstats.SortKey.TIME).print_stats(100)
@@ -108,4 +138,6 @@ if __name__ == '__main__':
         main(args,
              record_fom_info=record_projection_data,
              case=example,
-             params=param)
+             object_name = object_name,
+             mesh_file =mesh_file,
+             tetrahedralized=tetrahedralized)

@@ -313,21 +313,21 @@ class ConstraintsProjectionSubspace:
         self.r_multiplier =r_multiplier
         self.basis_scale = basis_scale
 
-    def get_sampled_constrained_elements(self):
+    def get_sampled_constrained_elements(self, visualize=False):
 
         self.sampler.extend_samples(self.num_samples, self.vert_samples)
 
         # # ps.init()
         # ps.remove_all_structures()
-
-        # Register surface mesh
-        # ps_mesh = ps.register_surface_mesh("mesh", self.vertices, self.faces)
+        # if visualize::
+        #     # Register surface mesh
+        #     ps_mesh = ps.register_surface_mesh("mesh", self.vertices, self.faces)
         #
-        # # Highlighted points as a point cloud
-        # highlight_positions = self.vertices[self.vert_samples]
-        # ps.register_point_cloud("highlighted verts", highlight_positions, radius=0.01)
-
-        # ps.show()
+        #     # Highlighted points as a point cloud
+        #     highlight_positions = self.vertices[self.vert_samples]
+        #     ps.register_point_cloud("highlighted verts", highlight_positions, radius=0.01)
+        #
+        #     ps.show()
 
 
         results = []
@@ -465,80 +465,6 @@ class ConstraintsProjectionSubspace:
         weights = self.sampler.get_radial_base_functions(self.vert_samples, r=max_distance * self.r_multiplier,
                                                          partition_of_one=True)
 
-        # ## ------------------------------
-        # ## Step 2. Farthest-point sampling on the surface
-        # ## ------------------------------
-        # def farthest_point_sampling(V, F, k):
-        #     """Return k approximately evenly distributed vertex indices using graph-geodesic FPS."""
-        #     n = V.shape[0]
-        #
-        #     # Build adjacency graph from triangles
-        #     adj = [[] for _ in range(n)]
-        #     for tri in F:
-        #         for i in range(3):
-        #             a, b = tri[i], tri[(i + 1) % 3]
-        #             adj[a].append(b)
-        #             adj[b].append(a)
-        #
-        #     # Precompute edge lengths
-        #     edge_lengths = {}
-        #     for i in range(n):
-        #         for j in adj[i]:
-        #             edge_lengths[(i, j)] = np.linalg.norm(V[i] - V[j])
-        #
-        #     def dijkstra(src):
-        #         """Compute shortest path (graph geodesic) distance from src."""
-        #         import heapq
-        #         dist = np.full(n, np.inf)
-        #         dist[src] = 0.0
-        #         pq = [(0.0, src)]
-        #         while pq:
-        #             d, u = heapq.heappop(pq)
-        #             if d > dist[u]:
-        #                 continue
-        #             for v in adj[u]:
-        #                 alt = d + edge_lengths[(u, v)]
-        #                 if alt < dist[v]:
-        #                     dist[v] = alt
-        #                     heapq.heappush(pq, (alt, v))
-        #         return dist
-        #
-        #     # Farthest point sampling
-        #     seeds = [np.random.randint(0, n)]
-        #     D = dijkstra(seeds[0])
-        #     for _ in range(1, k):
-        #         next_seed = np.argmax(D)
-        #         seeds.append(next_seed)
-        #         D = np.minimum(D, dijkstra(next_seed))
-        #
-        #     return np.array(seeds)
-        # #
-        # # seeds = farthest_point_sampling(self.vertices, self.faces, len(self.vert_samples))
-        # # print("Selected seeds:", seeds)
-        #
-        # # ------------------------------
-        # # Step 3. Compute Bounded Biharmonic Weights (BBW)
-        # # ------------------------------
-        # # Harmonic (smooth) weights fallback if BBWData is unavailable
-        # seeds = np.array(self.vert_samples)
-        # b = seeds
-        # bc = np.eye(len(b))
-        #
-        # print("Computing harmonic weights (BBW fallback)...")
-        # weights = igl.harmonic(self.vertices, self.faces, b, bc, 1)  # 2 = biharmonic, 1 = Laplacian
-        # # weights = np.maximum(weights, 0)  # Clamp to positive
-        # weights /= weights.sum(axis=1, keepdims=True)
-
-
-        # ps_mesh = ps.register_surface_mesh("mesh", self.vertices, self.faces)
-        #
-        # # Register weights as scalar fields
-        # for i in range(weights.shape[1]):
-        #     ps_mesh.add_scalar_quantity(f"weight_{i}", weights[:, i], defined_on='vertices', enabled=(i == 0))
-        #
-        # # Register sampled handles
-        # ps.register_point_cloud("handles", self.vertices[self.vert_samples], radius=0.01, color=(1, 0, 0))
-
         if self.constraint_name == "verts_bending":
              self.weights = weights
         elif self.constraint_name == "edge_spring":
@@ -622,7 +548,7 @@ class ConstraintsProjectionSubspace:
 
         num_basis = skinning_weights.shape[1]
         num_rows, dim = rest_state_aux.shape
-        num_constraints = len(constraints)
+        # num_constraints = len(constraints)
 
         # Preallocate Y on GPU
         Y = torch.zeros((num_rows, num_basis * (dim + 1)), device=device, dtype=torch.float32)
@@ -700,32 +626,32 @@ class ConstraintsProjectionSubspace:
 
             return V #, vals[:max_cols]
 
-        def metric_convert_basis(Vg, Mdyn, tol=1e-10):
-            # Vg: (m,r), Mdyn: (m,)
-            MV = Mdyn[:, None] * Vg  # (m,r)
-            G = Vg.T @ MV  # (r,r), SPD (up to tiny modes)
-
-            # drop tiny modes if needed
-            evals, evecs = torch.linalg.eigh(G)
-            keep = evals > tol * evals.max()
-            Vg = Vg @ evecs[:, keep]
-            Gk = torch.diag(evals[keep])
-            r = Gk.shape[0]
-
-            # Cholesky and RIGHT-multiply by R^{-1}
-            R = torch.linalg.cholesky(Gk)  # (r,r), upper by default
-
-            # Option A: triangular solve for right-multiply
-            # V = Vg @ R^{-1}  <=>  solve(R^T, Vg^T)^T
-            V = torch.linalg.solve(R.T, Vg.T).T
-
-            # Option B (also fine for small r): explicit inv(R)
-            # Rinvt = torch.linalg.inv(R)
-            # V     = Vg @ Rinvt
-
-            # sanity: V^T Mdyn V ≈ I
-            # err = torch.linalg.norm((Mdyn[:,None]*V).T @ V - torch.eye(r, device=V.device))
-            return V
+        # def metric_convert_basis(Vg, Mdyn, tol=1e-10):
+        #     # Vg: (m,r), Mdyn: (m,)
+        #     MV = Mdyn[:, None] * Vg  # (m,r)
+        #     G = Vg.T @ MV  # (r,r), SPD (up to tiny modes)
+        #
+        #     # drop tiny modes if needed
+        #     evals, evecs = torch.linalg.eigh(G)
+        #     keep = evals > tol * evals.max()
+        #     Vg = Vg @ evecs[:, keep]
+        #     Gk = torch.diag(evals[keep])
+        #     r = Gk.shape[0]
+        #
+        #     # Cholesky and RIGHT-multiply by R^{-1}
+        #     R = torch.linalg.cholesky(Gk)  # (r,r), upper by default
+        #
+        #     # Option A: triangular solve for right-multiply
+        #     # V = Vg @ R^{-1}  <=>  solve(R^T, Vg^T)^T
+        #     V = torch.linalg.solve(R.T, Vg.T).T
+        #
+        #     # Option B (also fine for small r): explicit inv(R)
+        #     # Rinvt = torch.linalg.inv(R)
+        #     # V     = Vg @ Rinvt
+        #
+        #     # sanity: V^T Mdyn V ≈ I
+        #     # err = torch.linalg.norm((Mdyn[:,None]*V).T @ V - torch.eye(r, device=V.device))
+        #     return V
 
         if use_pca:
             M = torch.as_tensor(self.mass, dtype=Y.dtype, device=Y.device)

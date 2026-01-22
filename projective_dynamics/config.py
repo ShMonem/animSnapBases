@@ -60,15 +60,14 @@ class Config_parameters:
         parser.add_argument("--sigma_min", type=float, default=physics["sigma_min"])
         parser.add_argument("--sigma_max", type=float, default=physics["sigma_max"])
 
+        # which constraints
         parser.add_argument("--apply_constraints", type=bool, default=constraints["apply_constraints"])
         parser.add_argument("--vert_bending_constraint", type=float, default=constraints["vert_bending_constraint"])
-
         parser.add_argument("--edge_constraint", type=bool, default=constraints["edge_spring_constraint"])
         parser.add_argument("--tri_strain_constraint", type=bool, default=constraints["tri_strain_constraint"])
-        parser.add_argument("--tet_deformation_constraint", type=bool,
-                            default=constraints["tet_deformation_constraint"])
+        parser.add_argument("--tet_deformation_constraint", type=bool, default=constraints["tet_deformation_constraint"])
         parser.add_argument("--tet_strain_constraint", type=bool, default=constraints["tet_strain_constraint"])
-
+        # --------------------------------------------------------------------------------------------------------------
         parser.add_argument("--is_gravity_active", type=bool, default=constraints["is_gravity_active"])
         parser.add_argument("--fix_left_side", type=bool, default=constraints["fix_left_side"])
         parser.add_argument("--fix_right_side", type=bool, default=constraints["fix_right_side"])

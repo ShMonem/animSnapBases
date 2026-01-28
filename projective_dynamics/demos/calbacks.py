@@ -16,7 +16,7 @@ from usr_interface import MouseDownHandler, MouseMoveHandler, PreDrawHandler, Pi
 from Simulators import animSnapBasesSolver
 # import trimesh
 # import meshio
-from utils import check_dir_exists, read_mesh_file, compute_vertex_normals, read_obj
+from utils import check_dir_exists, read_mesh_file, compute_vertex_normals, read_obj, rotate_mesh_once_x
 from scipy.spatial import cKDTree
 # from scipy.spatial.transform import Rotation as R
 from demos.calback_utils import *
@@ -95,7 +95,8 @@ def reset_simulation_model(V, F, T, should_rescale=False, params=None, hight=1):
                              model.faces, enabled=True)
     ps.get_surface_mesh("model").set_selection_mode("vertices_only")  # or "vertex_only"
 
-    ps.set_ground_plane_mode("shadow_only")  # set +Z as up direction
+    # set soft shadows on the ground
+    ps.set_ground_plane_mode("shadow_only")  # tile_reflection , shadow_only
     # Set camera to look down from above, along negative Z
     ps.look_at(
         target=(0.0, 0.0, 0.0),  # Look at the origin (the floor)
@@ -124,11 +125,28 @@ def automated_callback(args, record_fom_info = False,
     output_dir = args.output_dir
 
     callb.set_automated_experiments(object_name, args)
-    if callb.total_frames > args.max_p_snapshots_num:
-        solver.set_max_recorded_frames(callb.total_frames)
+    solver.set_max_recorded_frames(callb.total_frames)
 
     def callback():
         nonlocal output_dir, is_simulating
+
+        def reset_record_dir(experiment):
+            nonlocal output_dir
+            global solver
+            # Set main directory
+            if record_fom_info and model.record_directory_has_changed:
+                output_dir = callb.make_sim_path(args.output_dir, solver, args, object_name, experiment, record_fom_info)
+                solver.recording_path = output_dir
+                check_dir_exists(solver.recording_path)
+
+                solver.record_path_has_changed = True
+
+                # record parameters for tracking
+                with open(solver.recording_path + "/args.txt", "w") as f:
+                    for key, value in vars(args).items():
+                        f.write(f"{key}: {value}\n")
+                model.record_directory_has_changed = False
+
         psim.TextUnformatted("== Projective Dynamics ==")
         psim.Separator()
         # Frame 0: create mesh and apply initial constraints
@@ -136,17 +154,12 @@ def automated_callback(args, record_fom_info = False,
             print(f"Frame {solver.frame}: Creating cloth and fixing left/right corners")
 
             V, T, F = load_mesh_file(file_name=object_mesh_file, tetrahedralized=tetrahedralized)
-            reset_simulation_model(V, F, T, should_rescale=True)
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
             psim.PushItemWidth(200)
             psim.TextUnformatted("== Projective Dynamics ==")
             psim.Separator()
 
-            if record_fom_info:
-                output_dir = callb.make_sim_path(output_dir, solver, args, object_name, experiment, record_fom_info)
-                # record parameters for tracking
-                with open(output_dir + "/args.txt", "w") as f:
-                    for key, value in vars(args).items():
-                        f.write(f"{key}: {value}\n")
+
 
             solver.set_dirty()
         # Beginning of Experiments -------------------------------------------------------------------------------------
@@ -154,37 +167,37 @@ def automated_callback(args, record_fom_info = False,
         # Holding/Releasing Sides
         if callb.run_holding_releasing_sides and solver.frame == callb.holding_sides_start_frame:
 
-            solver.recording_path = os.path.join(output_dir,"holding_releasing_sides")
-            solver.record_path_has_changed = True
-            check_dir_exists(solver.recording_path )
+            reset_record_dir("holding_releasing_sides")
+
             print(f"Frame {solver.frame}: Start hanging fames")
             model.fix_surface_side_vertices(args.positional_constraint_wi, side="left")
             model.fix_surface_side_vertices(args.positional_constraint_wi, side="right")
 
         elif callb.run_holding_releasing_sides and solver.frame == callb.release_left_side_frame:
-            print(f"Frame {solver.frame}: Releasing left side")
-            model.release_surface_side_vertices(side="left")
-
-        elif callb.run_holding_releasing_sides and solver.frame == callb.release_right_side_frame:
             print(f"Frame {solver.frame}: Releasing right side")
             model.release_surface_side_vertices(side="right")
+
+        elif callb.run_holding_releasing_sides and solver.frame == callb.release_right_side_frame:
+            print(f"Frame {solver.frame}: Releasing right left")
+            model.release_surface_side_vertices(side="left")
 
         elif callb.run_holding_releasing_sides and solver.frame == callb.holding_sides_end_frame:
             if record_fom_info:
                 solver.store_current_snapshots = True
+                print(f"Frame {solver.frame}: Storing fames")
         # End of Holding/Releasing Sides Experiments -------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
         # Pinning
         elif callb.run_pinning and solver.frame == callb.pinning_corners_start_frame:
-            solver.recording_path = os.path.join(output_dir, "pinning")
-            solver.record_path_has_changed = True
-            check_dir_exists(solver.recording_path)
+
             print(f"Frame {solver.frame}: Start Pinning fames")
 
             V, T, F = load_mesh_file(file_name=object_mesh_file, tetrahedralized=tetrahedralized)
-            reset_simulation_model(V, F, T, should_rescale=True)
+
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
 
             callb.first_fix_frame_pinning(model, object_name, args)
+            reset_record_dir("pinning")
 
         elif callb.run_pinning and solver.frame == callb.release_pinning_left_corner_frame:
             callb.first_release_frame_pinning(model, object_name, solver.frame)
@@ -192,22 +205,25 @@ def automated_callback(args, record_fom_info = False,
         elif callb.run_pinning and solver.frame == callb.release_pinning_right_corner_frame:
             callb.second_release_frame_pinning(model, object_name, solver.frame)
 
+        elif callb.run_pinning and solver.frame == callb.pinning_end_frame:
+            if record_fom_info:
+                solver.store_current_snapshots = True
+                print(f"Frame {solver.frame}: Storing fames")
+
         # End of Pinning Experiments ----------------------------------------------------------------.------------------
         # --------------------------------------------------------------------------------------------------------------
         # Twisting
         elif callb.run_twisting and solver.frame == callb.twisting_start_frame:
 
-            solver.recording_path = os.path.join(output_dir, "twisting")
-            solver.record_path_has_changed = True
-            check_dir_exists(solver.recording_path)
             print(f"Frame {solver.frame}: Start twisting fames")
 
             V, T, F = load_mesh_file(file_name=object_mesh_file, tetrahedralized=tetrahedralized)
-            reset_simulation_model(V, F, T, should_rescale=True)
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
 
             solver.reference_frame = solver.frame
 
             callb.first_fix_pick__frame_twisting(model, object_name, args, solver.reference_frame)
+            reset_record_dir("twisting")
 
         elif callb.run_twisting and solver.frame == callb.release_twisting_start_frame:
             print(f"Frame {solver.frame}: Releasing left side")
@@ -223,19 +239,17 @@ def automated_callback(args, record_fom_info = False,
         # Stretching
         elif callb.run_stretching and solver.frame == callb.stretching_start_frame:
 
-            solver.recording_path = os.path.join(output_dir,"stretching")
-            solver.record_path_has_changed = True
-            check_dir_exists(solver.recording_path)
             print(f"Frame {solver.frame}: Start stretching fames")
 
             V, T, F = load_mesh_file(file_name=object_mesh_file, tetrahedralized=tetrahedralized)
-            reset_simulation_model(V, F, T, should_rescale=True)
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
 
             solver.reference_frame = solver.frame
 
             model.compute_sides_and_corner_indices()
 
-            callb.first_fix_pick__frame_stretching(model, object_name, args, solver.frame)
+            callb.first_fix_pick_frame_stretching(model, object_name, args, solver.frame)
+            reset_record_dir("stretching")
 
             solver.set_dirty()
             print("Stretching - positional constraint added to right and left sides.")
@@ -253,19 +267,16 @@ def automated_callback(args, record_fom_info = False,
         # Squeezing
         elif callb.run_squeezing and solver.frame == callb.squeezing_start_frame:
 
-            solver.recording_path = os.path.join(output_dir,"squeezing")
-            solver.record_path_has_changed = True
-            check_dir_exists(solver.recording_path)
             print(f"Frame {solver.frame}: Start squeezing fames")
 
             V, T, F = load_mesh_file(file_name=object_mesh_file, tetrahedralized=tetrahedralized)
-            reset_simulation_model(V, F, T, should_rescale=True)
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
 
             solver.reference_frame = solver.frame
 
             model.compute_sides_and_corner_indices()
             callb.first_fix_pick__frame_squeezing(model, object_name, args, solver.frame)
-
+            reset_record_dir("squeezing")
 
             solver.set_dirty()
             print("Squeezing - positional constraint added to right and left sides.")
@@ -281,13 +292,10 @@ def automated_callback(args, record_fom_info = False,
         # Poking
         elif callb.run_poking and solver.frame == callb.poking_start_frame:
 
-            solver.recording_path = os.path.join(output_dir, "poking")
-            solver.record_path_has_changed = True
-            check_dir_exists(solver.recording_path)
             print(f"Frame {solver.frame}: Start poking frames")
 
             V, T, F = load_mesh_file(file_name=object_mesh_file, tetrahedralized=tetrahedralized)
-            reset_simulation_model(V, F, T, should_rescale=True)
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
 
             solver.reference_frame = solver.frame
 
@@ -310,6 +318,8 @@ def automated_callback(args, record_fom_info = False,
 
             model.picked_vert[callb.poked_points[0]] = True
             callb.poking_count +=1
+
+            reset_record_dir("poking")
 
         elif (callb.run_poking and callb.poking_end_frame > solver.frame > callb.poking_start_frame
                 and (solver.frame - callb.poking_start_frame) % (callb.number_frames_per_poke+callb.number_frames_rest_per_poke) == 0) :
@@ -335,14 +345,13 @@ def automated_callback(args, record_fom_info = False,
         # Vertical Fall
         elif callb.run_falling and solver.frame == callb.gravitational_fall_start_frame:
 
-            solver.recording_path = os.path.join(output_dir,"free_falling")
-            solver.record_path_has_changed = True
-            check_dir_exists(solver.recording_path)
             print(f"Frame {solver.frame}: Starting free fall frames")
 
             V, T, F = load_mesh_file(file_name=object_mesh_file, tetrahedralized=tetrahedralized)
-            reset_simulation_model(V, F, T, should_rescale=True)
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
             solver.reference_frame = solver.frame
+
+            reset_record_dir("free_falling")
 
         elif callb.run_falling and solver.frame == callb.gravitational_fall_end_frame:
             if record_fom_info:
@@ -352,16 +361,15 @@ def automated_callback(args, record_fom_info = False,
         # Axial Rotation
         elif callb.run_rotating and solver.frame == callb.rotating_start_frame:
 
-            solver.recording_path = os.path.join(output_dir, "rotating")
-            solver.record_path_has_changed = True
-            check_dir_exists(solver.recording_path)
             print(f"Frame {solver.frame}: Starting rotating frames")
 
             V, T, F = load_mesh_file(file_name=object_mesh_file, tetrahedralized=tetrahedralized)
-            reset_simulation_model(V, F, T, should_rescale=True)
+            reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
             solver.reference_frame = solver.frame
 
             callb.create_full_rotating_motion(model.init_positions.copy(), callb.number_rotating_frames)
+
+            reset_record_dir("rotating")
 
         elif callb.run_rotating and callb.rotating_end_frame > solver.frame > callb.rotating_start_frame:
             f = solver.frame - solver.reference_frame
@@ -372,13 +380,13 @@ def automated_callback(args, record_fom_info = False,
 
             if record_fom_info:
                 solver.store_current_snapshots = True
+
         # End of Axial Rotation Experiments ----------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
         # End of Experiments -------------------------------------------------------------------------------------------
 
-
-
-        if solver.frame == solver.max_p_snapshots_num + 10:
+        elif solver.frame == callb.total_frames:
+            print(f"Frame {solver.frame}: End of experiments")
 
             print("Stopping simulation.")
             is_simulating = False
@@ -387,6 +395,7 @@ def automated_callback(args, record_fom_info = False,
 
         # Run a single simulation step
         if model is not None and is_simulating:
+
 
             pre_draw_handler = PreDrawHandler(
                 lambda: model.positions.shape[0] > 0, args, solver, fext,

@@ -253,3 +253,23 @@ def read_obj(filename):
                 # Assumes that the OBJ file uses 1-based index
                 faces.append([int(p.split('/')[0]) - 1 for p in parts[1:]])
     return np.array(vertices), np.array(faces)
+
+
+def rotate_mesh_once_x(V, angle=np.pi / 2):
+    """
+    Rotate mesh once around X axis by given angle.
+    """
+    c = np.cos(angle)
+    s = np.sin(angle)
+
+    R = np.array([
+        [1,  0,  0],
+        [0,  c, -s],
+        [0,  s,  c],
+    ])
+
+    # rotate around mesh center
+    center = V.mean(axis=0)
+    V_rot = (V - center) @ R.T + center
+
+    return V_rot

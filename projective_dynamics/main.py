@@ -1,10 +1,10 @@
 import polyscope as ps
-
 import config
 import argparse
-
+from config import Config_parameters
 import cProfile
 import pstats
+
 def main(args, record_fom_info = False, case=None,object_name=None, mesh_file =None, tetrahedralized=False):
 
     import demos.calbacks
@@ -27,6 +27,7 @@ def main(args, record_fom_info = False, case=None,object_name=None, mesh_file =N
         args.experiments_labels = [6]   # free fall
 
     elif case == "cloth_spring":
+        args.positions_reduced = True
         args.edge_constraint = True
         args.experiments_labels = [2, 3]  # twisting, stretching
 
@@ -74,30 +75,43 @@ if __name__ == '__main__':
     # "bar_deformationgradient"]
 
     # # ---------------- build parser argument ----------------
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Set base variables/parameters.")
+
+    parser.add_argument('--mesh', type=str, default="cloth", help='Pick a character mesh, available: "cloth", "bar"')
+    parser.add_argument('--gravity', type=str, default="active",
+                        help='State of gravity, available: "active", "inactive"')
+    parser.add_argument('--positionSubspace', type=str, default="LBS",
+                        help='Subspace for positions reduction: "lbs","none"')
+    parser.add_argument('--constraintProjectionSubspace', type=str, default="none",
+                        help='Subspace for constraint projections reduction: "lbs","none"')
+
+    parser.add_argument('--example', type=str, default="cloth_bend_spring_strain",
+                        help='Example settings, available: "cloth_bend", '
+                             '"cloth_spring",'
+                             ' "cloth_strain", '
+                             '"cloth_bend_spring_strain",'
+                             '"bar_deformationgradient", '
+                             '"bar_tetstrain"')
 
     # Build the system object args holder
     config.initiate_system_args(parser)
-    from config import Config_parameters
 
     param = Config_parameters()
-    example = "cloth_spring"
-
+    # First we parse ONLY what's known
+    early_args, _ = parser.parse_known_args()
     mesh_file = None
     tetrahedralized = False
-    object_name = None
 
-    if example in {"bar_deformationgradient", "bar_tetstrain"}:
+    if early_args.example in {"bar_deformationgradient", "bar_tetstrain"}:
         param.reset_parameters("demos/bar_params.json")
-        object_name= "bar"
         mesh_file = "../data/bar.mesh"
         tetrahedralized = True
-    elif example in {"cloth_bend", "cloth_spring", "cloth_strain", "cloth_bend_spring_strain" }:
+    elif early_args.example in {"cloth_bend", "cloth_spring", "cloth_strain", "cloth_bend_spring_strain"}:
         param.reset_parameters("demos/cloth_params.json")
-        object_name= "cloth"
         mesh_file = "../data/cloth.obj"
         tetrahedralized = False
-
+    else:
+        raise ValueError(f"Unknown example: {early_args.example}")
 
     # Add visualization params
     param.add_visualization_args(parser)
@@ -107,7 +121,6 @@ if __name__ == '__main__':
 
     # Physics parameters
     param.add_physics_args(parser)
-
 
     # Model reduction parameters
     # positions
@@ -121,8 +134,23 @@ if __name__ == '__main__':
     args = parser.parse_args()
     debug = False
 
+    args.is_gravity_active = (args.gravity == "active")
 
-    record_projection_data = False #args.record_projection_data
+    args.positions_reduced = (args.positionSubspace != "none")
+    if args.positions_reduced: args.position_basis_type = args.positionSubspace
+
+    # args.positions_reduced = (args.positionSubspace != "none")
+    # if args.positions_reduced: args.position_basis_type = args.positionSubspace
+    #
+    example = args.example
+
+    if example == "cloth_bend_spring_strain":
+        args.experiments_labels = [0, 1, 2, 3] if args.is_gravity_active else [2, 3, 5, 7]
+
+    object_name = args.mesh
+
+    record_projection_data = True # args.record_projection_data
+
     if debug:
         with cProfile.Profile() as pr:
             main(args,

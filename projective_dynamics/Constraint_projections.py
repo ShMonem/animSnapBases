@@ -1000,6 +1000,8 @@ class DeformableMesh:
         self.tets_deformation_gradient_stacked_p = None
         self.tets_deformation_constraints_changed = True
 
+        self.record_directory_has_changed = True
+
     def set_positions_to_initial(self):
         self.positions = self.init_positions.copy()
 
@@ -1010,43 +1012,6 @@ class DeformableMesh:
 
     def reset_constraints_attributes(self):
         self.constraints = []  # list of all constrained elements each as Constraint class-instance
-        # self.has_verts_positional_constraints = False
-        # self.positional_constraints_assembly_ST = None
-
-        # self.has_positional_constraints = False
-        # self.positional_constraints = []
-        # self.positional_assembly_ST = None
-        # self.positional_stacked_p = None
-        #
-        # self.has_verts_bending_constraints = False
-        # self.verts_bending_constraints = []
-        # self.verts_bending_assembly_ST = None
-        # self.verts_bending_assembly_ST_no_weights = None
-        # self.verts_bending_stacked_p = None
-        # self.verts_bending_indicies = []
-        #
-        # self.has_edge_spring_constraints = False
-        # self.edge_spring_constraints = []
-        # self.edge_spring_assembly_ST = None
-        # self.edge_spring_assembly_ST_no_weights = None
-        # self.edge_spring_stacked_p = None
-        #
-        # self.has_tris_strain_constraints = False
-        # self.tris_strain_constraints = []
-        # self.tris_strain_assembly_ST = None
-        # self.tets_strain_assembly_ST_no_weights = None
-        # self.tris_strain_assembly_ST_no_weights = None
-        # self.tris_strain_stacked_p = None
-        #
-        # self.has_tets_strain_constraints = False
-        # self.tets_strain_constraints = []
-        # self.tets_strain_assembly_ST = None
-        # self.tets_strain_stacked_p = None
-        #
-        # self.has_tets_deformation_gradient_constraints = False
-        # self.tets_deformation_gradient_constraints = []
-        # self.tets_deformation_gradient_assembly_ST = None
-        # self.tets_deformation_gradient_stacked_p = None
 
     # def compute_sides_and_corner_indices(self):
     #     """

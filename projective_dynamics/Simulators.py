@@ -101,6 +101,9 @@ class animSnapBasesSolver:
         self.store_stacked_projections = False
         self.store_positions = False
         self.store_current_snapshots = False
+        self.number_stores = 1 # at least positions are stored
+        self.count_of_stores = 0 # nothing stored yet
+
         self.max_p_snapshots_num = args.max_p_snapshots_num
         self.max_q_snapshots_num = args.max_p_snapshots_num
 
@@ -520,19 +523,29 @@ class animSnapBasesSolver:
 
             if self.model.has_verts_bending_constraints :
                 matrices["verts_bending" ] = self.model.verts_bending_assembly_ST.to_dense().cpu().detach().numpy()
+                self.number_stores += 1
+
                 np.savez(os.path.join(record_path , "verts_bending_constrained_indices.npz"),
                          indices=self.model.verts_bending_indicies)
 
             if self.model.has_edge_spring_constraints :
+                self.number_stores += 1
+
                 matrices["edge_spring" ] = self.model.edge_spring_assembly_ST.to_dense().cpu().detach().numpy()
 
             if self.model.has_tris_strain_constraints :
+                self.number_stores += 1
+
                 matrices["tris_strain" ] = self.model.tris_strain_assembly_ST.to_dense().cpu().detach().numpy()
 
             if self.model.has_tets_strain_constraints:
+                self.number_stores += 1
+
                 matrices["tets_strain"] = self.model.tets_strain_assembly_ST.to_dense().cpu().detach().numpy()
 
             if self.model.has_tets_deformation_gradient_constraints :
+                self.number_stores += 1
+
                 matrices["tets_deformation_gradient" ] = self.model.tets_deformation_gradient_assembly_ST.to_dense().cpu().detach().numpy()
 
             np.savez(os.path.join(record_path , file_name+".npz") , **matrices)
@@ -560,13 +573,6 @@ class animSnapBasesSolver:
 
             np.savez(os.path.join(record_path, file_name_no_w + ".npz"), **matrices_no_w)
 
-
-        if store_fom_info:
-            if self.record_path_has_changed:
-                store_assembly_matrices()
-                self.record_path_has_changed = False
-            self.set_store_p(store_fom_info)
-
         # triggers the solver to re-prepare the global matrix and update selection matrices if required
         if self.model.constraints_changed:
             # called only once
@@ -578,6 +584,13 @@ class animSnapBasesSolver:
             self.set_model_constraints()
             self.model.constraints_changed = False
             self.set_dirty()
+
+            if store_fom_info:
+                if self.record_path_has_changed:
+                    store_assembly_matrices()
+                    self.record_path_has_changed = False
+                self.set_store_p(store_fom_info)
+
 
         if self.has_reduced_constraint_projections and not self.constraint_subspace_ready:
             self.prepare_local_term(args)
@@ -593,7 +606,7 @@ class animSnapBasesSolver:
     """ ------------------------------------------------------------------------------
     Full dimension projection for used constraints
     ------------------------------------------------------------------------------ """
-    def get_group_ST_p(self, q_t, group_constraints, constraint_dim, ST, name, list={} ):
+    def get_group_ST_p(self, q_t, group_constraints, constraint_dim, ST, name, snap_list={} ):
         """
         Args:
             group_constraints:
@@ -616,14 +629,30 @@ class animSnapBasesSolver:
                                                                                            device=ST.device)
 
         if self.store_stacked_projections:
-            list[str(self.frame)] = p.to_dense().cpu().detach().numpy()
+            snap_list[str(self.frame)] = p.to_dense().cpu().detach().numpy()
             if self.frame == self.max_p_snapshots_num or self.store_current_snapshots:
-                np.savez(os.path.join(self.recording_path, name + ".npz"), **list)
-                if self.frame == self.max_p_snapshots_num: self.set_store_p(False)
-                print(f"Frame {self.frame} : FOM snapshots with size{len(list)}, \n... stored to directory", os.path.join(self.recording_path, name + ".npz") )
-                if self.store_current_snapshots:
+                # guard against double call in same frame
+                if getattr(self, "_last_saved_frame", None) is None:
+                    self._last_saved_frame = {}
+                if self._last_saved_frame.get(name) == self.frame:
+                    pass
+                else:
+                    np.savez(os.path.join(self.recording_path, name + ".npz"), **snap_list)
+                    self._last_saved_frame[name] = self.frame
+                    self.count_of_stores += 1
+                    print(f"Frame {self.frame} : FOM snapshots with size{len(snap_list)}, \n... stored to directory",
+                          os.path.join(self.recording_path, name + ".npz"))
+
+                if self.frame == self.max_p_snapshots_num:
+                    self.set_store_p(False)
+
+
+                if self.store_current_snapshots and self.number_stores == self.count_of_stores:
                     self.store_current_snapshots = False
                     self.reset_positions_and_constraint_projections_snapshots()
+                    self.count_of_stores = 0
+                    self.number_stores = 1
+
 
         # update constraints projection term
         # if ST is sparse:
@@ -715,10 +744,11 @@ class animSnapBasesSolver:
     def project_to_vertex_bending_manifold(self, q_t):
 
         if self.model.has_verts_bending_constraints:
+
             if not self.bending.is_reduced:
                 return self.get_group_ST_p(q_t, self.model.verts_bending_constraints, self.bending.row_dim,
                                       self.model.verts_bending_assembly_ST, name="verts_bending_p",
-                                      list=verts_bending_p)
+                                      snap_list=verts_bending_p)
             else:
                 return self.get_group_reduced_term(q_t, self.model.verts_bending_constraints, self.bending.row_dim,
                                               self.bending.interpolation_alpha, self.bending.mapped_indices_Pt,
@@ -730,7 +760,7 @@ class animSnapBasesSolver:
             if not self.spring.is_reduced:
                 return self.get_group_ST_p(q_t, self.model.edge_spring_constraints, self.spring.row_dim,
                                            self.model.edge_spring_assembly_ST, name="edge_spring_p",
-                                           list=edge_spring_p)
+                                           snap_list=edge_spring_p)
             else:
                 return self.get_group_reduced_term(q_t, self.model.edge_spring_constraints, self.spring.row_dim,
                                                    self.spring.interpolation_alpha, self.spring.Pt,
@@ -743,7 +773,7 @@ class animSnapBasesSolver:
             if not self.tris_strain.is_reduced:
                 return self.get_group_ST_p(q_t, self.model.tris_strain_constraints, self.tris_strain.row_dim,
                                            self.model.tris_strain_assembly_ST, name="tris_strain_p",
-                                           list=tris_strain_p)
+                                           snap_list=tris_strain_p)
             else:
                 return self.get_group_reduced_term(q_t, self.model.tris_strain_constraints, self.tris_strain.row_dim,
                                                    self.tris_strain.interpolation_alpha, self.tris_strain.Pt,
@@ -756,7 +786,7 @@ class animSnapBasesSolver:
             if not self.tets_strain.is_reduced:
                 return self.get_group_ST_p(q_t, self.model.tets_strain_constraints, self.tets_strain.row_dim,
                                            self.model.tets_strain_assembly_ST, name="tets_strain_p",
-                                           list=tets_strain_p)
+                                           snap_list=tets_strain_p)
             else:
                 return self.get_group_reduced_term(q_t, self.model.tets_strain_constraints, self.tets_strain.row_dim,
                                                    self.tets_strain.interpolation_alpha, self.tets_strain.Pt,
@@ -769,7 +799,7 @@ class animSnapBasesSolver:
             if not self.tets_deformation_gradient.is_reduced:
                 return self.get_group_ST_p(q_t, self.model.tets_deformation_gradient_constraints, self.tets_deformation_gradient.row_dim,
                                            self.model.tets_deformation_gradient_assembly_ST, name="tets_deformation_gradient_p",
-                                           list=tets_deformation_gradient_p)
+                                           snap_list=tets_deformation_gradient_p)
             else:
                 return self.get_group_reduced_term(q_t, self.model.tets_deformation_gradient_constraints, self.tets_deformation_gradient.row_dim,
                                                    self.tets_deformation_gradient.interpolation_alpha, self.tets_deformation_gradient.Pt,
@@ -845,12 +875,25 @@ class animSnapBasesSolver:
         if self.store_positions:
             positions[str(self.frame)] = q_next.copy()
             if self.frame == self.max_q_snapshots_num or self.store_current_snapshots:
-                np.savez(os.path.join(self.recording_path, "positions.npz"), **positions)
+                # guard against double call in same frame
+                if getattr(self, "_last_saved_frame", None) is None:
+                    self._last_saved_frame = {}
+                if self._last_saved_frame.get("positions") == self.frame:
+                    pass
+                else:
+                    np.savez(os.path.join(self.recording_path, "positions.npz"), **positions)
+                    self._last_saved_frame["positions"] = self.frame
+                    self.count_of_stores += 1
+                    print(f"Frame {self.frame} : FOM snapshots with size{len(positions)} , \n... stored to directory",
+                          os.path.join(self.recording_path, "positions.npz"))
+
                 if self.frame == self.max_q_snapshots_num: self.set_store_q(False)
-                print(f"Frame {self.frame} : FOM snapshots with size{len(positions)} , \n... stored to directory", os.path.join(self.recording_path, "positions.npz") )
-                if self.store_current_snapshots:
+                if self.store_current_snapshots and self.number_stores == self.count_of_stores:
                     self.store_current_snapshots = False
                     self.reset_positions_and_constraint_projections_snapshots() # reset snapshots dict
+                    self.count_of_stores = 0
+                    self.number_stores = 1
+
 
         print(self.frame)
         self.frame += 1

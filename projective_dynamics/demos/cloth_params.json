@@ -14,7 +14,7 @@
     "experiments_labels": [0,1,2,3,4,5,6,7],
     "window_open": true,
     "is_simulating": true,
-    "height_shift": 1
+    "height_shift": 2
 
   },
     "solver_params": {
@@ -62,8 +62,8 @@
     "positions_reduced": false,
     "name": "LBS",
     "properties": "_centered_Volkwein_Standarized_Global_nonOrthogonalized_Release70_Frames_2_increment_",
-    "num_components": 600,
-    "r_muliplier": 2.1
+    "num_components": 100,
+    "r_muliplier": 3.1
   },
   "constraint_projetions_reduction": {
     "name": "deim_pod_vectorized",

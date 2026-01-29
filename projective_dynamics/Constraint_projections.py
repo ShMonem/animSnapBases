@@ -1796,8 +1796,9 @@ class DeformableMesh:
         mesh = trimesh.Trimesh(vertices, faces, process=False)
 
         # Compute AABBs (min and max corners for each triangle)
-        aabb_min = faces.min(axis=1)  # (n, 3)
-        aabb_max = faces.max(axis=1)  # (n, 3)
+        tris = vertices[faces]  # (m,3,3)
+        aabb_min = tris.min(axis=1)  # (m,3)
+        aabb_max = tris.max(axis=1)  # (m,3)
 
         # Optionally, you can stack them as a single array
         aabbs = np.stack([aabb_min, aabb_max], axis=1)  # (n, 2, 3)        centroids = mesh.triangles_center

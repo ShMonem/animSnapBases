@@ -184,22 +184,23 @@ class PreDrawHandler:
 
             if self.solver.has_reduced_constraint_projections and not self.solver.has_reduced_position:
                 if self.solver.constraint_projection_reduction_type in {"LBS"}:
-                    color = (255/255, 140/255, 0/255)  # dark orange
+                    # color = (255/255, 140/255, 0/255)  # dark orange
+                    color = (1.0, 0.0, 0.0)  # red
                 else:  # animSanpBasis
-                    # color = (0 / 255, 100 / 255, 0 / 255)  # green?
-
-                    color = (0/255, 100/255, 0/255)      # darkgreen
+                    color = (0.0, 0.0, 1.0) #blue
 
             elif self.solver.has_reduced_position and not self.solver.has_reduced_constraint_projections:
                 if self.solver.position_reduction_type in {"LBS"}:
-                    color = (204/255, 85/255, 0/255)  # orange
+                    color = (1.0, 0.0, 0.0)  # red
                 else: # animSanpBasis
                     color = (144/255, 238/255, 144/255)   # lightgreen / pale green
+                    color = (0.0, 0.0, 1.0) #blue
+
 
             elif self.solver.has_reduced_position and self.solver.has_reduced_constraint_projections:
                 color = (211/255, 211/255, 211/255)    # lightgray
             else:
-                color = (0.4, 0.4, 0.9)  # light_purple  FOM
+                color = (0/255, 100/255, 0/255)      # darkgreen
 
             if ps.has_surface_mesh("model"):
                 ps.remove_surface_mesh("model")

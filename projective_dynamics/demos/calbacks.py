@@ -185,6 +185,7 @@ def automated_callback(args, record_fom_info = False,
             if record_fom_info:
                 solver.store_current_snapshots = True
                 print(f"Frame {solver.frame}: Storing fames")
+            callb.reset_wis(args)
         # End of Holding/Releasing Sides Experiments -------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
         # Pinning
@@ -209,6 +210,7 @@ def automated_callback(args, record_fom_info = False,
             if record_fom_info:
                 solver.store_current_snapshots = True
                 print(f"Frame {solver.frame}: Storing fames")
+            callb.reset_wis(args)
 
         # End of Pinning Experiments ----------------------------------------------------------------.------------------
         # --------------------------------------------------------------------------------------------------------------
@@ -233,6 +235,9 @@ def automated_callback(args, record_fom_info = False,
         elif callb.run_twisting and solver.frame == callb.twisting_end_frame:
             if record_fom_info:
                 solver.store_current_snapshots = True
+                print(f"Frame {solver.frame}: Storing fames")
+
+            callb.reset_wis(args)
 
         # End of Twisting Experiments ----------------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
@@ -262,6 +267,10 @@ def automated_callback(args, record_fom_info = False,
         elif callb.run_stretching and solver.frame == callb.stretching_end_frame:
             if record_fom_info:
                 solver.store_current_snapshots = True
+                print(f"Frame {solver.frame}: Storing fames")
+
+            callb.reset_wis(args)
+
         # End of Stretching Experiments --------------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
         # Squeezing
@@ -286,7 +295,9 @@ def automated_callback(args, record_fom_info = False,
             solver.set_dirty()
             if record_fom_info:
                 solver.store_current_snapshots = True
+                print(f"Frame {solver.frame}: Storing fames")
 
+            callb.reset_wis(args)
         # End of Squeezing Experiments ---------------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
         # Poking
@@ -340,6 +351,9 @@ def automated_callback(args, record_fom_info = False,
             # model.remove_positional_constraint(callb.poked_points[0])
             if record_fom_info:
                 solver.store_current_snapshots = True
+                print(f"Frame {solver.frame}: Storing fames")
+
+            callb.reset_wis(args)
         # End of Poking Experiments ------------------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
         # Vertical Fall
@@ -356,6 +370,9 @@ def automated_callback(args, record_fom_info = False,
         elif callb.run_falling and solver.frame == callb.gravitational_fall_end_frame:
             if record_fom_info:
                 solver.store_current_snapshots = True
+                print(f"Frame {solver.frame}: Storing fames")
+
+            callb.reset_wis(args)
         # End of Vertical Falling Experiments --------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
         # Axial Rotation
@@ -380,6 +397,9 @@ def automated_callback(args, record_fom_info = False,
 
             if record_fom_info:
                 solver.store_current_snapshots = True
+                print(f"Frame {solver.frame}: Storing fames")
+
+            callb.reset_wis(args)
 
         # End of Axial Rotation Experiments ----------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------

@@ -826,7 +826,6 @@ class animSnapBasesSolver:
 
         for v in range(self.model.positions.shape[0]):
                 self.model.resolve_collision(v, explicit, self.model.positions_corrections)
-
         sn = flatten(explicit.copy())
         rhs = np.zeros(3 * N)
         masses = np.zeros(3 * N)
@@ -867,7 +866,7 @@ class animSnapBasesSolver:
                 q = self.cholesky(b)  # (3N,)
 
         q_next = unflatten(q)
-        q_next = self.model.resolve_self_collision_fast(q_next)
+        # q_next = self.model.resolve_self_collision_fast(q_next)
         q_next = self.model.resolve_triangle_self_collisions(q_next)
         self.model.velocities = (q_next - self.model.positions) * dt_inv
         self.model.positions = q_next

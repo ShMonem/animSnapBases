@@ -80,10 +80,10 @@ if __name__ == '__main__':
     parser.add_argument('--mesh', type=str, default="cloth", help='Pick a character mesh, available: "cloth", "bar"')
     parser.add_argument('--gravity', type=str, default="active",
                         help='State of gravity, available: "active", "inactive"')
-    parser.add_argument('--positionSubspace', type=str, default="LBS",
-                        help='Subspace for positions reduction: "lbs","none"')
+    parser.add_argument('--positionSubspace', type=str, default="none",
+                        help='Subspace for positions reduction: "LBS","none"')
     parser.add_argument('--constraintProjectionSubspace', type=str, default="none",
-                        help='Subspace for constraint projections reduction: "lbs","none"')
+                        help='Subspace for constraint projections reduction: "LBS","none"')
 
     parser.add_argument('--example', type=str, default="cloth_bend_spring_strain",
                         help='Example settings, available: "cloth_bend", '

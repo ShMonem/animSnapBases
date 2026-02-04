@@ -195,7 +195,7 @@ if __name__ == '__main__':
 
     # mesh = "bar"
     # subspace = "vertbendSubspace"
-    json_file = "config/examples/geom/bar_automated_geom_tetDeformationGradientSubspace.json"
+    json_file = "config/examples/constrProjSubspaces/deim/cloth_strainOnly_automated_deim_triStrainSubspace.json"
 
     parser = argparse.ArgumentParser(description="Set bses parameters.")
     parser.add_argument('--mesh', type=str, default="mesh", help='Give a character mesh')

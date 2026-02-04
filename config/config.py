@@ -462,19 +462,16 @@ class Config_parameters:
 
             self.constProj_input_snapshots_pattern = self.snapshots_repo_dir \
                                                 + self.name + "/"\
-                                                + self.experiment \
                                                 + self.constProj_full_p_snapshots_folder + "/"\
                                                 + self.snaps_pattern_full_p
 
             self.constProj_input_snaps_constrained_elements = self.snapshots_repo_dir \
                                                      + self.name + "/" \
-                                                     + self.experiment \
                                                      + self.constProj_full_p_snapshots_folder + "/" \
                                                      + self.snaps_constrained_elements
 
             self.constProj_input_preprocessed_snapshots_dir = self.snapshots_repo_dir \
                                                          + self.name + "/" \
-                                                         + self.experiment + "/" \
                                                          + self.constProj_preprocessed_snapshots_folder + "/"
 
             self.constProj_store_sing_val = config["constraintProj_bases"]["store_sing_val"]
@@ -501,23 +498,19 @@ class Config_parameters:
             # weighted selection matrix that maps constraints projections to position space
             self.constProj_weightedSt = self.snapshots_repo_dir \
                                                 + self.name + "/"\
-                                                + self.experiment \
                                                 + self.constProj_full_p_snapshots_folder + "/"\
                                                 + config["constraintProj_bases"]["constraintType"]["assembly_file_name"]
             self.constProj_constrained_Stp0 = self.snapshots_repo_dir \
                                    + self.name + "/" \
-                                   + self.experiment \
                                    + self.constProj_full_p_snapshots_folder \
                                    + self.constProj_snapshots_type + "/" \
                                    +"St_aux_0.off"
 
             self._pos_snaps_folder = self.snapshots_repo_dir \
                                      + self.name + "/" \
-                                     + self.experiment + "/" \
                                      + config["constraintProj_bases"]["constraintType"]["pos_snaps_folder"]
             self._geom_pos_snaps_folder = self.snapshots_repo_dir \
                                      + self.name + "/" \
-                                     + self.experiment + "/" \
                                      + config["constraintProj_bases"]["constraintType"]["geom_pos_snaps_folder"]
             """
             Set necessary boolean parameters

@@ -658,7 +658,7 @@ class ConstraintsProjectionSubspace:
             M_dyn = torch.as_tensor(self.particles_mass, dtype=Y.dtype, device=Y.device)
 
             # PCA basis
-            self.V = mass_weighted_pca(Y, M_dyn, tol_rel=1e-8, max_cols=self.num_components) *self.basis_scale/(normalization_factor) #
+            self.V = mass_weighted_pca(Y, M_dyn, tol_rel=1e-8, max_cols=self.num_components) * self.basis_scale/(normalization_factor) #
 
         else:
             self.V = Y / (10*self.particles_mass.max())
@@ -754,7 +754,7 @@ class ConstraintsProjectionSubspace:
         rank = torch.linalg.matrix_rank(lhs, tol=1e-6)
         print(f"V^T J^T, , shape {rhs.shape} and  rank: {rank}")
 
-        eps = 1e-8
+        eps = 1e-6
         max_eps = 1e-2
         def chol(A, eps):
             while True:

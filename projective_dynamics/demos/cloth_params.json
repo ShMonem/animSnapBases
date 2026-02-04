@@ -59,22 +59,22 @@
     "record_projection_data": false
   },
     "position_reduction": {
-    "positions_reduced": false,
+    "positions_reduced": true,
     "name": "LBS",
     "properties": "_centered_Volkwein_Standarized_Global_nonOrthogonalized_Release70_Frames_2_increment_",
     "num_components": 100,
-    "r_muliplier": 2.1
+    "r_muliplier": 3.1
   },
   "constraint_projetions_reduction": {
-    "name": "deim_pod_vectorized",
-    "properties": "_noAlignement_Volkwein_Standarized_Global_Orthogonalized_Release100_Frames_2_increment",
+    "name": "LBS",
+    "properties": "",
     "vert_bending_reduced": false,
-    "num_verts_bending_components": 25,
-    "vert_bending_num_samples": -1,
+    "num_verts_bending_components":100 ,
+    "vert_bending_num_samples": 300,
 
     "edge_spring_reduced": false,
     "edge_spring_num_components": 100,
-    "edge_spring_num_samples": -1,
+    "edge_spring_num_samples": 200,
 
     "tri_strain_reduced": false,
     "tri_strain_num_components": 100,
@@ -89,7 +89,7 @@
     "tet_deformation_num_samples": 1000,
 
     "r_muliplier": 2.2,
-    "basis_scale": 2.0
+    "basis_scale": 0.0001
   },
     "nonlinear_snapshots": {
     "max_p_snapshots_num": 200,
@@ -98,10 +98,10 @@
   "directories": {
     "output": "output/",
     "positions_basis": "",
-    "geom_positions_basis_dir": "../results/bar/bar_automated_deformationgradient/q_bases/",
-    "geom_positions_basis_file": "positionSubspace.npz",
-    "geom_interpolation_basis_dir": "../results/cloth/cloth_automated_bend_spring_strain/p_bases/",
-    "geom_interpolation_basis_file": "components_interpol_alphas_interpol_verts_interpol_alpha_ranges.npz",
+    "positions_basis_dir": "../results/bar/bar_automated_deformationgradient/q_bases/",
+    "positions_basis_file": "positionSubspace.npz",
+    "interpolation_basis_dir": "",
+    "interpolation_basis_file": "components_interpol_alphas_interpol_verts_interpol_alpha_ranges.npz",
     "geom_basis": ""
 
   }

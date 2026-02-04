@@ -143,18 +143,18 @@ class Config_parameters:
 
     def add_directories_args(self, parser):
         directories = self.system_params ["directories"]
-        constrProj_basis_name = self.system_params["constraint_projetions_reduction"]["name"]
-        constrProj_basis_properties = self.system_params["constraint_projetions_reduction"]["properties"]
+        # constrProj_basis_name = self.system_params["constraint_projetions_reduction"]["name"]
+        # constrProj_basis_properties = self.system_params["constraint_projetions_reduction"]["properties"]
 
         parser.add_argument("--output_dir", type=str, default=directories['output'])
 
-        parser.add_argument("--geom_interpolation_basis_dir", type=str,
-                            default=directories['geom_interpolation_basis_dir']+ constrProj_basis_name+ constrProj_basis_properties)
-        parser.add_argument("--geom_interpolation_basis_file", type=str, default=directories['geom_interpolation_basis_file'])
+        parser.add_argument("--interpolation_basis_dir", type=str,
+                            default=directories['interpolation_basis_dir'])
+        parser.add_argument("--interpolation_basis_file", type=str, default=directories['interpolation_basis_file'])
 
         positions_basis = self.system_params["position_reduction"]
-        parser.add_argument("--geom_positions_basis_dir", type=str, default=directories['geom_positions_basis_dir'] + positions_basis["name"] + positions_basis["properties"])
-        parser.add_argument("--geom_positions_basis_file", type=str, default=directories['geom_positions_basis_file'])
+        parser.add_argument("--positions_basis_dir", type=str, default=directories['positions_basis_dir'] + positions_basis["name"] + positions_basis["properties"])
+        parser.add_argument("--positions_basis_file", type=str, default=directories['positions_basis_file'])
 
 
 def initiate_system_args(parser):

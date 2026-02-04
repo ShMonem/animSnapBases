@@ -193,7 +193,7 @@ class PreDrawHandler:
                 if self.solver.position_reduction_type in {"LBS"}:
                     color = (1.0, 0.0, 0.0)  # red
                 else: # animSanpBasis
-                    color = (144/255, 238/255, 144/255)   # lightgreen / pale green
+                    # color = (144/255, 238/255, 144/255)   # lightgreen / pale green
                     color = (0.0, 0.0, 1.0) #blue
 
 

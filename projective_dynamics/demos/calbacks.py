@@ -196,6 +196,7 @@ def automated_callback(args, record_fom_info = False,
             V, T, F = load_mesh_file(file_name=object_mesh_file, tetrahedralized=tetrahedralized)
 
             reset_simulation_model(V, F, T, should_rescale=True, hight=args.height_up_shift)
+            solver.reference_frame = solver.frame
 
             callb.first_fix_frame_pinning(model, object_name, args)
             reset_record_dir("pinning")

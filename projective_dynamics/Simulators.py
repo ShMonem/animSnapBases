@@ -213,6 +213,9 @@ class animSnapBasesSolver:
                                                            self.model.faces,
                                                            self.model.elements,
                                                            num_components, num_samples)
+
+            if self.has_reduced_position: assert self.position_reduction_type == "LBS"
+
             # compute skinning weights
             group_subspace.compute_skinning_weights()
             # compute constraint group mass matrix
@@ -221,12 +224,8 @@ class animSnapBasesSolver:
             # compute lbs basis "V" for the constraint group
             group_subspace.create_basis_via_skinning_weights(self.model.positions, assembly_ST_no_weights, group_constraints, group_aux_size,
                                               use_pca=True, specify_verts= specify_verts, normalization_factor= self.model.mass_normalization)
-
-            if not self.has_reduced_position or self.position_reduction_type == "LBS":
-                projecting_mat = np.einsum('ne,em->nm',assembly_ST.to_dense().cpu().detach().numpy(), group_subspace.V.to_dense().cpu().detach().numpy())
-            else:
-                raise ValueError(
-                    "LBS reduced constraint projections can be combined only with similar position reduction.")
+            projecting_mat = np.einsum('ne,em->nm', assembly_ST.to_dense().cpu().detach().numpy(),
+                                       group_subspace.V.to_dense().cpu().detach().numpy())
 
             # create a list of constrained elements and alpha points
             # compute interpolation solvers for lbs subspace
@@ -356,7 +355,7 @@ class animSnapBasesSolver:
             print(f"Verts bending basis file loaded with: \n Basis shape {Vj.shape} and {self.bending.mapped_indices_Pt.shape} interpolation points.")
 
             # ST (N, ep) @ V (ep, mp, 3) --> S^T V: (N, mp, 3)
-            self.bending.projection_matrix = np.einsum('ne,emi->nmi',self.model.verts_bending_assembly_ST.toarray(), Vj)
+            self.bending.projection_matrix = np.einsum('ne,emi->nmi',self.model.verts_bending_assembly_ST.to_dense().cpu().detach().numpy(), Vj)
 
             PtV = Vj[self.bending.mapped_indices_Pt, :, :]   # (num_interpolation_alphas > m, mp, 3)
             PtV_T = Vj[self.bending.mapped_indices_Pt, : , :].swapaxes(0,1)
@@ -397,8 +396,8 @@ class animSnapBasesSolver:
     def prepare_local_term(self, args):
 
         if self.constraint_projection_reduction_type in self.snapBases_interpolation_list:
-            dir = args.geom_interpolation_basis_dir
-            file = args.geom_interpolation_basis_file
+            dir = args.interpolation_basis_dir
+            file = args.interpolation_basis_file
 
             Parallel(n_jobs=3, backend="threading")(
                 delayed(f)(dir, file) for f in [self.prepare_snapshots_reduced_verts_bending,
@@ -472,8 +471,8 @@ class animSnapBasesSolver:
 
                         return U_hat
 
-                    dir = args.geom_positions_basis_dir
-                    file = args.geom_positions_basis_file
+                    dir = args.positions_basis_dir
+                    file = args.positions_basis_file
                     num_components = self.position_basis_num_components
                     upload_file = os.path.join(dir, file)
                     local_data = np.load(upload_file)
@@ -629,7 +628,7 @@ class animSnapBasesSolver:
                                                                                            device=ST.device)
 
         if self.store_stacked_projections:
-            snap_list[str(self.frame)] = p.to_dense().cpu().detach().numpy()
+            snap_list[str(self.frame-self.reference_frame)] = p.to_dense().cpu().detach().numpy()
             if self.frame == self.max_p_snapshots_num or self.store_current_snapshots:
                 # guard against double call in same frame
                 if getattr(self, "_last_saved_frame", None) is None:
@@ -872,7 +871,7 @@ class animSnapBasesSolver:
         self.model.positions = q_next
 
         if self.store_positions:
-            positions[str(self.frame)] = q_next.copy()
+            positions[str(self.frame- self.reference_frame)] = q_next.copy()
             if self.frame == self.max_q_snapshots_num or self.store_current_snapshots:
                 # guard against double call in same frame
                 if getattr(self, "_last_saved_frame", None) is None:

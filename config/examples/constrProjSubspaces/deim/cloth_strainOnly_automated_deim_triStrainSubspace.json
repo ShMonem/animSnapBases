@@ -4,7 +4,8 @@
 		"experiment_dir": "projective_dynamics/output/",
 		"mesh": "cloth",
 		"volumetric": false,
-		"experiment": "cloth_automated_strain/",
+		"experiment": "tris_strain_wi0.02_poking_gravity_active_False/",
+		"snap_file_patten":"frame*" ,
 		"snap_format": ".off"
 	},
 	"vertexPos_bases":
@@ -26,8 +27,8 @@
 		{
 			"name": "tris_strain",
 			"elements": "_tris",
-			"p_snaps_folder": "/constraint_projection/FOM/tris_strain_wi10000000_",
-			"pos_snaps_folder": "/position_snapshots/FOM/tris_strain_wi10000000_",
+			"p_snaps_folder": "FOM/tris_strain_wi0.02_/poking/gravity_active_False/",
+			"pos_snaps_folder": "FOM/tris_strain_wi10.0_/stretching/gravity_active_False/",
 			"geom_pos_snaps_folder": "/position_snapshots/deim/",
 			"assembly_file_name": "assembly_ST.npz",
 			"assembly_key": "tris_strain",
@@ -37,9 +38,9 @@
 		},
 		"snapshots":
 		{
-			"max_numFrames": 200,
-			"numFrames": 100,
-			"frame_increment": 2,
+			"max_numFrames": 187,
+			"numFrames": 187,
+			"frame_increment": 1,
 			"read_all_from_first": true,
 			"processed_snapshots_file": "/processed_snapshots/",
 			"preAlignement": "_noAlignement" ,

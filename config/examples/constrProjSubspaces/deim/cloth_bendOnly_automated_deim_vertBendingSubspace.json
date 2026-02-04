@@ -4,7 +4,8 @@
 		"experiment_dir": "projective_dynamics/output/",
 		"mesh": "cloth",
 		"volumetric": false,
-		"experiment": "cloth_automated_bend/",
+		"experiment": "verts_bending_wi0.001_poking_gravity_active_False",
+		"snap_file_patten":"frame*" ,
 		"snap_format": ".off"
 	},
 	"vertexPos_bases":
@@ -26,8 +27,9 @@
 		{
 			"name": "verts_bending",
 			"elements": "_verts",
-			"p_snaps_folder": "/constraint_projection/FOM/verts_bending_wi0.1_",
-			"pos_snaps_folder": "/position_snapshots/FOM/verts_bending_wi0.1_",
+			"p_snaps_folder": "FOM/verts_bending_wi0.001_/poking/gravity_active_False/",
+			"pos_snaps_folder": "FOM/verts_bending_wi0.001_/poking/gravity_active_False/",
+
 			"geom_pos_snaps_folder": "/position_snapshots/deim/",
 			"assembly_file_name": "assembly_ST.npz",
 			"assembly_key": "verts_bending",
@@ -37,9 +39,9 @@
 		},
 		"snapshots":
 		{
-			"max_numFrames": 50,
-			"numFrames": 25,
-			"frame_increment": 2,
+			"max_numFrames": 187,
+			"numFrames": 187,
+			"frame_increment": 1,
 			"read_all_from_first": true,
 			"processed_snapshots_file": "/processed_snapshots/",
 			"preAlignement": "_noAlignement" ,
@@ -48,7 +50,7 @@
 		},
         "basis_type": "pod_vectorized",
 		"interpolation_type": "deim",
-		"desired_num_components": 25,
+		"desired_num_components": 100,
 		"numComponents_verts": 5,
 		"bases_res_tol": 5,
 		"dim": 3,

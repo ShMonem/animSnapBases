@@ -11,11 +11,12 @@ external/splocs/__pycache__/
 __pycache__/
  *.pyc
 
+
 # ignore created venv
 IPDGS/IPDGS_env/
 
-# ignore snapshots and binaries that can be re-generated from code
-input_data/bunny/_gravitationalFall/
+# ignor binaries that can be re-generated from code
+input_data/
 
 # ignor results directory
 /results/

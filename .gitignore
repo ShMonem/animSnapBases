@@ -45,3 +45,4 @@ time_logs.txt
 
 /.vscode/
 /projective_dynamics/demos/calback_utils.py
+/projective_dynamics/demos/calbacks.py

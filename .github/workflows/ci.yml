@@ -1,0 +1,34 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  smoke-tests:
+    runs-on: ubuntu-latest
+
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONPATH: ${{ github.workspace }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup micromamba
+        uses: mamba-org/setup-micromamba@v1
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+
+      - name: Compile Python files
+        run: python -m compileall -q snapbases
+
+      - name: Run CLI smoke tests
+        run: |
+          python snapbases/posSnapshots.py --help
+          python snapbases/posComponents.py --help
+          python snapbases/constraintsSnapshots.py --help

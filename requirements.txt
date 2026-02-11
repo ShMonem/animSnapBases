@@ -193,3 +193,4 @@ xatlas==0.0.11
 yarl @ file:///home/conda/feedstock_root/build_artifacts/yarl_1749554822108/work
 zipp @ file:///home/conda/feedstock_root/build_artifacts/zipp_1749421620841/work
 zstandard==0.23.0
+h5py==3.14.0

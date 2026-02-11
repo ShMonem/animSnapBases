@@ -48,3 +48,4 @@ time_logs.txt
 /projective_dynamics/demos/calback_utils.py
 /projective_dynamics/demos/calbacks.py
 projective_dynamics/
+data/PittsburghBridgeIsotropicClosed.*

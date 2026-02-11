@@ -184,17 +184,23 @@ class PreDrawHandler:
 
             if self.solver.has_reduced_constraint_projections and not self.solver.has_reduced_position:
                 if self.solver.constraint_projection_reduction_type in {"LBS"}:
-                    # color = (255/255, 140/255, 0/255)  # dark orange
                     color = (1.0, 0.0, 0.0)  # red
+                elif self.solver.position_reduction_type in {"PCA"}:
+                    color = (0.0, 0.0, 1.0)  # blue
                 else:  # animSanpBasis
-                    color = (0.0, 0.0, 1.0) #blue
+                     color = (255 / 255, 140 / 255, 0 / 255)#  light orange
+                    # color = (144/255, 238/255, 144/255)   # lightgreen / pale green
+                    #
 
             elif self.solver.has_reduced_position and not self.solver.has_reduced_constraint_projections:
                 if self.solver.position_reduction_type in {"LBS"}:
                     color = (1.0, 0.0, 0.0)  # red
+                elif self.solver.position_reduction_type in {"PCA"}:
+                    color = (0.0, 0.0, 1.0)  # blue
                 else: # animSanpBasis
+                    color = (255/255, 140/255, 0/255)  # dark orange
                     # color = (144/255, 238/255, 144/255)   # lightgreen / pale green
-                    color = (0.0, 0.0, 1.0) #blue
+                    #
 
 
             elif self.solver.has_reduced_position and self.solver.has_reduced_constraint_projections:
